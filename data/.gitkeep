@@ -1,0 +1,4 @@
+# This file ensures the data directory is tracked by git
+# Actual data files should not be committed (see .gitignore)
+
+
