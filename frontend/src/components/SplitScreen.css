@@ -1,0 +1,50 @@
+.split-screen {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.split-panel {
+  overflow-y: auto;
+  overflow-x: hidden;
+  height: 100%;
+}
+
+.split-panel-left {
+  border-right: 1px solid var(--border);
+}
+
+.split-panel-right {
+  /* Right panel styles */
+}
+
+.split-divider {
+  width: 4px;
+  background-color: var(--border);
+  cursor: col-resize;
+  position: relative;
+  flex-shrink: 0;
+  transition: background-color 0.2s;
+}
+
+.split-divider:hover {
+  background-color: var(--primary);
+}
+
+.divider-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 40px;
+  background-color: var(--text-secondary);
+  border-radius: 2px;
+}
+
+.split-divider:hover .divider-handle {
+  background-color: var(--primary);
+}
+
+

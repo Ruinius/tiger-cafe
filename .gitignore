@@ -43,9 +43,11 @@ venv.bak/
 # Data and cache
 data/cache/
 data/temp/
+data/uploads/
 *.db
 *.sqlite
 *.sqlite3
+tiger_cafe.db
 
 # Logs
 *.log
