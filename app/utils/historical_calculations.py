@@ -2,6 +2,7 @@
 Historical calculations utility for computing financial metrics
 """
 
+import re
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
@@ -87,15 +88,31 @@ def calculate_invested_capital(
 
 
 def calculate_capital_turnover(
-    revenue: Decimal | None, invested_capital: Decimal | None
+    revenue: Decimal | None, invested_capital: Decimal | None, time_period: str | None = None
 ) -> Decimal | None:
     """
     Calculate capital turnover by dividing revenue by invested capital.
+    If the time period is quarterly (Q1, Q2, Q3, Q4), annualize the revenue by multiplying by 4.
     """
     if revenue is None or invested_capital is None or invested_capital == 0:
         return None
 
-    turnover = revenue / invested_capital
+    # Check if time_period is quarterly (Q1, Q2, Q3, Q4) vs fiscal year (FY)
+    annualized_revenue = revenue
+    if time_period:
+        time_period_upper = time_period.upper().strip()
+        # Check if it's quarterly: starts with Q followed by a digit (Q1, Q2, Q3, Q4)
+        # or contains Q1/Q2/Q3/Q4 as a pattern (e.g., "2024-Q1")
+        is_quarterly = (
+            bool(re.match(r"^Q[1-4]\s", time_period_upper))  # "Q1 2023", "Q2 2024", etc.
+            or bool(re.match(r"^Q[1-4]$", time_period_upper))  # "Q1", "Q2", etc.
+            or bool(re.search(r"[Q][1-4][\s-]?", time_period_upper))  # "2024-Q1", "2024 Q2", etc.
+        )
+        if is_quarterly and not time_period_upper.startswith("FY"):
+            # Annualize quarterly revenue by multiplying by 4
+            annualized_revenue = revenue * Decimal("4")
+
+    turnover = annualized_revenue / invested_capital
     return turnover.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
 
@@ -258,12 +275,11 @@ def calculate_effective_tax_rate(income_statement: IncomeStatement) -> Decimal |
         if any(
             term in name_lower
             for term in [
-                "income before taxes",
-                "income before income taxes",
-                "earnings before income taxes",
+                "income before tax",
+                "earnings before income tax",
                 "profit before tax",
-                "income before income tax expense",
                 "pre-tax income",
+                "income before income tax expense",
             ]
         ):
             income_before_taxes = item.line_value
@@ -281,7 +297,10 @@ def calculate_effective_tax_rate(income_statement: IncomeStatement) -> Decimal |
                 income_tax_expense = abs(item.line_value)
 
         # Look for net income
-        elif any(term in name_lower for term in ["net income", "net earnings", "profit after tax"]):
+        elif any(
+            term in name_lower
+            for term in ["net income", "net earnings", "profit after tax", "after tax profit"]
+        ):
             if "total" not in name_lower:
                 net_income = item.line_value
 
@@ -321,7 +340,9 @@ def calculate_all_historical_metrics(
     net_working_capital = calculate_net_working_capital(balance_sheet)
     net_long_term = calculate_net_long_term_operating_assets(balance_sheet)
     invested_capital = calculate_invested_capital(net_working_capital, net_long_term)
-    capital_turnover = calculate_capital_turnover(revenue, invested_capital)
+    capital_turnover = calculate_capital_turnover(
+        revenue, invested_capital, income_statement.time_period if income_statement else None
+    )
     ebita = calculate_ebita(income_statement, amortization)
     ebita_margin = calculate_ebita_margin(ebita, revenue)
     effective_tax_rate = calculate_effective_tax_rate(income_statement)

@@ -9,7 +9,6 @@ import os
 import pdfplumber
 
 from app.utils.gemini_client import generate_embedding_safe
-from app.utils.pdf_extractor import extract_text_from_pdf
 
 
 def save_chunk_embedding(
@@ -125,6 +124,31 @@ def delete_chunk_embeddings(document_id: str, storage_dir: str = "data/storage")
             pass
 
 
+def _extract_page_range_text(file_path: str, start_page: int, end_page: int) -> str:
+    """
+    Extract text from a specific page range in a PDF file.
+
+    Args:
+        file_path: Path to PDF file
+        start_page: Starting page index (0-based, inclusive)
+        end_page: Ending page index (0-based, exclusive)
+
+    Returns:
+        Extracted text from the page range
+    """
+    text_parts = []
+    with pdfplumber.open(file_path) as pdf:
+        total_pages = len(pdf.pages)
+        clamped_start = max(0, min(start_page, total_pages))
+        clamped_end = max(clamped_start, min(end_page, total_pages))
+
+        for page_index in range(clamped_start, clamped_end):
+            page_text = pdf.pages[page_index].extract_text()
+            if page_text:
+                text_parts.append(page_text)
+    return "\n\n".join(text_parts)
+
+
 def index_document_chunks(
     file_path: str, document_id: str, chunk_size: int = 5, storage_dir: str = "data/storage"
 ) -> dict:
@@ -169,12 +193,8 @@ def index_document_chunks(
                 print(f"Chunk {chunk_index} embedding already exists, skipping")
                 continue
 
-            # Extract text for this chunk
-            chunk_text, _, _ = extract_text_from_pdf(file_path, max_pages=end_page)
-            # Get only the current chunk
-            if start_page > 0:
-                prev_text, _, _ = extract_text_from_pdf(file_path, max_pages=start_page)
-                chunk_text = chunk_text[len(prev_text) :]
+            # Extract text for this chunk directly from the page range
+            chunk_text = _extract_page_range_text(file_path, start_page, end_page)
 
             # Generate embedding for chunk (limit to 20k chars)
             chunk_embedding = generate_embedding_safe(
@@ -217,11 +237,7 @@ def get_chunk_text(file_path: str, chunk_index: int, chunk_size: int = 5) -> tup
 
     end_page = min(start_page + chunk_size, total_pages)
 
-    # Extract text for this chunk
-    chunk_text, _, _ = extract_text_from_pdf(file_path, max_pages=end_page)
-    # Get only the current chunk
-    if start_page > 0:
-        prev_text, _, _ = extract_text_from_pdf(file_path, max_pages=start_page)
-        chunk_text = chunk_text[len(prev_text) :]
+    # Extract text for this chunk directly from the page range
+    chunk_text = _extract_page_range_text(file_path, start_page, end_page)
 
     return chunk_text, start_page, end_page

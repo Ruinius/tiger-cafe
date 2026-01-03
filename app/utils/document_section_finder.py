@@ -4,7 +4,7 @@ Utilities for finding relevant document sections using embeddings.
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from app.utils.document_indexer import (
     get_chunk_metadata,
@@ -53,7 +53,8 @@ def find_document_section(
     query_texts: list[str],
     chunk_size: int | None = None,
     score_threshold: float = 0.3,
-    window_chunks: int = 2,
+    pages_before: int = 2,
+    pages_after: int = 3,
 ) -> tuple[str | None, int | None]:
     """
     Use document embeddings to locate relevant sections for the provided queries.
@@ -64,7 +65,8 @@ def find_document_section(
         query_texts: Query phrases to search for
         chunk_size: Size of a chunk in pages; falls back to indexed metadata
         score_threshold: Minimum similarity score to consider a match
-        window_chunks: Number of chunks to include before/after the best match
+        pages_before: Number of pages to include before the best matching chunk (default: 2)
+        pages_after: Number of pages to include after the best matching chunk (default: 3)
 
     Returns:
         Tuple of (extracted_text, start_page) or (None, None) if not found
@@ -84,6 +86,13 @@ def find_document_section(
             print(f"No chunks found for document {document_id}")
             return None, None
 
+        # Get total pages
+        import pdfplumber
+
+        with pdfplumber.open(file_path) as pdf:
+            total_pages = len(pdf.pages)
+
+        # Generate query embeddings for all query texts
         query_embeddings = [
             generate_embedding_safe(query_text, max_chars=20000, task_type="retrieval_query")
             for query_text in query_texts
@@ -92,6 +101,7 @@ def find_document_section(
         best_score = -1.0
         best_chunk_index = -1
 
+        # Search through all chunks to find the best match
         for chunk_index in range(num_chunks):
             chunk_embedding = load_chunk_embedding(document_id, chunk_index)
 
@@ -103,6 +113,7 @@ def find_document_section(
                 )
                 save_chunk_embedding(chunk_embedding, document_id, chunk_index)
 
+            # Check similarity with all query embeddings and keep the best match
             for query_embedding in query_embeddings:
                 similarity = cosine_similarity(chunk_embedding, query_embedding)
                 if similarity > best_score:
@@ -110,19 +121,31 @@ def find_document_section(
                     best_chunk_index = chunk_index
 
         if best_score > score_threshold and best_chunk_index >= 0:
-            start_extract_chunk = max(0, best_chunk_index - window_chunks)
-            end_extract_chunk = min(num_chunks, best_chunk_index + window_chunks + 1)
+            # Calculate the page range for the best matching chunk
+            chunk_start_page = best_chunk_index * resolved_chunk_size
+            chunk_end_page = min(chunk_start_page + resolved_chunk_size, total_pages)
 
-            start_extract_page = start_extract_chunk * resolved_chunk_size
-            end_extract_page = end_extract_chunk * resolved_chunk_size
+            # Extract pages: pages_before pages before the chunk start,
+            # the entire chunk, and pages_after pages after the chunk end
+            start_extract_page = max(0, chunk_start_page - pages_before)
+            end_extract_page = min(total_pages, chunk_end_page + pages_after)
+
+            print(
+                f"Best match: chunk {best_chunk_index} (pages {chunk_start_page}-{chunk_end_page - 1}), "
+                f"similarity={best_score:.3f}, extracting pages {start_extract_page}-{end_extract_page - 1}"
+            )
 
             extracted_text = _extract_page_range_text(
                 file_path, start_extract_page, end_extract_page
             )
             return extracted_text, start_extract_page
 
+        print(f"No match found above threshold {score_threshold}. Best score: {best_score:.3f}")
         return None, None
 
     except Exception as e:
         print(f"Error finding document section: {str(e)}")
+        import traceback
+
+        traceback.print_exc()
         return None, None

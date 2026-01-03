@@ -5,8 +5,9 @@ Balance sheet extraction agent using Gemini LLM and embeddings
 import json
 import re
 
-from app.utils.gemini_client import generate_content_safe
 from app.utils.document_section_finder import find_document_section
+from app.utils.gemini_client import generate_content_safe
+from app.utils.pdf_extractor import extract_text_from_pdf
 
 
 def find_balance_sheet_section(
@@ -37,7 +38,8 @@ def find_balance_sheet_section(
             query_texts=query_texts,
             chunk_size=None,
             score_threshold=0.3,
-            window_chunks=2,
+            pages_before=2,
+            pages_after=3,
         )
 
     except Exception as e:

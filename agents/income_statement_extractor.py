@@ -39,7 +39,8 @@ def find_income_statement_section(
             query_texts=query_texts,
             chunk_size=None,
             score_threshold=0.3,
-            window_chunks=2,
+            pages_before=2,
+            pages_after=3,
         )
 
     except Exception as e:

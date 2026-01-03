@@ -348,6 +348,9 @@ All calculations are performed for a specific document using the extracted balan
 
 - [x] **Capital Turnover Calculation**
   - Calculate: Capital Turnover = Revenue / Invested Capital
+  - For quarterly statements (Q1, Q2, Q3, Q4): Annualize revenue by multiplying by 4 before calculation
+  - For fiscal year statements (FY): Use revenue as-is
+  - Displayed as "Capital Turnover, Annualized" in the UI
 
 - [x] **EBITA Calculation**
   - Take Operating Income, which could be called other names such as income from operations, from income statement
@@ -515,6 +518,7 @@ For detailed UI/UX specifications and design guidance, see [UI_UX_DESIGN.md](UI_
 - Units are displayed in financial statement headers (to the right of Currency)
 - Additional items each have their own unit field (displayed in Unit column)
 - Historical calculations store and display units for monetary values (ratios/percentages show "—")
+- Capital Turnover is annualized: For quarterly statements (Q1-Q4), revenue is multiplied by 4 before calculating capital turnover to ensure comparability between quarterly and annual data
 - Units are persisted in database and displayed throughout the UI
 
 <!-- Add any clarifications, decisions, or notes here as the project evolves -->

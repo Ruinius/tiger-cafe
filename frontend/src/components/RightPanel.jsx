@@ -232,14 +232,18 @@ function RightPanel({ selectedCompany, selectedDocument }) {
     }
   }, [areAllMilestonesTerminal, selectedDocument?.id, balanceSheet, incomeStatement, historicalCalculationsLoadAttempted, loadHistoricalCalculations])
 
-  const formatCurrency = (value, currency = 'USD') => {
+  const formatNumber = (value, unit = null) => {
     if (value === null || value === undefined) return 'N/A'
+    
+    // Values are stored in the reported unit (e.g., 100 if unit is "millions" means 100 million)
+    // Display them as-is without conversion - the unit column shows the scale
+    const displayValue = parseFloat(value)
+    
+    // Format as number with thousands separators, no currency symbol
     return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency || 'USD',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
-    }).format(parseFloat(value))
+    }).format(displayValue)
   }
 
   // Expose function to clear data (for re-run and delete buttons)
@@ -493,7 +497,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                     >
                                       <td className={isKeyTotal ? 'bold-text' : ''}>{item.line_name}</td>
                                       <td className={isKeyTotal ? 'bold-text' : ''}>{item.line_category || 'N/A'}</td>
-                                      <td className={`text-right ${isKeyTotal ? 'bold-text' : ''}`}>{formatCurrency(item.line_value, balanceSheet.currency)}</td>
+                                      <td className={`text-right ${isKeyTotal ? 'bold-text' : ''}`}>{formatNumber(item.line_value, balanceSheet.unit)}</td>
                                       <td>
                                         <span className={`type-badge ${item.is_operating ? 'operating' : 'non-operating'}`}>
                                           {item.is_operating ? 'Operating' : 'Non-Operating'}
@@ -568,7 +572,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                     >
                                       <td className={isKeyTotal ? 'bold-text' : ''}>{item.line_name}</td>
                                       <td className={isKeyTotal ? 'bold-text' : ''}>{item.line_category || 'N/A'}</td>
-                                      <td className={`text-right ${isKeyTotal ? 'bold-text' : ''}`}>{formatCurrency(item.line_value, incomeStatement.currency)}</td>
+                                      <td className={`text-right ${isKeyTotal ? 'bold-text' : ''}`}>{formatNumber(item.line_value, incomeStatement.unit)}</td>
                                       <td>
                                         <span className={`type-badge ${item.is_operating ? 'operating' : 'non-operating'}`}>
                                           {item.is_operating ? 'Operating' : 'Non-Operating'}
@@ -607,7 +611,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                   {incomeStatement.revenue_prior_year !== null && (
                                     <tr>
                                       <td>Prior Period Revenue</td>
-                                      <td className="text-right">{formatCurrency(incomeStatement.revenue_prior_year, incomeStatement.currency)}</td>
+                                      <td className="text-right">{formatNumber(incomeStatement.revenue_prior_year, incomeStatement.revenue_prior_year_unit)}</td>
                                       <td>{incomeStatement.revenue_prior_year_unit ? incomeStatement.revenue_prior_year_unit.replace('_', ' ') : 'N/A'}</td>
                                     </tr>
                                   )}
@@ -621,7 +625,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                   {incomeStatement.amortization !== null && (
                                     <tr>
                                       <td>Amortization</td>
-                                      <td className="text-right">{formatCurrency(incomeStatement.amortization, incomeStatement.currency)}</td>
+                                      <td className="text-right">{formatNumber(incomeStatement.amortization, incomeStatement.amortization_unit)}</td>
                                       <td>{incomeStatement.amortization_unit ? incomeStatement.amortization_unit.replace('_', ' ') : 'N/A'}</td>
                                     </tr>
                                   )}
@@ -666,27 +670,27 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                               {historicalCalculations.net_working_capital !== null && (
                                 <tr>
                                   <td>Net Working Capital</td>
-                                  <td className="text-right">{formatCurrency(historicalCalculations.net_working_capital, historicalCalculations.currency)}</td>
+                                  <td className="text-right">{formatNumber(historicalCalculations.net_working_capital, historicalCalculations.unit)}</td>
                                   <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
                                 </tr>
                               )}
                               {historicalCalculations.net_long_term_operating_assets !== null && (
                                 <tr>
                                   <td>Net Long Term Operating Assets</td>
-                                  <td className="text-right">{formatCurrency(historicalCalculations.net_long_term_operating_assets, historicalCalculations.currency)}</td>
+                                  <td className="text-right">{formatNumber(historicalCalculations.net_long_term_operating_assets, historicalCalculations.unit)}</td>
                                   <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
                                 </tr>
                               )}
                               {historicalCalculations.invested_capital !== null && (
                                 <tr>
                                   <td>Invested Capital</td>
-                                  <td className="text-right">{formatCurrency(historicalCalculations.invested_capital, historicalCalculations.currency)}</td>
+                                  <td className="text-right">{formatNumber(historicalCalculations.invested_capital, historicalCalculations.unit)}</td>
                                   <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
                                 </tr>
                               )}
                               {historicalCalculations.capital_turnover !== null && (
                                 <tr>
-                                  <td>Capital Turnover</td>
+                                  <td>Capital Turnover, Annualized</td>
                                   <td className="text-right">{parseFloat(historicalCalculations.capital_turnover).toFixed(4)}</td>
                                   <td>—</td>
                                 </tr>
@@ -694,7 +698,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                               {historicalCalculations.ebita !== null && (
                                 <tr>
                                   <td>EBITA</td>
-                                  <td className="text-right">{formatCurrency(historicalCalculations.ebita, historicalCalculations.currency)}</td>
+                                  <td className="text-right">{formatNumber(historicalCalculations.ebita, historicalCalculations.unit)}</td>
                                   <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
                                 </tr>
                               )}

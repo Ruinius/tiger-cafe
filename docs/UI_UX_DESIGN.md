@@ -281,7 +281,7 @@ In general, the left side is a robust navigation with breadcrumbs showing the ra
 4. Once all milestones are terminal (completed/error/not_found), financial statements load
 5. Balance sheet and income statement tables display with all line items, categories, amounts, units, and operating/non-operating classification
 6. Additional Items table displays: prior period revenue, YOY revenue growth, amortization, basic shares outstanding, diluted shares outstanding (each with units)
-7. Historical Calculations table displays: Net Working Capital, Net Long Term Operating Assets, Invested Capital, Capital Turnover, EBITA, EBITA Margin, Effective Tax Rate (monetary values with units, ratios/percentages with "—")
+7. Historical Calculations table displays: Net Working Capital, Net Long Term Operating Assets, Invested Capital, Capital Turnover, Annualized, EBITA, EBITA Margin, Effective Tax Rate (monetary values with units, ratios/percentages with "—")
 8. Validation status shown (valid or with error details)
 9. Key totals are bolded for emphasis
 10. Units displayed in headers (to the right of Currency) and in table columns as appropriate
@@ -385,7 +385,7 @@ In general, the left side is a robust navigation with breadcrumbs showing the ra
   - Net Working Capital (with unit)
   - Net Long Term Operating Assets (with unit)
   - Invested Capital (with unit)
-  - Capital Turnover (ratio, unit shows "—")
+  - Capital Turnover, Annualized (ratio, unit shows "—"; quarterly revenue is annualized by multiplying by 4)
   - EBITA (with unit)
   - EBITA Margin (percentage, unit shows "—")
   - Effective Tax Rate (percentage, unit shows "—")

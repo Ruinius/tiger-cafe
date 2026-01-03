@@ -155,6 +155,7 @@ Tiger-Cafe provides three main user journey epics:
 - Operating/non-operating classification for each line item (authoritative lookup table with LLM fallback)
 - Additional items extraction: Prior period revenue, YOY revenue growth, amortization, basic shares outstanding, diluted shares outstanding (each with unit fields)
 - Historical calculations: Automatic calculation and display of Net Working Capital, Invested Capital, EBITA, and other key metrics with unit support
+  - Capital Turnover is annualized for quarterly statements (Q1-Q4) by multiplying revenue by 4
 - Real-time progress tracking with 5 milestones:
   - Extracting balance sheet, Classifying balance sheet
   - Extracting income statement, Extracting additional items, Classifying income statement
