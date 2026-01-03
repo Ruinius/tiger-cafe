@@ -130,21 +130,14 @@ function UploadModal({ isOpen, onClose, onUploadSuccess }) {
     onClose()
   }
 
-  // Determine background color based on theme (after all hooks)
-  const modalBgColor = theme === 'dark' ? '#2C2C2C' : '#FFFFFF'
-  const modalTextColor = theme === 'dark' ? '#E0E0E0' : '#212121'
-
   if (!isOpen) return null
 
   return (
-    <div className="modal-overlay" onClick={handleClose}>
+    <div className="modal-overlay" onClick={handleClose} data-theme={theme}>
       <div 
         className="modal-content" 
         onClick={(e) => e.stopPropagation()}
-        style={{
-          backgroundColor: modalBgColor,
-          color: modalTextColor
-        }}
+        data-theme={theme}
       >
         <div className="modal-header">
           <h2>Upload Documents</h2>
@@ -232,6 +225,8 @@ function UploadModal({ isOpen, onClose, onUploadSuccess }) {
 }
 
 export default UploadModal
+
+
 
 
 

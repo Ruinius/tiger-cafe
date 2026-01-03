@@ -64,4 +64,5 @@ class Document(Base):
     user = relationship("User")
     company = relationship("Company", back_populates="documents")
     balance_sheet = relationship("BalanceSheet", back_populates="document", uselist=False)
+    income_statement = relationship("IncomeStatement", back_populates="document", uselist=False)
 

@@ -3,7 +3,7 @@ Duplicate document detection utilities
 """
 
 from sqlalchemy.orm import Session
-from app.models.document import Document, DocumentType
+from app.models.document import Document, DocumentType, ProcessingStatus
 from typing import Optional, Dict
 from datetime import datetime
 
@@ -14,7 +14,8 @@ def check_duplicate_document(
     document_type: DocumentType,
     time_period: Optional[str],
     filename: str,
-    unique_id: Optional[str] = None
+    unique_id: Optional[str] = None,
+    exclude_document_id: Optional[str] = None
 ) -> Optional[Dict]:
     """
     Check if a document is a duplicate based on company, type, and time period.
@@ -48,12 +49,17 @@ def check_duplicate_document(
     
     if document_type in checkable_types:
         # First check: same company, type, and time period
+        # IMPORTANT: Only check against documents that are already INDEXED (not still processing)
         if time_period:
-            existing = db.query(Document).filter(
+            query = db.query(Document).filter(
                 Document.company_id == company_id,
                 Document.document_type == document_type,
-                Document.time_period == time_period
-            ).first()
+                Document.time_period == time_period,
+                Document.indexing_status == ProcessingStatus.INDEXED  # Only check indexed documents
+            )
+            if exclude_document_id:
+                query = query.filter(Document.id != exclude_document_id)
+            existing = query.first()
             
             if existing:
                 return {
@@ -63,10 +69,15 @@ def check_duplicate_document(
                 }
         
         # Second check: same filename (case-insensitive)
-        existing_by_filename = db.query(Document).filter(
+        # Only check against documents that are already INDEXED
+        query = db.query(Document).filter(
             Document.company_id == company_id,
-            Document.filename.ilike(filename)
-        ).first()
+            Document.filename.ilike(filename),
+            Document.indexing_status == ProcessingStatus.INDEXED  # Only check indexed documents
+        )
+        if exclude_document_id:
+            query = query.filter(Document.id != exclude_document_id)
+        existing_by_filename = query.first()
         
         if existing_by_filename:
             return {
@@ -76,11 +87,16 @@ def check_duplicate_document(
             }
     else:
         # For all other document types, check by unique_id
+        # Only check against documents that are already INDEXED
         if unique_id:
-            existing_by_unique_id = db.query(Document).filter(
+            query = db.query(Document).filter(
                 Document.company_id == company_id,
-                Document.unique_id == unique_id
-            ).first()
+                Document.unique_id == unique_id,
+                Document.indexing_status == ProcessingStatus.INDEXED  # Only check indexed documents
+            )
+            if exclude_document_id:
+                query = query.filter(Document.id != exclude_document_id)
+            existing_by_unique_id = query.first()
             
             if existing_by_unique_id:
                 return {

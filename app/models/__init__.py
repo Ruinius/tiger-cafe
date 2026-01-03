@@ -8,6 +8,7 @@ from app.models.document import Document
 from app.models.financial_metric import FinancialMetric
 from app.models.analysis_result import AnalysisResult
 from app.models.balance_sheet import BalanceSheet, BalanceSheetLineItem
+from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
 
 __all__ = [
     "User",
@@ -17,5 +18,7 @@ __all__ = [
     "AnalysisResult",
     "BalanceSheet",
     "BalanceSheetLineItem",
+    "IncomeStatement",
+    "IncomeStatementLineItem",
 ]
 

@@ -9,6 +9,7 @@ Tiger-Cafe is an AI agent system for analyzing equity investments. This is a per
 Tiger-Cafe is a web application designed to help with equity investment analysis through AI-powered agents. The system provides a user-friendly interface for document management and financial analysis, with intelligent agents capable of:
 - Document classification and indexing (earnings reports, filings, analyst reports)
 - Financial data parsing and extraction
+- Balance sheet extraction and validation with operating/non-operating classification
 - Financial statement adjustments based on principles in Tim Koller's Valuation
 - Organic growth, operating margin, and capital turnover assessment
 - Intrinsic value calculations based on principles in Tim Koller's Valuation
@@ -119,6 +120,31 @@ Tiger-Cafe provides three main user journey epics:
 
 3. **Financial Analysis and Valuation**: Users view financial metrics, interact with valuation models, review sensitivity analysis, and read LLM-generated summaries.
 
+## Current Features
+
+### Document Management
+- Multi-file drag-and-drop upload (up to 10 files)
+- Automatic document classification (earnings announcements, quarterly/annual filings, press releases, etc.)
+- Content-based duplicate detection
+- Real-time upload progress tracking with milestones
+- Chunk-based document indexing with Gemini embeddings (5-page chunks, persisted for reuse)
+- Priority-based processing queue (classification/indexing prioritized over financial statement extraction)
+
+### Financial Statement Processing (Phase 5.1 & 5.2 - Complete)
+- Automatic balance sheet and income statement extraction from earnings announcements, quarterly filings, and annual reports
+- Chunk-based embedding search using persisted 5-page chunk embeddings
+- LLM-based line-by-line extraction with currency detection
+- Comprehensive validation:
+  - Balance sheet: Current assets, total assets, current liabilities, total liabilities sum verification, balance sheet equation validation
+  - Income statement: Gross profit, operating income, and net income calculation verification
+  - Retry logic (up to 3 attempts) for failed extractions
+- Operating/non-operating classification for each line item (authoritative lookup table with LLM fallback)
+- Additional items extraction: Prior period revenue, YOY revenue growth, amortization, basic shares outstanding, diluted shares outstanding
+- Real-time progress tracking with 5 milestones:
+  - Extracting balance sheet, Classifying balance sheet
+  - Extracting income statement, Extracting additional items, Classifying income statement
+- Re-run and delete functionality for financial statements
+
 For detailed planning and user journey specifications, see [docs/PLANNING.md](docs/PLANNING.md).
 
 ## Development
@@ -127,16 +153,19 @@ This project is in active development. Stay tuned for updates!
 
 ## Clarifications and Planning Notes
 
-### Document Size Limitations (Future Enhancement)
+### Chunk-Based Document Indexing
 
-**Current Limitation:**
-The document indexer currently truncates text to 20,000 characters for embedding generation. This means only the first portion of very large documents (e.g., 500-page annual reports) will be searchable. PDF extraction can handle unlimited pages, but processing may be slow for very large documents.
+**Current Implementation:**
+- Documents are split into 5-page chunks for embedding generation
+- Each chunk embedding is persisted to disk and reused during extraction
+- Eliminates duplicate API calls when re-running extractions
+- Provides more granular search capabilities than document-level embeddings
+- Large documents are fully indexed across all chunks
 
-**Future Enhancement:**
-- Implement chunk-based indexing for large documents (split into multiple embeddings)
-- Increase embedding character limit if Gemini API allows
-- Add page-based extraction limits to prevent memory issues
-- Consider implementing document summarization for sections beyond the indexed portion
+**Benefits:**
+- Performance: Chunk embeddings generated once during indexing, reused during extraction
+- Efficiency: No duplicate embedding generation when re-running extractions
+- Precision: 5-page chunks provide better search precision than document-level embeddings
 
 <!-- Add any clarifications, decisions, or notes about user journeys, features, or architecture here -->
 

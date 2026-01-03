@@ -507,10 +507,18 @@
   color: white;
 }
 
-.add-document-button.has-uploads .spinner {
+.add-document-button.has-uploads .button-spinner {
   display: inline-block;
   animation: spin 1s linear infinite;
   margin-right: 0.5rem;
+  /* Ensure this is just the character, not a circular spinner */
+  width: auto;
+  height: auto;
+  border: none;
+  border-radius: 0;
+  border-top-color: transparent;
+  color: inherit;
+  font-size: inherit;
 }
 
 .summary-section {

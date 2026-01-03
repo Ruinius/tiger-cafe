@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import axios from 'axios'
 import { useAuth } from '../contexts/AuthContext'
 import UploadModal from './UploadModal'
@@ -16,19 +16,13 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
   const [uploadingDocuments, setUploadingDocuments] = useState([])
   const [pdfUrl, setPdfUrl] = useState(null)
   const pdfUrlRef = useRef(null)
+  const progressIntervalRef = useRef(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [isCheckingProcessingStatus, setIsCheckingProcessingStatus] = useState(true) // Default to true to disable buttons until status is checked
+  const [hasFinancialStatements, setHasFinancialStatements] = useState(false)
   const { isAuthenticated, token } = useAuth()
 
-  useEffect(() => {
-    loadCompanies()
-    // Start polling for upload progress
-    const progressInterval = setInterval(() => {
-      loadUploadProgress()
-    }, 2000) // Poll every 2 seconds
-    
-    return () => clearInterval(progressInterval)
-  }, [])
-
-  const loadUploadProgress = async () => {
+  const loadUploadProgress = useCallback(async () => {
     try {
       const endpoint = isAuthenticated ? 'upload-progress' : 'upload-progress-test'
       const response = await axios.get(`${API_BASE_URL}/documents/${endpoint}`, {
@@ -36,19 +30,170 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
       })
       setUploadingDocuments(response.data)
       
-      // If no active uploads and we're showing progress, automatically go back to companies list
-      if (response.data.length === 0 && showUploadProgress) {
+      // Check if all documents have finished indexing (no active uploads/processing)
+      const allFinished = response.data.length === 0 || 
+        response.data.every(doc => {
+          const status = doc.indexing_status?.toLowerCase()
+          return status === 'indexed' || status === 'error'
+        })
+      
+      // If all documents finished and we're showing progress, automatically redirect
+      if (allFinished && showUploadProgress) {
+        // Stop polling since all uploads are done
+        if (progressIntervalRef.current) {
+          clearInterval(progressIntervalRef.current)
+          progressIntervalRef.current = null
+        }
+        
         setShowUploadProgress(false)
         // Clear any selected company/document to ensure we're on companies list
         if (selectedCompany || selectedDocument) {
           onBack()
+          // If we had a selected document, we need to go back twice (document -> company -> companies)
+          if (selectedDocument && selectedCompany) {
+            setTimeout(() => onBack(), 100)
+          }
         }
         loadCompanies() // Refresh companies list
       }
     } catch (error) {
       console.error('Error loading upload progress:', error)
     }
-  }
+  }, [isAuthenticated, token, showUploadProgress, selectedCompany, selectedDocument, onBack])
+  
+  // Check if financial statements exist for the selected document
+  const checkFinancialStatements = useCallback(async (documentId) => {
+    if (!documentId) {
+      setHasFinancialStatements(false)
+      return
+    }
+    
+    try {
+      const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+      
+      // Check both balance sheet and income statement
+      const [balanceSheetResponse, incomeStatementResponse] = await Promise.allSettled([
+        axios.get(`${API_BASE_URL}/documents/${documentId}/balance-sheet`, { headers }),
+        axios.get(`${API_BASE_URL}/documents/${documentId}/income-statement`, { headers })
+      ])
+      
+      // Check if balance sheet exists
+      // Must be fulfilled (not rejected), have HTTP status 200, and data.status === 'exists'
+      let hasBalanceSheet = false
+      if (balanceSheetResponse.status === 'fulfilled') {
+        const response = balanceSheetResponse.value
+        // Check if it's a successful response (status 200) and has the expected data structure
+        hasBalanceSheet = response.status === 200 && 
+                         response.data?.status === 'exists'
+      }
+      
+      // Check if income statement exists
+      // Must be fulfilled (not rejected), have HTTP status 200, and data.status === 'exists'
+      let hasIncomeStatement = false
+      if (incomeStatementResponse.status === 'fulfilled') {
+        const response = incomeStatementResponse.value
+        // Check if it's a successful response (status 200) and has the expected data structure
+        hasIncomeStatement = response.status === 200 && 
+                            response.data?.status === 'exists'
+      }
+      
+      setHasFinancialStatements(hasBalanceSheet || hasIncomeStatement)
+    } catch (error) {
+      console.error('Error checking financial statements:', error)
+      setHasFinancialStatements(false)
+    }
+  }, [isAuthenticated, token])
+
+  // Reset processing states when document changes or processing completes
+  // Also fetch latest document status when document is selected to ensure we have current analysis_status
+  useEffect(() => {
+    if (!selectedDocument) {
+      setIsProcessing(false)
+      setIsCheckingProcessingStatus(false) // No document, so no need to check
+      setHasFinancialStatements(false)
+      return
+    }
+    
+    // Set checking state to true to disable buttons while we fetch status
+    setIsCheckingProcessingStatus(true)
+    setHasFinancialStatements(false) // Reset until we check
+    
+    // Fetch latest document status to ensure we have current analysis_status
+    const fetchLatestStatus = async () => {
+      try {
+        const endpoint = isAuthenticated ? 'status' : 'status-test'
+        const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+        const response = await axios.get(
+          `${API_BASE_URL}/documents/${selectedDocument.id}/${endpoint}`,
+          { headers }
+        )
+        // Only update if the status actually changed to avoid unnecessary re-renders
+        if (response.data && response.data.analysis_status !== selectedDocument.analysis_status) {
+          // Update the selectedDocument with latest status
+          // This will trigger a re-render with updated analysis_status
+          if (onDocumentSelect) {
+            onDocumentSelect(response.data)
+          }
+        }
+        // After fetching status, we can enable buttons (they'll still be disabled if processing)
+        setIsCheckingProcessingStatus(false)
+        
+        // Check if financial statements exist (only for eligible document types)
+        const eligibleTypes = ['earnings_announcement', 'quarterly_filing', 'annual_filing']
+        if (selectedDocument.document_type && eligibleTypes.includes(selectedDocument.document_type)) {
+          await checkFinancialStatements(selectedDocument.id)
+        }
+      } catch (error) {
+        console.error('Error fetching latest document status:', error)
+        // Even on error, stop checking so buttons can be enabled (they'll check analysis_status)
+        setIsCheckingProcessingStatus(false)
+        setHasFinancialStatements(false)
+      }
+    }
+    
+    // Fetch immediately when document is selected
+    fetchLatestStatus()
+    
+    // Reset button states based on current status
+    // Note: This will be re-evaluated after fetchLatestStatus updates selectedDocument
+    if (selectedDocument.analysis_status !== 'processing') {
+      // Reset button states when processing completes
+      setIsProcessing(false)
+    }
+  }, [selectedDocument?.id, isAuthenticated, token, checkFinancialStatements])
+
+  useEffect(() => {
+    loadCompanies()
+    // Initial load of upload progress
+    loadUploadProgress()
+  }, [loadUploadProgress])
+
+  // Poll for upload progress only when there are active uploads or when showing progress
+  useEffect(() => {
+    // Clear any existing interval
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current)
+      progressIntervalRef.current = null
+    }
+
+    // Only start polling if there are active uploads or we're showing the progress view
+    const hasActiveUploads = uploadingDocuments.length > 0
+    const shouldPoll = hasActiveUploads || showUploadProgress
+
+    if (shouldPoll) {
+      // Poll every 3 seconds (reduced frequency from 2 seconds)
+      progressIntervalRef.current = setInterval(() => {
+        loadUploadProgress()
+      }, 3000)
+    }
+
+    return () => {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current)
+        progressIntervalRef.current = null
+      }
+    }
+  }, [uploadingDocuments.length, showUploadProgress, loadUploadProgress])
 
   useEffect(() => {
     if (selectedCompany) {
@@ -156,7 +301,8 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
 
   const loadCompanyDocuments = async (companyId) => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/documents/?company_id=${companyId}`)
+      const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+      const response = await axios.get(`${API_BASE_URL}/documents/?company_id=${companyId}`, { headers })
       setDocuments(response.data)
     } catch (error) {
       console.error('Error loading documents:', error)
@@ -172,8 +318,9 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
     setIsUploadModalOpen(true)
   }
 
-  const handleUploadSuccess = (response) => {
-    // After batch upload, go back to companies list
+  const handleUploadSuccess = async (response) => {
+    // After batch upload, immediately check upload progress to update the button
+    await loadUploadProgress()
     // The upload progress will be tracked in the background
     // User can click "Check Uploads" button to see progress if needed
     setShowUploadProgress(false)
@@ -190,6 +337,24 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
       loadUploadProgress()
     } catch (error) {
       console.error('Error replacing document:', error)
+    }
+  }
+
+  const handleCancelDuplicate = async (documentId) => {
+    if (!window.confirm('Are you sure you want to cancel this upload? The document will be removed.')) {
+      return
+    }
+    
+    try {
+      const endpoint = isAuthenticated ? '' : '/test'
+      await axios.delete(`${API_BASE_URL}/documents/${documentId}${endpoint}`, {
+        headers: isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+      })
+      // Refresh upload progress
+      loadUploadProgress()
+    } catch (error) {
+      console.error('Error canceling document:', error)
+      alert('Failed to cancel document. Please try again.')
     }
   }
 
@@ -233,13 +398,30 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
 
   return (
     <div className="left-panel">
-      {showUploadProgress && hasActiveUploads && (
+      {showUploadProgress && (
         <div className="panel-content">
           <div className="panel-header">
-            <button className="back-button" onClick={() => setShowUploadProgress(false)}>← Back</button>
-            <h2>Upload Progress</h2>
+            <div className="breadcrumb">
+              <button className="breadcrumb-link" onClick={() => {
+                setShowUploadProgress(false)
+                // Clear any selected company/document to ensure we're on companies list
+                if (selectedCompany || selectedDocument) {
+                  onBack()
+                  if (selectedDocument && selectedCompany) {
+                    setTimeout(() => onBack(), 100)
+                  }
+                }
+              }}>Companies</button>
+              <span className="breadcrumb-separator">›</span>
+              <span className="breadcrumb-current">Upload Progress</span>
+            </div>
           </div>
-          <div className="upload-progress-list">
+          {uploadingDocuments.length === 0 ? (
+            <div className="empty-state">
+              <p>All uploads have completed. Redirecting...</p>
+            </div>
+          ) : (
+            <div className="upload-progress-list">
             {uploadingDocuments.map(document => (
               <div key={document.id} className="upload-progress-item">
                 <div className="upload-progress-header">
@@ -283,19 +465,28 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                   <div className="duplicate-action">
                     <div className="duplicate-warning-text">
                       <strong>⚠️ Duplicate Document Detected</strong>
-                      <p>This document appears to be a duplicate. Click "Replace & Index" to replace the existing document and proceed with indexing.</p>
+                      <p>This document appears to be a duplicate. Click "Replace & Index" to replace the existing document and proceed with indexing, or "Cancel" to remove this upload.</p>
                     </div>
-                    <button 
-                      className="button-warning"
-                      onClick={() => handleReplaceAndIndex(document.id)}
-                    >
-                      Replace & Index
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+                      <button 
+                        className="button-warning"
+                        onClick={() => handleReplaceAndIndex(document.id)}
+                      >
+                        Replace & Index
+                      </button>
+                      <button 
+                        className="button-secondary"
+                        onClick={() => handleCancelDuplicate(document.id)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
             ))}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -343,7 +534,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
           >
             {hasActiveUploads ? (
               <>
-                <span className="spinner">⟳</span>
+                <span className="button-spinner">⟳</span>
                 Check Uploads ({uploadingDocuments.length})
               </>
             ) : (
@@ -414,7 +605,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
           >
             {hasActiveUploads ? (
               <>
-                <span className="spinner">⟳</span>
+                <span className="button-spinner">⟳</span>
                 Check Uploads ({uploadingDocuments.length})
               </>
             ) : (
@@ -428,7 +619,15 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
         <div className="panel-content">
           <div className="panel-header">
             <div className="breadcrumb">
-              <button className="breadcrumb-link" onClick={() => { onBack(); if (selectedCompany) onBack(); }}>Companies</button>
+              <button className="breadcrumb-link" onClick={() => { 
+                // Go back to companies list: need to clear both document and company
+                // Call onBack twice to go back two levels (document -> company -> companies)
+                onBack() // First call clears document
+                // Use setTimeout to ensure React state update completes before second call
+                setTimeout(() => {
+                  onBack() // Second call clears company
+                }, 0)
+              }}>Companies</button>
               <span className="breadcrumb-separator">›</span>
               <button className="breadcrumb-link" onClick={onBack}>{selectedCompany?.name || 'Company'}</button>
               <span className="breadcrumb-separator">›</span>
@@ -474,6 +673,139 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                   <p className="summary-text">{selectedDocument.summary}</p>
                 </div>
               )}
+              
+              {/* Re-run Financial Statement Processing Buttons */}
+              {selectedDocument.document_type && 
+               ['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type) && 
+               selectedDocument.indexing_status === 'indexed' && (
+                <div className="summary-section" style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+                  <strong>Re-run Processing</strong>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
+                    <button 
+                      className="button-secondary"
+                      disabled={isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing'}
+                      onClick={async () => {
+                        setIsProcessing(true)
+                        // Immediately set all milestones to PENDING in RightPanel
+                        window.dispatchEvent(new CustomEvent('resetProgressToPending', { 
+                          detail: { documentId: selectedDocument.id } 
+                        }))
+                        // Clear financial statements data in RightPanel
+                        window.dispatchEvent(new CustomEvent('clearFinancialStatements'))
+                        try {
+                          const endpoint = isAuthenticated ? 'rerun-financial-statements' : 'rerun-financial-statements/test'
+                          const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+                          await axios.post(
+                            `${API_BASE_URL}/documents/${selectedDocument.id}/${endpoint}`,
+                            {},
+                            { headers }
+                          )
+                          // Immediately reload progress to start polling
+                          window.dispatchEvent(new CustomEvent('reloadProgress'))
+                        } catch (err) {
+                          alert(err.response?.data?.detail || 'Failed to re-run extraction and classification')
+                          setIsProcessing(false)
+                        }
+                      }}
+                      style={{ width: '100%', textAlign: 'left', opacity: (isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing') ? 0.6 : 1, cursor: (isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing') ? 'not-allowed' : 'pointer' }}
+                    >
+                      {(isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing') ? 'Processing...' : 'Re-run Extraction and Classification'}
+                    </button>
+                    <button 
+                      className="button-secondary"
+                      disabled={!hasFinancialStatements}
+                      style={{ 
+                        width: '100%', 
+                        textAlign: 'left', 
+                        marginTop: '0.5rem', 
+                        backgroundColor: hasFinancialStatements ? 'var(--error-color, #dc3545)' : 'var(--bg-secondary)', 
+                        color: hasFinancialStatements ? 'white' : 'var(--text-secondary)', 
+                        border: 'none',
+                        opacity: hasFinancialStatements ? 1 : 0.6,
+                        cursor: hasFinancialStatements ? 'pointer' : 'not-allowed'
+                      }}
+                      onClick={async () => {
+                        if (!hasFinancialStatements) return
+                        if (!window.confirm('Are you sure you want to delete all financial statements for this document? This action cannot be undone.')) {
+                          return
+                        }
+                        try {
+                          const endpoint = isAuthenticated ? 'financial-statements' : 'financial-statements/test'
+                          const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+                          await axios.delete(
+                            `${API_BASE_URL}/documents/${selectedDocument.id}/${endpoint}`,
+                            { headers }
+                          )
+                          // Clear financial statements data in RightPanel
+                          window.dispatchEvent(new CustomEvent('clearFinancialStatements'))
+                          // Update state to reflect that financial statements no longer exist
+                          setHasFinancialStatements(false)
+                          // Refresh document status and trigger RightPanel refresh
+                          if (onDocumentSelect && selectedDocument) {
+                            // Fetch latest status
+                            const statusEndpoint = isAuthenticated ? 'status' : 'status-test'
+                            const statusResponse = await axios.get(
+                              `${API_BASE_URL}/documents/${selectedDocument.id}/${statusEndpoint}`,
+                              { headers }
+                            )
+                            if (statusResponse.data) {
+                              onDocumentSelect(statusResponse.data)
+                            }
+                          }
+                        } catch (err) {
+                          alert(err.response?.data?.detail || 'Failed to delete financial statements')
+                        }
+                      }}
+                    >
+                      Delete Financial Statements
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {/* Delete Document Button */}
+              <div className="summary-section" style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+                <strong>Danger Zone</strong>
+                <button 
+                  className="button-secondary"
+                  style={{ 
+                    width: '100%', 
+                    textAlign: 'left', 
+                    marginTop: '0.75rem', 
+                    backgroundColor: 'var(--error-color, #dc3545)', 
+                    color: 'white', 
+                    border: 'none'
+                  }}
+                  onClick={async () => {
+                    if (!window.confirm(`Are you sure you want to permanently delete "${selectedDocument.filename}"? This will delete the document, all financial statements, and all associated data. This action cannot be undone.`)) {
+                      return
+                    }
+                    try {
+                      const endpoint = isAuthenticated ? 'permanent' : 'permanent/test'
+                      const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+                      await axios.delete(
+                        `${API_BASE_URL}/documents/${selectedDocument.id}/${endpoint}`,
+                        { headers }
+                      )
+                      // Navigate back to company document list (one level up)
+                      if (onBack) {
+                        onBack()
+                      }
+                      // Refresh the company documents list if we have a company
+                      if (selectedCompany) {
+                        // Small delay to ensure navigation happens first
+                        setTimeout(() => {
+                          loadCompanyDocuments(selectedCompany.id)
+                        }, 100)
+                      }
+                    } catch (err) {
+                      alert(err.response?.data?.detail || 'Failed to delete document')
+                    }
+                  }}
+                >
+                  Delete Document
+                </button>
+              </div>
             </div>
             {pdfUrl && (
               <div className="info-section document-viewer-section">

@@ -36,6 +36,11 @@ async def list_companies(
     # Convert to schema format with document counts
     result = []
     for company, doc_count in companies:
+        # Filter out placeholder "Processing..." companies that have no documents
+        # These are temporary placeholders created during upload
+        if company.name == "Processing..." and (doc_count or 0) == 0:
+            continue  # Skip placeholder companies with no documents
+        
         company_dict = {
             "id": company.id,
             "name": company.name,

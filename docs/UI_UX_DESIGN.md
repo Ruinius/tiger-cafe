@@ -105,9 +105,12 @@ In general, the left side is a robust navigation with breadcrumbs showing the ra
 1. Default is a home page with a list of the latest completed company analysis
 2. The page with all the company analysis if a company is selected
 3. Extracted information from the document if one is selected on the left panel:
-   - For eligible documents (earnings announcements, quarterly filings, annual reports): Balance sheet display
+   - For eligible documents (earnings announcements, quarterly filings, annual reports): Financial statements display
+   - Progress tracker showing 5 milestones with real-time status updates
    - Balance sheet table with line items, validation status, and operating/non-operating classification
-   - "Process Balance Sheet" button to trigger extraction if not yet processed
+   - Income statement table with line items, validation status, and operating/non-operating classification
+   - Additional Items table with: prior period revenue, YOY revenue growth, amortization, basic shares outstanding, diluted shares outstanding
+   - Re-run and delete buttons in document detail view (left panel)
 
 ### Day/Night Toggle
 - Toggle button placement: Top-right corner of the header/navbar
@@ -131,13 +134,15 @@ In general, the left side is a robust navigation with breadcrumbs showing the ra
 2. Modal opens with drag-and-drop interface for multiple documents (up to 10 files)
 3. User drags and drops or selects multiple PDF files (up to 10)
 4. Modal closes immediately after files are selected
-5. Upload, classification, and indexing processes run asynchronously in background
-6. "Add Document" button transforms into "Check Uploads" button with spinning indicator while uploads are in progress
-7. User can click "Check Uploads" to view upload progress
-8. Left panel shows list of uploading documents with progress bars and milestones
-9. If duplicate detected, progress stops before indexing and shows warning with "Replace & Index" button
-10. If no duplicate, indexing proceeds automatically without blocking
-11. Attribution shows who uploaded each document
+5. **Upload step**: Files are saved in parallel (file I/O only, no API calls)
+6. **Classification & Indexing**: Documents are queued for sequential processing (one at a time) to prevent API overload
+7. "Add Document" button transforms into "Check Uploads" button with spinning indicator while uploads are in progress
+8. User can click "Check Uploads" to view upload progress
+9. Left panel shows list of uploading documents with progress bars and milestones
+10. If duplicate detected, progress stops before indexing and shows warning with "Replace & Index" button
+11. If no duplicate, indexing proceeds automatically through the sequential queue
+12. After indexing completes, financial statement processing automatically starts (if eligible)
+13. Attribution shows who uploaded each document
 
 ### UI Components Needed
 
@@ -262,33 +267,44 @@ In general, the left side is a robust navigation with breadcrumbs showing the ra
   - Show notification toast when analysis finishes
 - Multiple documents: Allow bulk analysis trigger with checkbox selection
 
-## Phase 5.1: Balance Sheet Processing UI/UX
+## Phase 5: Financial Statement Processing UI/UX
 
 ### User Flow
 1. User selects a document in the left panel (earnings announcement, quarterly filing, or annual report)
-2. Right panel displays balance sheet view
-3. If balance sheet not yet extracted, user sees "Process Balance Sheet" button
-4. User clicks button to trigger balance sheet extraction
-5. System processes balance sheet asynchronously (embedding-based location, LLM extraction, validation)
-6. Balance sheet table displays with all line items, categories, amounts, and operating/non-operating classification
+2. Right panel displays financial statement view with progress tracker
+3. Progress tracker shows 5 milestones with real-time status:
+   - Extracting Balance Sheet (checking/pending/in_progress/completed/error/not_found)
+   - Classifying Balance Sheet (checking/pending/in_progress/completed/error/not_found)
+   - Extracting Income Statement (checking/pending/in_progress/completed/error/not_found)
+   - Extracting Additional Items (checking/pending/in_progress/completed/error/not_found)
+   - Classifying Income Statement (checking/pending/in_progress/completed/error/not_found)
+4. Once all milestones are terminal (completed/error/not_found), financial statements load
+5. Balance sheet and income statement tables display with all line items, categories, amounts, and operating/non-operating classification
+6. Additional Items table displays: prior period revenue, YOY revenue growth, amortization, basic shares outstanding, diluted shares outstanding
 7. Validation status shown (valid or with error details)
-8. Key totals (Total Assets, Total Liabilities, Total Stockholder's Equity, Total Liabilities and Equity) are bolded
+8. Key totals are bolded for emphasis
 
 ### UI Components Needed
 
-#### 1. Balance Sheet Display (Right Panel)
+#### 1. Financial Statement Display (Right Panel)
 - **Header Section**:
-  - Title: "Balance Sheet"
-  - Metadata display: Time period, currency, validation status badge
-  - Validation badge: Green "✓ Valid" or Red "✗ Validation Errors"
+  - Title: "Financial Statements"
+  - Progress tracker displayed first (always visible when document is selected)
+- **Progress Tracker**:
+  - Shows all 5 milestones with status indicators
+  - Status values: checking (default), pending (processing), in_progress, completed, error, not_found
+  - Icons: ✓ (completed), ⟳ (in_progress/checking), ✗ (error), ○ (not_found/pending)
+  - Color coding: Green (completed), Blue (in_progress), Red (error), Gray (checking/not_found)
+  - Message display for each milestone
+  - Polling every 3 seconds for updates
 - **Eligibility Check**:
   - Only shows for earnings announcements, quarterly filings, and annual reports
   - Shows informational message for other document types
-- **Processing State**:
-  - "Process Balance Sheet" button when balance sheet not extracted
-  - Button disabled if document not yet indexed
-  - Processing indicator with spinner during extraction
-  - Real-time polling for status updates
+- **Loading Logic**:
+  - Progress tracker always shown first
+  - If any milestone is pending/in_progress, do not load financial statements
+  - Once all milestones are terminal (completed/error/not_found), load financial statements
+  - Maximum 3 load attempts before showing "nothing to see here"
 
 #### 2. Balance Sheet Table
 - **Table Structure**:
@@ -311,7 +327,43 @@ In general, the left side is a robust navigation with breadcrumbs showing the ra
   - Clean borders and spacing
   - Monospace numbers for alignment
 
-#### 3. Validation Status Display
+#### 3. Income Statement Table
+- **Table Structure**:
+  - Columns: Line Item, Category, Amount (right-aligned), Type
+  - Responsive table with horizontal scroll if needed
+  - Sticky header on scroll
+- **Line Item Display**:
+  - All balance sheet line items in order
+  - Currency-formatted amounts
+  - Category labels (Current Assets, Total Assets, etc.)
+  - Operating/Non-Operating badges with color coding
+- **Key Totals Highlighting**:
+  - Total Assets: Bold text
+  - Total Liabilities: Bold text
+  - Total Stockholder's Equity: Bold text
+  - Total Liabilities and Stockholder's Equity: Bold text
+  - No background highlighting (clean appearance)
+- **Table Styling**:
+  - Alternating row colors on hover
+  - Clean borders and spacing
+  - Monospace numbers for alignment
+
+#### 4. Additional Items Table
+- **Table Structure**:
+  - Title: "Additional Items"
+  - Columns: Item, Value
+  - Displays after income statement
+- **Items Displayed**:
+  - Prior Period Revenue
+  - YOY Revenue Growth (percentage)
+  - Amortization
+  - Basic Shares Outstanding
+  - Diluted Shares Outstanding
+- **Styling**:
+  - Clean table format matching balance sheet and income statement styling
+  - Currency/number formatting as appropriate
+
+#### 5. Validation Status Display
 - **Valid Balance Sheet**:
   - Green validation badge
   - No error messages shown
@@ -328,7 +380,7 @@ In general, the left side is a robust navigation with breadcrumbs showing the ra
   - Bulleted list format
   - Red color scheme for visibility
 
-#### 4. Operating/Non-Operating Classification
+#### 6. Operating/Non-Operating Classification
 - **Type Badges**:
   - Operating: Green badge with light green background
   - Non-Operating: Orange badge with light orange background
@@ -338,22 +390,33 @@ In general, the left side is a robust navigation with breadcrumbs showing the ra
   - LLM uses best judgment for classification
   - Persisted in database and displayed in UI
 
-#### 5. Processing Workflow
-- **Trigger Button**:
-  - "Process Balance Sheet" button
-  - Only enabled for eligible document types
-  - Disabled if document not indexed
-  - Shows "Processing..." state during extraction
+#### 7. Processing Workflow
+- **Automatic Processing**:
+  - Financial statement processing automatically starts after document indexing completes
+  - Processing runs sequentially: balance sheet first, then income statement
+  - No manual trigger needed
+- **Re-run Functionality**:
+  - "Re-run Extraction and Classification" button in document detail view (left panel)
+  - Re-runs entire pipeline (balance sheet + income statement)
+  - Immediately sets all milestones to pending and starts polling
+  - Button disabled during processing
+  - Clears financial statement data before re-running
+- **Delete Functionality**:
+  - "Delete Financial Statements" button: Removes all financial statement data
+  - "Delete Document" button: Permanently deletes document and all associated data
+  - Buttons located in document detail view (left panel)
+  - Delete Document button navigates back to company document list after deletion
 - **Background Processing**:
-  - Embedding-based location of balance sheet section
+  - Embedding-based location of financial statement sections
+  - Document-level pre-filtering to optimize API calls
   - LLM extraction of line items
   - Validation with up to 3 retry attempts
   - Operating/non-operating classification
-  - Real-time status updates via polling
+  - Real-time status updates via polling (every 3 seconds)
 - **Completion**:
-  - Table automatically displays when extraction completes
+  - Tables automatically display when all milestones are terminal
   - Validation status shown immediately
-  - User can view full balance sheet data
+  - User can view full financial statement data
 
 ### Design Specifications
 

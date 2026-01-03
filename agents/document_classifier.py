@@ -2,15 +2,11 @@
 Document classification agent using Gemini LLM
 """
 
-import google.generativeai as genai
-from config.config import GEMINI_API_KEY, DEFAULT_MODEL, TEMPERATURE
+from config.config import DEFAULT_MODEL, TEMPERATURE
 from app.models.document import DocumentType
+from app.utils.gemini_client import generate_content_safe
 from typing import Optional, Dict
 import json
-
-
-# Initialize Gemini
-genai.configure(api_key=GEMINI_API_KEY)
 
 
 def classify_document(text: str) -> Dict[str, Optional[str]]:
@@ -59,15 +55,7 @@ Document text (first few pages):
 Return only valid JSON, no additional text."""
 
     try:
-        model = genai.GenerativeModel(
-            model_name=DEFAULT_MODEL,
-            generation_config={
-                "temperature": TEMPERATURE,
-            }
-        )
-        
-        response = model.generate_content(prompt)
-        response_text = response.text.strip()
+        response_text = generate_content_safe(prompt)
         
         # Remove markdown code blocks if present
         if response_text.startswith("```"):

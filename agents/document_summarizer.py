@@ -2,13 +2,9 @@
 Document summarization agent using Gemini LLM
 """
 
-import google.generativeai as genai
-from config.config import GEMINI_API_KEY, DEFAULT_MODEL, TEMPERATURE
+from config.config import DEFAULT_MODEL, TEMPERATURE
+from app.utils.gemini_client import generate_content_safe
 from typing import Optional
-
-
-# Initialize Gemini
-genai.configure(api_key=GEMINI_API_KEY)
 
 
 def generate_document_summary(text: str) -> Optional[str]:
@@ -34,16 +30,9 @@ Document text:
 Summary:"""
 
     try:
-        model = genai.GenerativeModel(
-            model_name=DEFAULT_MODEL,
-            generation_config={
-                "temperature": TEMPERATURE,
-                "max_output_tokens": 200,  # Limit summary length
-            }
-        )
-        
-        response = model.generate_content(prompt)
-        summary = response.text.strip()
+        # Note: generate_content_safe doesn't support max_output_tokens yet
+        # For now, we'll use the safe wrapper and let the model handle length
+        summary = generate_content_safe(prompt)
         
         # Clean up the summary - remove any markdown formatting
         if summary.startswith("**") or summary.startswith("#"):

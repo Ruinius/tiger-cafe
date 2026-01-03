@@ -2,15 +2,22 @@
 Balance sheet extraction agent using Gemini LLM and embeddings
 """
 
-import google.generativeai as genai
-from config.config import GEMINI_API_KEY, DEFAULT_MODEL, TEMPERATURE, EMBEDDING_MODEL
+from config.config import DEFAULT_MODEL, TEMPERATURE, EMBEDDING_MODEL
 from app.models.document import DocumentType
-from app.utils.document_indexer import load_embedding
+from app.utils.document_indexer import (
+    load_embedding,  # For backward compatibility
+    load_chunk_embedding,
+    get_chunk_metadata,
+    get_chunk_text,
+    save_chunk_embedding
+)
 from app.utils.pdf_extractor import extract_text_from_pdf
+from app.utils.gemini_client import generate_embedding_safe, generate_content_safe, get_model_safe
 from typing import Dict, List, Optional, Tuple
 import json
 import os
 import csv
+import re
 from datetime import datetime
 
 try:
@@ -24,10 +31,6 @@ except ImportError:
         norm_a = sum(x * x for x in a) ** 0.5
         norm_b = sum(x * x for x in b) ** 0.5
         return dot_product / (norm_a * norm_b) if (norm_a * norm_b) > 0 else 0
-
-
-# Initialize Gemini
-genai.configure(api_key=GEMINI_API_KEY)
 
 
 def load_balance_sheet_items_csv() -> Dict[str, str]:
@@ -64,72 +67,84 @@ def find_balance_sheet_section(document_id: str, file_path: str, time_period: st
         Tuple of (extracted_text, start_page) or (None, None) if not found
     """
     try:
-        # Load document embedding
-        doc_embedding = load_embedding(document_id)
-        if not doc_embedding:
-            print(f"No embedding found for document {document_id}")
+        # Load chunk metadata
+        chunk_metadata = get_chunk_metadata(document_id)
+        if not chunk_metadata:
+            print(f"No chunk metadata found for document {document_id}, falling back to full document extraction")
             return None, None
         
-        # Generate query embedding for "consolidated balance sheet"
-        query_text = f"consolidated balance sheet {time_period}"
-        query_embedding = genai.embed_content(
-            model=EMBEDDING_MODEL,
-            content=query_text,
-            task_type="retrieval_query"
-        )['embedding']
+        chunk_size = chunk_metadata.get('chunk_size', 5)
+        num_chunks = chunk_metadata.get('num_chunks', 0)
         
-        # Extract text from PDF in chunks (search through pages)
-        # We'll search through the document in 10-page chunks
-        chunk_size = 10
+        if num_chunks == 0:
+            print(f"No chunks found for document {document_id}")
+            return None, None
+        
+        # Generate query embeddings for various balance sheet names
+        query_texts = [
+            f"consolidated balance sheet",
+            f"balance sheet",
+            f"total assets",
+            f"total liabilities"
+        ]
+        
+        query_embeddings = []
+        for query_text in query_texts:
+            query_embedding = generate_embedding_safe(query_text, max_chars=20000, task_type="retrieval_query")
+            query_embeddings.append(query_embedding)
+        
+        # Search through persisted chunk embeddings
         best_match = None
         best_score = -1
-        best_start_page = 0
+        best_chunk_index = -1
         
-        # Get total pages first
-        import pdfplumber
-        with pdfplumber.open(file_path) as pdf:
-            total_pages = len(pdf.pages)
+        # Search through all chunks
+        for chunk_index in range(num_chunks):
+            # Load chunk embedding (or generate if missing)
+            chunk_embedding = load_chunk_embedding(document_id, chunk_index)
+            
+            if not chunk_embedding:
+                # Chunk embedding doesn't exist, generate it
+                print(f"Chunk {chunk_index} embedding not found, generating...")
+                chunk_text, start_page, end_page = get_chunk_text(file_path, chunk_index, chunk_size)
+                chunk_embedding = generate_embedding_safe(chunk_text[:20000], max_chars=20000, task_type="retrieval_document")
+                save_chunk_embedding(chunk_embedding, document_id, chunk_index)
+            
+            # Calculate similarity with all query embeddings
+            for query_embedding in query_embeddings:
+                if HAS_NUMPY:
+                    similarity = np.dot(chunk_embedding, query_embedding) / (np.linalg.norm(chunk_embedding) * np.linalg.norm(query_embedding))
+                else:
+                    similarity = cosine_similarity(chunk_embedding, query_embedding)
+                
+                if similarity > best_score:
+                    best_score = similarity
+                    best_chunk_index = chunk_index
         
-        # Search through document in chunks
-        for start_page in range(0, total_pages, chunk_size):
-            end_page = min(start_page + chunk_size, total_pages)
-            chunk_text, _, _ = extract_text_from_pdf(file_path, max_pages=end_page)
-            # Get only the current chunk
-            if start_page > 0:
-                prev_text, _, _ = extract_text_from_pdf(file_path, max_pages=start_page)
-                chunk_text = chunk_text[len(prev_text):]
+        # If we found a good match, extract text for that chunk and surrounding chunks
+        if best_score > 0.3 and best_chunk_index >= 0:
+            # Get text for the best matching chunk
+            chunk_text, start_page, end_page = get_chunk_text(file_path, best_chunk_index, chunk_size)
             
-            # Generate embedding for chunk
-            chunk_embedding = genai.embed_content(
-                model=EMBEDDING_MODEL,
-                content=chunk_text[:20000],  # Limit chunk size
-                task_type="retrieval_document"
-            )['embedding']
+            # Extract a larger section around the match (include adjacent chunks)
+            # Get total pages
+            import pdfplumber
+            with pdfplumber.open(file_path) as pdf:
+                total_pages = len(pdf.pages)
             
-            # Calculate cosine similarity
-            if HAS_NUMPY:
-                similarity = np.dot(query_embedding, chunk_embedding) / (
-                    np.linalg.norm(query_embedding) * np.linalg.norm(chunk_embedding)
-                )
-            else:
-                similarity = cosine_similarity(query_embedding, chunk_embedding)
+            # Extract 2 chunks before and 2 chunks after (if available)
+            start_extract_chunk = max(0, best_chunk_index - 2)
+            end_extract_chunk = min(num_chunks, best_chunk_index + 3)
             
-            if similarity > best_score:
-                best_score = similarity
-                best_match = chunk_text
-                best_start_page = start_page
-        
-        # If we found a reasonable match, extract a larger section around it
-        if best_score > 0.3:  # Threshold for relevance
-            # Extract 20 pages around the best match
-            start_extract = max(0, best_start_page - 5)
-            end_extract = min(total_pages, best_start_page + chunk_size + 15)
-            extracted_text, _, _ = extract_text_from_pdf(file_path, max_pages=end_extract)
-            if start_extract > 0:
-                prev_text, _, _ = extract_text_from_pdf(file_path, max_pages=start_extract)
+            start_extract_page = start_extract_chunk * chunk_size
+            end_extract_page = min(total_pages, end_extract_chunk * chunk_size)
+            
+            extracted_text, _, _ = extract_text_from_pdf(file_path, max_pages=end_extract_page)
+            if start_extract_page > 0:
+                prev_text, _, _ = extract_text_from_pdf(file_path, max_pages=start_extract_page)
                 extracted_text = extracted_text[len(prev_text):]
             
-            return extracted_text, best_start_page
+            return extracted_text, start_extract_page
         
         return None, None
     
@@ -152,14 +167,15 @@ def extract_balance_sheet_llm(text: str, time_period: str, currency: Optional[st
     """
     prompt = f"""Extract the balance sheet from the following document text for the time period: {time_period}.
 Extract the balance sheet exactly line by line, including all line items and their values.
+If the company is foreign, extract the values in the local currency.
 
 Return a JSON object with the following structure:
 {{
-    "currency": "USD" or other currency code (extract from document if available),
+    "currency": currency code (extract from document),
     "time_period": "{time_period}",
     "line_items": [
         {{
-            "line_name": "exact name as it appears in the document",
+            "line_name": "exact name as it appears in the document but do not include long notes in parentheses",
             "line_value": numeric value (as number, not string),
             "line_category": one of ["Current Assets", "Non-Current Assets", "Total Assets", "Current Liabilities", "Non-Current Liabilities", "Total Liabilities", "Equity", "Total Liabilities and Equity"]
         }},
@@ -180,15 +196,7 @@ Document text:
 Return only valid JSON, no additional text."""
 
     try:
-        model = genai.GenerativeModel(
-            model_name=DEFAULT_MODEL,
-            generation_config={
-                "temperature": TEMPERATURE,
-            }
-        )
-        
-        response = model.generate_content(prompt)
-        response_text = response.text.strip()
+        response_text = generate_content_safe(prompt)
         
         # Remove markdown code blocks if present
         if response_text.startswith("```"):
@@ -198,6 +206,13 @@ Return only valid JSON, no additional text."""
             response_text = response_text.strip()
         
         result = json.loads(response_text)
+        
+        # Ensure line_items exists and is a list
+        if 'line_items' not in result:
+            result['line_items'] = []
+        elif not isinstance(result['line_items'], list):
+            result['line_items'] = []
+        
         return result
     
     except json.JSONDecodeError as e:
@@ -218,6 +233,17 @@ def validate_balance_sheet(line_items: List[Dict]) -> Tuple[bool, List[str]]:
     """
     errors = []
     
+    # Check if line_items is empty
+    if not line_items or len(line_items) == 0:
+        errors.append("Balance sheet is empty - no line items extracted")
+        return False, errors
+    
+    # Check if we have at least some meaningful line items (not just empty strings)
+    valid_items = [item for item in line_items if item.get('line_name') and item.get('line_name').strip()]
+    if len(valid_items) == 0:
+        errors.append("Balance sheet has no valid line items")
+        return False, errors
+    
     # Convert to dictionary for easier lookup
     items_dict = {item['line_name'].lower(): item['line_value'] for item in line_items}
     
@@ -229,31 +255,94 @@ def validate_balance_sheet(line_items: List[Dict]) -> Tuple[bool, List[str]]:
     total_equity = None
     total_liabilities_equity = None
     
+    # Helper function to check if a line name is a total line
+    # More precise: checks if "total" appears as a distinct word at the start or as part of a total phrase
+    def is_total_line_name(name_lower):
+        """Check if line name represents a total (more precise matching)"""
+        # Check for exact total phrases at the start of the name
+        total_phrases = [
+            'total current assets',
+            'total assets',
+            'total current liabilities',
+            'total liabilities',
+            'total equity',
+            'total liabilities and equity',
+            'total liabilities and shareholders',
+            'total stockholder',
+            'total shareholder'
+        ]
+        # Check if name starts with any total phrase
+        for phrase in total_phrases:
+            if name_lower.startswith(phrase) or name_lower.startswith(phrase + ' '):
+                return True
+        # Also check if "total" appears as a distinct word (not part of another word)
+        # Match "total" as a whole word (not part of "totally", "totaled", etc.)
+        if re.search(r'\btotal\b', name_lower):
+            # But exclude if it's clearly not a total line (e.g., "accounts receivable, net (total...")
+            # Only consider it a total if "total" appears near the start or with key financial terms
+            if (name_lower.startswith('total ') or 
+                'total current' in name_lower or 
+                'total assets' in name_lower or
+                'total liabilities' in name_lower or
+                'total equity' in name_lower):
+                return True
+        return False
+    
     for key, value in items_dict.items():
-        if 'current assets' in key and 'total' in key:
-            current_assets = value
-        elif 'total assets' in key and 'liabilities' not in key:
-            total_assets = value
-        elif 'current liabilities' in key and 'total' in key:
-            current_liabilities = value
-        elif 'total liabilities' in key and 'equity' not in key:
-            total_liabilities = value
-        elif 'total equity' in key and 'liabilities' not in key:
-            total_equity = value
-        elif 'total liabilities and equity' in key or 'total liabilities and shareholders' in key:
-            total_liabilities_equity = value
+        # Use more precise matching for totals
+        if is_total_line_name(key):
+            # Check for "total current assets" - must contain both "total" and "current assets", but NOT "non-current"
+            if ('current assets' in key and 
+                'non-current' not in key and 
+                'total non-current assets' not in key):
+                current_assets = value
+            # Check for "total assets" - must contain "total assets" but NOT "non-current", "current", or "liabilities"
+            elif ('total assets' in key and 
+                  'non-current' not in key and 
+                  'current' not in key and 
+                  'liabilities' not in key and
+                  'total non-current assets' not in key):
+                total_assets = value
+            # Check for "total current liabilities" - must contain both "total" and "current liabilities", but NOT "non-current"
+            elif ('current liabilities' in key and 
+                  'non-current' not in key and 
+                  'total non-current liabilities' not in key):
+                current_liabilities = value
+            # Check for "total liabilities" - must contain "total liabilities" but NOT "non-current", "current", or "equity"
+            elif ('total liabilities' in key and 
+                  'non-current' not in key and 
+                  'current' not in key and 
+                  'equity' not in key and
+                  'total non-current liabilities' not in key):
+                total_liabilities = value
+            # Check for "total equity" - must contain "total equity" but NOT "liabilities"
+            elif 'total equity' in key and 'liabilities' not in key:
+                total_equity = value
+            # Check for "total liabilities and equity" or "total liabilities and shareholders"
+            elif 'total liabilities and equity' in key or 'total liabilities and shareholders' in key:
+                total_liabilities_equity = value
     
     # Calculate sums from line items
     # Only sum base line items, exclude any totals or subtotals
     # Exclude items that are totals themselves (by name or category)
     def is_total_item(item):
-        """Check if an item is a total/subtotal line"""
+        """Check if an item is a total/subtotal line (more precise)"""
         name_lower = item['line_name'].lower()
         category = item.get('line_category', '')
-        # Exclude if name contains total keywords or category is a total category
-        total_keywords = ['total', 'subtotal', 'sum']
-        return (any(keyword in name_lower for keyword in total_keywords) or
-                'Total' in category)
+        
+        # Use the same precise matching function
+        if is_total_line_name(name_lower):
+            return True
+        
+        # Also check category
+        if 'Total' in category:
+            return True
+        
+        # Check for other total indicators (subtotal, sum) as whole words
+        if re.search(r'\bsubtotal\b', name_lower) or re.search(r'\bsum\b', name_lower):
+            return True
+        
+        return False
     
     # Only include base line items (not totals) in the EXACT correct category
     # Be very explicit about category matching to avoid confusion
@@ -320,7 +409,30 @@ def validate_balance_sheet(line_items: List[Dict]) -> Tuple[bool, List[str]]:
         if diff > 0.01:
             errors.append(f"Total liabilities and equity mismatch: reported={total_liabilities_equity}, should equal total assets={total_assets}")
     
+    # Check if we have at least one key total (total assets, total liabilities, or total equity)
+    # This ensures we didn't get an empty or invalid balance sheet
+    if total_assets is None and total_liabilities is None and total_equity is None:
+        errors.append("Balance sheet is missing key totals (Total Assets, Total Liabilities, or Total Equity)")
+    
     return len(errors) == 0, errors
+
+
+def normalize_line_name(name: str) -> str:
+    """
+    Normalize a line item name for matching: trim, case-insensitive, 
+    collapse whitespace, remove leading/trailing punctuation.
+    """
+    if not name:
+        return ""
+    # Trim
+    normalized = name.strip()
+    # Case-insensitive (convert to lowercase)
+    normalized = normalized.lower()
+    # Collapse repeated whitespace
+    normalized = re.sub(r'\s+', ' ', normalized)
+    # Remove leading/trailing punctuation
+    normalized = normalized.strip('.,;:!?()[]{}')
+    return normalized
 
 
 def classify_line_items_llm(line_items: List[Dict]) -> List[Dict]:
@@ -333,19 +445,75 @@ def classify_line_items_llm(line_items: List[Dict]) -> List[Dict]:
     Returns:
         List of line items with is_operating field added
     """
-    # Load reference CSV
-    reference_items = load_balance_sheet_items_csv()
+    # AUTHORITATIVE_LOOKUP - binding decision table
+    AUTHORITATIVE_LOOKUP = {
+        "Cash and cash equivalents": "Non-Operating",
+        "Marketable securities / Short-term investments": "Non-Operating",
+        "Restricted cash": "Non-Operating",
+        "Accounts receivable": "Operating",
+        "Notes receivable (trade-related)": "Operating",
+        "Inventories": "Operating",
+        "Prepaid expenses": "Operating",
+        "Other current assets": "Operating",
+        "Property, plant and equipment (PPE)": "Operating",
+        "Operating lease right-of-use assets": "Non-Operating",
+        "Goodwill": "Non-Operating",
+        "Intangible assets": "Non-Operating",
+        "Long-term investments / Equity method investments": "Non-Operating",
+        "Deferred tax assets": "Operating",
+        "Other non-current assets": "Operating",
+        "Accounts payable": "Operating",
+        "Accrued expenses / Accrued liabilities": "Operating",
+        "Unearned revenue / Deferred revenue": "Operating",
+        "Short-term debt": "Non-Operating",
+        "Current portion of long-term debt": "Non-Operating",
+        "Current lease liabilities": "Non-Operating",
+        "Other current liabilities": "Operating",
+        "Long-term debt": "Non-Operating",
+        "Non-current lease liabilities": "Non-Operating",
+        "Deferred tax liabilities": "Operating",
+        "Pension liabilities / Postretirement obligations": "Operating",
+        "Other long-term liabilities": "Operating",
+        "Common stock / Paid-in capital": "Non-Operating",
+        "Retained earnings": "Non-Operating",
+        "Treasury stock": "Non-Operating",
+        "Accumulated other comprehensive income (AOCI)": "Non-Operating",
+        "Noncontrolling interests": "Non-Operating",
+        "Deferred compensation / Stock-based compensation liability": "Operating",
+        "Customer deposits": "Operating",
+        "Contract liabilities": "Operating",
+        "Income taxes payable": "Operating",
+        "Accrued payroll / Accrued compensation": "Operating",
+        "Derivative assets/liabilities": "Non-Operating"
+    }
     
-    # Prepare context from CSV
-    csv_context = "\n".join([
-        f"- {name}: {classification}"
-        for name, classification in reference_items.items()
+    # Create normalized lookup map
+    normalized_lookup = {normalize_line_name(k): v for k, v in AUTHORITATIVE_LOOKUP.items()}
+    
+    # Prepare lookup context for prompt
+    lookup_context = "\n".join([
+        f'  "{k}": "{v}"'
+        for k, v in AUTHORITATIVE_LOOKUP.items()
     ])
     
     prompt = f"""Classify each balance sheet line item as either "operating" or "non-operating" based on whether it relates to the company's core business operations.
 
-Reference classifications (use as guidance, but use your best judgment):
-{csv_context}
+HIGHEST PRIORITY: Use the AUTHORITATIVE_LOOKUP below as a binding decision table.
+- If a provided line item matches a key in AUTHORITATIVE_LOOKUP after normalization, you MUST use that value.
+- Normalization: trim, case-insensitive, collapse repeated whitespace, remove leading/trailing punctuation.
+- If no match: use the fallback heuristics.
+- If still uncertain: use best judgement.
+
+FALLBACK HEURISTICS (only when no lookup match):
+- Cash, marketable securities, debt, equity, goodwill, intangibles, lease ROU assets/liabilities -> Non-Operating
+- Working capital items (AR, inventory, AP, accrued op expenses), PPE -> Operating
+- Deferred taxes -> Operating (unless clearly financing-related)
+- If mixed/ambiguous -> Unknown
+
+AUTHORITATIVE_LOOKUP:
+{{
+{lookup_context}
+}}
 
 Balance sheet line items to classify:
 {json.dumps([{"line_name": item['line_name'], "line_category": item['line_category']} for item in line_items], indent=2)}
@@ -359,15 +527,7 @@ Return a JSON array with the same order as the input, where each item has:
 Return only valid JSON array, no additional text."""
 
     try:
-        model = genai.GenerativeModel(
-            model_name=DEFAULT_MODEL,
-            generation_config={
-                "temperature": TEMPERATURE,
-            }
-        )
-        
-        response = model.generate_content(prompt)
-        response_text = response.text.strip()
+        response_text = generate_content_safe(prompt)
         
         # Remove markdown code blocks if present
         if response_text.startswith("```"):
@@ -381,17 +541,53 @@ Return only valid JSON array, no additional text."""
         # Map classifications back to line items
         classification_map = {item['line_name']: item['is_operating'] for item in classifications}
         
-        # Add is_operating to each line item
+        # Add is_operating to each line item, using lookup first if available
         for item in line_items:
-            item['is_operating'] = classification_map.get(item['line_name'], True)  # Default to operating
+            line_name = item['line_name']
+            normalized_name = normalize_line_name(line_name)
+            
+            # First try authoritative lookup
+            if normalized_name in normalized_lookup:
+                lookup_value = normalized_lookup[normalized_name]
+                item['is_operating'] = (lookup_value == "Operating")
+            # Then use LLM classification if available
+            elif line_name in classification_map:
+                item['is_operating'] = classification_map[line_name]
+            else:
+                # Default fallback: use heuristics
+                # Cash, marketable securities, debt, equity, goodwill, intangibles, lease ROU -> Non-Operating
+                line_lower = line_name.lower()
+                if any(keyword in line_lower for keyword in [
+                    'cash', 'marketable', 'securities', 'short-term investment', 'restricted cash',
+                    'debt', 'loan', 'borrowing', 'equity', 'stock', 'treasury', 'goodwill', 
+                    'intangible', 'lease', 'right-of-use', 'rou asset', 'rou liability'
+                ]):
+                    item['is_operating'] = False
+                # Working capital items, PPE -> Operating
+                elif any(keyword in line_lower for keyword in [
+                    'accounts receivable', 'inventory', 'inventories', 'accounts payable',
+                    'accrued', 'prepaid', 'ppe', 'property', 'plant', 'equipment'
+                ]):
+                    item['is_operating'] = True
+                # Default to operating
+                else:
+                    item['is_operating'] = True
         
         return line_items
     
     except Exception as e:
         print(f"Error classifying line items: {str(e)}")
-        # Default all to operating if classification fails
+        # Fallback: use lookup if available, otherwise default to operating
         for item in line_items:
-            item['is_operating'] = True
+            line_name = item['line_name']
+            normalized_name = normalize_line_name(line_name)
+            
+            if normalized_name in normalized_lookup:
+                lookup_value = normalized_lookup[normalized_name]
+                item['is_operating'] = (lookup_value == "Operating")
+            else:
+                # Default to operating if classification fails
+                item['is_operating'] = True
         return line_items
 
 
@@ -415,17 +611,31 @@ def extract_balance_sheet(
     """
     for attempt in range(max_retries):
         try:
+            print(f"Balance sheet extraction attempt {attempt + 1}/{max_retries} for document {document_id}")
+            
             # Step 1: Find balance sheet section using embeddings
             balance_sheet_text, start_page = find_balance_sheet_section(document_id, file_path, time_period)
             
             if not balance_sheet_text:
                 # Fallback: extract full document if embedding search fails
-                print(f"Embedding search failed, extracting full document for attempt {attempt + 1}")
+                print(f"Embedding search failed for document {document_id}, extracting full document for attempt {attempt + 1}")
                 balance_sheet_text, _, _ = extract_text_from_pdf(file_path, max_pages=None)
                 balance_sheet_text = balance_sheet_text[:50000]  # Limit to 50k chars
+                print(f"Extracted {len(balance_sheet_text)} characters from full document")
+            else:
+                print(f"Found balance sheet section starting at page {start_page}, extracted {len(balance_sheet_text)} characters")
             
             # Step 2: Extract balance sheet using LLM
             extracted_data = extract_balance_sheet_llm(balance_sheet_text, time_period)
+            
+            # Ensure line_items exists and is a list
+            if 'line_items' not in extracted_data:
+                extracted_data['line_items'] = []
+            elif not isinstance(extracted_data['line_items'], list):
+                print(f"Warning: line_items is not a list, got {type(extracted_data['line_items'])}")
+                extracted_data['line_items'] = []
+            
+            print(f"Extracted {len(extracted_data.get('line_items', []))} line items on attempt {attempt + 1}")
             
             # Step 3: Validate
             is_valid, errors = validate_balance_sheet(extracted_data['line_items'])
@@ -450,6 +660,20 @@ def extract_balance_sheet(
                     return extracted_data
         
         except Exception as e:
+            error_str = str(e).lower()
+            # Check if it's an API error that was already retried at the API level
+            is_api_error = any(keyword in error_str for keyword in [
+                'rate limit', 'quota', '429', '503', 'resource exhausted',
+                'service unavailable', 'too many requests'
+            ])
+            
+            # If it's an API error that failed after 3 retries, don't retry at agent level
+            # (it's likely a persistent issue, not transient)
+            if is_api_error:
+                print(f"API error after retries on attempt {attempt + 1}: {str(e)}")
+                raise  # Don't retry - API-level already tried 3 times
+            
+            # For other errors (validation, extraction issues), retry makes sense
             print(f"Error on attempt {attempt + 1}: {str(e)}")
             if attempt == max_retries - 1:
                 raise

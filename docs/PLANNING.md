@@ -59,8 +59,21 @@ Build AI agents that can analyze equity investments using principles from Tim Ko
    - If duplicate detected: stops at Classification milestone, shows warning with "Replace & Index" button
    - If no duplicate: automatically proceeds to indexing
 6. Index document using Google's embedding model (gemini-embedding-001)
-7. User can view progress by clicking "Check Uploads" button (shows upload progress view with milestones)
-8. System automatically navigates back to companies list when uploads complete
+   - Documents are split into 5-page chunks for indexing
+   - Chunk embeddings are generated and persisted to disk
+   - Classification and indexing happen sequentially via priority queue (high priority)
+   - Upload step is parallel, but classification/indexing are sequential
+7. After indexing completes, automatically trigger financial statement processing (for eligible document types):
+   - Financial statement processing is queued with lower priority
+   - Classification/indexing tasks are always processed before financial statement extraction
+   - Balance sheet extraction and classification (runs first)
+   - Income statement extraction, additional items extraction, and classification (runs after balance sheet completes)
+   - Processing runs sequentially via global queue to avoid overwhelming Gemini API
+8. User can view progress by clicking "Check Uploads" button (shows upload progress view with milestones)
+9. System automatically navigates back to companies list when uploads complete
+10. User can view financial statement processing progress in real-time in the right panel when viewing a document
+    - Progress tracker shows 5 milestones with status: checking, pending, in_progress, completed, error, not_found
+    - Financial statements load only when all milestones are terminal
 
 ### Epic 2: Company Document Management and Analysis Triggering
 
@@ -75,8 +88,11 @@ Build AI agents that can analyze equity investments using principles from Tim Ko
      - Number of characters
      - Time uploaded
      - Indexing status (with progress tracking bar)
-     - Financial analysis processing status
-5. User can trigger financial analysis on unprocessed documents ONLY
+     - Financial statement processing status
+5. Financial statement processing (balance sheet and income statement) is automatically triggered sequentially after document indexing completes (for eligible document types)
+6. User can view real-time progress in right panel with 5 milestones tracked (extracting balance sheet, classifying balance sheet, extracting income statement, extracting additional items, classifying income statement)
+7. User can re-run processing using "Re-run Extraction and Classification" button in document detail view (re-runs entire pipeline)
+8. User can delete financial statements or entire document using delete buttons in document detail view
 
 ### Epic 3: Financial Metrics Display and Analysis
 
@@ -97,6 +113,10 @@ Build AI agents that can analyze equity investments using principles from Tim Ko
 - **AI/ML**: 
   - Google Gemini (gemini-2.5-flash-lite) with very low temperature (0.1) for consistent analysis
   - Google Gemini Embedding (gemini-embedding-001) for document indexing
+  - Using `google.genai` API (migrated from deprecated `google.generativeai`)
+  - Centralized API client with throttling, retry logic, and processing queues
+  - Chunk-based indexing (5-page chunks) with persisted embeddings
+  - Priority-based processing queue (classification/indexing prioritized over financial statements)
 - **Web Framework**: FastAPI (with Uvicorn)
 - **Frontend**: React with Vite
   - React Router for navigation
@@ -132,6 +152,17 @@ Build AI agents that can analyze equity investments using principles from Tim Ko
 - [x] Document metadata storage
 - [x] Document summary generation (LLM-based, persisted in metadata)
 - [x] User confirmation workflow
+- [x] Priority-based processing queue for classification, indexing, and financial statements
+  - Upload step happens in parallel (file I/O only)
+  - Classification and indexing happen sequentially via priority queue (high priority)
+  - Financial statement processing happens sequentially via priority queue (lower priority)
+  - High-priority tasks (classification/indexing) are always processed before lower-priority tasks (financial statements)
+  - Prevents overwhelming Gemini API during batch uploads
+- [x] Chunk-based document indexing
+  - Documents split into 5-page chunks for embedding generation
+  - Chunk embeddings are persisted to disk and reused
+  - Eliminates duplicate embedding generation during extraction
+  - More efficient than document-level embeddings
 
 ### Phase 3: Frontend UI - Login Page and Global Dashboard
 Based on UI/UX Design specifications, build the frontend interface:
@@ -214,8 +245,12 @@ Based on UI/UX Design specifications, build the frontend interface:
 ### Phase 5: Financial Statement Processing
 
 #### 5.1: Balance Sheet Processing (Complete)
-- [x] Trigger balance sheet processing for earnings announcements, quarterly filings, and annual reports only
-- [x] Use document embedding to locate the consolidated balance sheet section
+- [x] Automatic trigger: Balance sheet processing automatically starts after document indexing completes (for earnings announcements, quarterly filings, and annual reports only)
+- [x] Sequential processing: Balance sheet and income statement processing run sequentially (not in parallel) to avoid overwhelming Gemini API
+- [x] Use persisted chunk embeddings to locate the consolidated balance sheet section
+  - Reuses chunk embeddings generated during document indexing
+  - No duplicate embedding generation during extraction
+  - Efficient chunk-level embedding search for precise location
 - [x] LLM-based extraction of balance sheet line items:
   - Extract balance sheet exactly line by line for the specified time period
   - Extract local currency when applicable
@@ -226,40 +261,71 @@ Based on UI/UX Design specifications, build the frontend interface:
   - Verify that total liabilities sum correctly
   - Verify that total assets equal total liabilities and total equity
   - If sums are incorrect, retry extraction up to 3 times before failing
+  - Precise total identification using regex to handle long line item names with notes
+  - Validation runs in frontend (not persisted) to avoid blocking on validation errors
+  - Check for empty line items and key items before validation
 - [x] Line item classification:
-  - Use LLM to categorize each balance sheet line item as operating or non-operating
-  - Use "balance_sheet_items.csv" as additional context, but LLM should use best judgment
+  - Use authoritative lookup table with normalization for binding decisions
+  - Fallback heuristics when no lookup match
+  - LLM classification for remaining items
+  - Normalization: trim, case-insensitive, collapse whitespace, remove punctuation
 - [x] Data persistence and display:
   - Persist balance sheet extraction and line item classification
   - Display balance sheet data in right panel when document is selected in left panel
+- [x] Real-time progress tracking:
+  - Async progress tracking with polling
+  - Milestone tracking: extracting balance sheet, classifying balance sheet
+  - Status display in right panel with real-time updates
+- [x] Re-run functionality:
+  - Single "Re-run Extraction and Classification" button that re-runs entire pipeline
+  - Button immediately sets all milestones to pending and starts polling
 
-#### 5.2: Income Statement Processing
-- [ ] Use document embedding to locate the income statement:
+#### 5.2: Income Statement Processing (Complete)
+- [x] Automatic trigger: Income statement processing automatically starts after balance sheet processing completes (for earnings announcements, quarterly filings, and annual reports only)
+- [x] Sequential processing: Runs after balance sheet processing to avoid overwhelming Gemini API
+- [x] Use persisted chunk embeddings to locate the income statement:
   - May be called by various names (e.g., "consolidated statement of operations")
-  - Use embedding-based search to find the relevant section
-- [ ] LLM-based extraction of income statement line items:
+  - Reuses chunk embeddings generated during document indexing
+  - No duplicate embedding generation during extraction
+  - Efficient chunk-level embedding search for precise location
+- [x] LLM-based extraction of income statement line items:
   - Extract income statement exactly line by line for the specified time period
   - Extract local currency when applicable
   - Extract revenue for the same period in the prior year (for year-over-year growth calculation)
-- [ ] Additional data extraction (using embedding and LLM):
-  - Extract total shares outstanding for the specific time period
+- [x] Additional data extraction (using embedding and LLM):
+  - Extract basic shares outstanding for the specific time period
   - Extract diluted shares outstanding for the specific time period
   - Extract amortization for the specific time period
-- [ ] Validation and error handling:
+- [x] Validation and error handling:
   - Verify gross profit calculation
   - Verify operating income calculation
   - Verify net income calculation
   - If sums are incorrect or errors occur, retry extraction up to 3 times before failing
-- [ ] Line item classification:
+  - Check for empty line items and key items before validation
+- [x] Line item classification:
   - Use LLM to categorize each income statement line item as operating or non-operating
   - LLM should use best judgment for classification
-- [ ] Data persistence and display:
+- [x] Data persistence and display:
   - Persist income statement extraction
   - Persist line item classification
   - Persist revenue growth calculation (year-over-year)
-  - Persist shares outstanding (total and diluted)
+  - Persist shares outstanding (basic and diluted)
   - Persist amortization
   - Display all income statement data in right panel when document is selected in left panel
+  - Display "Additional Items" table with: prior period revenue, YOY revenue growth, amortization, basic shares outstanding, diluted shares outstanding
+- [x] Real-time progress tracking:
+  - Async progress tracking with polling
+  - Milestone tracking: extracting balance sheet, classifying balance sheet, extracting income statement, extracting additional items, classifying income statement
+  - Status display in right panel with real-time updates
+  - Combined tracker showing all 5 milestones with status: checking, pending, in_progress, completed, error, not_found
+  - Progress tracker shows first, financial statements load only when all milestones are terminal
+- [x] Re-run functionality:
+  - Single "Re-run Extraction and Classification" button that re-runs entire pipeline
+  - Button immediately sets all milestones to pending and starts polling
+  - Button disabled during processing
+- [x] Delete functionality:
+  - "Delete Financial Statements" button to remove all financial statement data
+  - "Delete Document" button that permanently deletes document and all associated data
 
 #### 5.3: Historical Calculations
 - [ ] (Placeholder for historical calculations requirements)
@@ -290,17 +356,20 @@ Based on UI/UX Design specifications, build the frontend interface:
 
 ## Next Steps
 
-1. Complete Phase 3.3 enhancements:
-   - Document count badges on company list
-   - Breadcrumb navigation
-   - Attribution display (uploader name)
-2. Complete Phase 3.4 enhancements:
-   - Implement actual data display for latest completed analyses
-   - Summary cards for company analyses
-3. Phase 4 remaining items:
-   - Trigger financial analysis functionality
-4. Phase 5: Financial Statement Processing
-5. Phase 6: Core Analysis Agents
+1. Phase 5.3: Historical Calculations
+   - Implement historical trend analysis
+   - Calculate period-over-period changes
+   - Multi-period financial statement comparison
+2. Phase 6: Core Analysis Agents
+   - Organic growth assessment agent
+   - Operating margin analysis agent
+   - Capital turnover evaluation agent
+   - Intrinsic value calculation agent (Koller's DCF methodology)
+3. Phase 7: Financial Metrics Display and Analysis
+   - Trend analysis visualization
+   - Interactive valuation model UI
+   - Sensitivity analysis UI
+   - Company analysis results page
 
 ## UI/UX Design
 
@@ -308,18 +377,92 @@ For detailed UI/UX specifications and design guidance, see [UI_UX_DESIGN.md](UI_
 
 ## Clarifications and Notes
 
-### Document Size Limitations (Future Enhancement)
+### Chunk-Based Document Indexing
 
-**Current Limitation:**
-- The document indexer currently truncates text to 20,000 characters for embedding generation
-- Only the first ~20,000 characters of large documents (e.g., 500-page annual reports) are searchable
-- PDF extraction can handle unlimited pages, but processing may be slow for very large documents
+**Current Implementation:**
+- Documents are split into 5-page chunks for embedding generation
+- Each chunk embedding is persisted to disk (`{document_id}_chunk_{index}_embedding.json`)
+- Chunk metadata is stored (`{document_id}_chunks_metadata.json`)
+- Extractors reuse persisted chunk embeddings instead of regenerating them
+- Eliminates duplicate API calls and improves extraction performance
 
-**Future Enhancement:**
-- Implement chunk-based indexing for large documents (split into multiple embeddings)
-- Increase embedding character limit if Gemini API allows
-- Add page-based extraction limits to prevent memory issues
-- Consider implementing document summarization for sections beyond the indexed portion
+**Benefits:**
+- More granular search: 5-page chunks provide better precision than document-level embeddings
+- Performance: Chunk embeddings generated once during indexing, reused during extraction
+- Efficiency: No duplicate embedding generation when re-running extractions
+- Scalability: Large documents are fully indexed across all chunks
+
+### Financial Statement Processing
+
+**Automatic Processing:**
+- Financial statement processing (balance sheet and income statement) is automatically triggered after document indexing completes
+- Processing runs sequentially: balance sheet first, then income statement (to avoid overwhelming Gemini API)
+- Only eligible document types are processed: earnings announcements, quarterly filings, and annual reports
+
+**Priority-Based Processing Queue:**
+- Global priority queue ensures sequential processing to prevent API overload
+- Upload step: Parallel (file I/O only, no API calls)
+- Classification & Indexing: Sequential via priority queue (priority 0 - highest priority)
+- Financial Statement Processing: Sequential via priority queue (priority 1 - lower priority)
+- High-priority tasks (classification/indexing) are always processed before lower-priority tasks (financial statements)
+- Queue processes: All classification/indexing tasks → All financial statement tasks (if eligible)
+- This ensures documents are indexed and searchable before intensive financial statement extraction begins
+
+**Real-Time Progress Tracking:**
+- Right panel displays real-time progress tracker when viewing a document
+- Milestones tracked:
+  - Extracting balance sheet
+  - Classifying balance sheet
+  - Extracting income statement
+  - Extracting additional items (shares outstanding, amortization)
+  - Classifying income statement
+- Status values: checking (default), pending (processing), in_progress, completed, error, not_found
+- Progress updates via polling mechanism (every 3 seconds)
+- Progress tracker shows first, financial statements load only when all milestones are terminal
+- Database state inference when in-memory progress is unavailable
+
+**Re-run Functionality:**
+- Single "Re-run Extraction and Classification" button in document detail view
+- Re-runs entire pipeline (balance sheet + income statement)
+- Immediately sets all milestones to pending and starts polling
+- Button disabled during processing to prevent duplicate runs
+- Clears financial statement data before re-running
+
+**Delete Functionality:**
+- "Delete Financial Statements" button: Removes all financial statement data for a document
+- "Delete Document" button: Permanently deletes document and all associated data (financial statements, embeddings, files)
+- Navigates user back to company document list after deletion
+
+**Balance Sheet Validation:**
+- Validation logic uses precise regex-based matching to identify totals
+- Handles long line item names with notes in parentheses (e.g., "Accounts receivable, net (including consumer financing receivables...)")
+- Validation runs in frontend (not persisted) to avoid blocking on validation errors
+- Precise total identification using whole-word matching
+- Handles descriptive line items with long notes without false positives
+- Comprehensive sum verification for assets, liabilities, and equity
+- Retry logic for failed extractions (up to 3 attempts)
+- Checks for empty line items and key items before validation
+
+**Income Statement Validation:**
+- Validates gross profit, operating income, and net income calculations
+- Checks for empty line items and key items before validation
+- Retry logic for failed extractions (up to 3 attempts)
+
+**API Rate Limiting and Throttling:**
+- Centralized Gemini API client with throttling (500ms-2s delays between calls)
+- Semaphore-based processing queue:
+  - Max 1 concurrent LLM call
+  - Max 3 concurrent embedding calls
+- Exponential backoff retry logic (2s initial, up to 30s max delay)
+- Enhanced rate limit error handling with longer backoff
+- Document-level pre-filtering for embedding searches to optimize API calls
+- Migration from `google.generativeai` to `google.genai` (new API)
+
+**Balance Sheet Classification:**
+- Authoritative lookup table with normalization for binding decisions
+- Fallback heuristics when no lookup match
+- LLM classification for remaining items
+- Normalization: trim, case-insensitive, collapse whitespace, remove leading/trailing punctuation
 
 <!-- Add any clarifications, decisions, or notes here as the project evolves -->
 

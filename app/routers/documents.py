@@ -253,99 +253,10 @@ def upload_and_process_async_with_content(
         document.file_path = file_path
         db_session.commit()
         
-        # Step 2: Extract text and classify (CLASSIFYING status)
-        document.indexing_status = ProcessingStatus.CLASSIFYING
-        db_session.commit()
-        
-        # Extract text from first few pages for classification
-        extracted_text, total_pages, character_count = extract_text_from_pdf(file_path, max_pages=5)
-        
-        # Generate hash from first 5000 characters (avoids large document issues)
-        hash_text = extracted_text[:5000] if len(extracted_text) > 5000 else extracted_text
-        document_hash = generate_document_hash(hash_text)
-        
-        # Classify document
-        classification_data = classify_document(extracted_text)
-        company_name = classification_data.get("company_name")
-        
-        if not company_name:
-            document.indexing_status = ProcessingStatus.ERROR
-            db_session.commit()
-            return
-        
-        # Get or create company
-        company = db_session.query(Company).filter(
-            Company.name.ilike(company_name)
-        ).first()
-        
-        if not company:
-            company = Company(
-                id=str(uuid.uuid4()),
-                name=company_name,
-                ticker=classification_data.get("ticker")
-            )
-            db_session.add(company)
-            db_session.commit()
-            db_session.refresh(company)
-        
-        # Update document with company and classification
-        document.company_id = company.id
-        document.document_type = classification_data.get("document_type")
-        document.time_period = classification_data.get("time_period")
-        document.unique_id = document_hash
-        document.page_count = total_pages
-        document.character_count = character_count
-        
-        # Step 3: Check for duplicates
-        document_type = classification_data.get("document_type")
-        time_period = classification_data.get("time_period")
-        duplicate_check = None
-        
-        if document_type:
-            duplicate_check = check_duplicate_document(
-                db=db_session,
-                company_id=company.id,
-                document_type=document_type,
-                time_period=time_period,
-                filename=filename,
-                unique_id=document_hash
-            )
-        
-        # If duplicate detected, stop and wait for user action
-        if duplicate_check and duplicate_check.get("is_duplicate"):
-            existing_doc = duplicate_check["existing_document"]
-            document.duplicate_detected = True
-            document.existing_document_id = existing_doc.id
-            document.indexing_status = ProcessingStatus.CLASSIFYING  # Stay in classifying until user confirms
-            db_session.commit()
-            return  # Stop here, wait for user to click "Replace & Index"
-        
-        # Step 4: No duplicate, proceed with indexing
-        document.indexing_status = ProcessingStatus.INDEXING
-        db_session.commit()
-        
-        # Generate summary
-        try:
-            summary = generate_document_summary(extracted_text)
-            if summary:
-                document.summary = summary
-                db_session.commit()
-        except Exception as e:
-            print(f"Warning: Failed to generate summary: {str(e)}")
-        
-        # Extract full text for indexing
-        full_extracted_text, total_pages, character_count = extract_text_from_pdf(file_path, max_pages=None)
-        
-        # Generate and save embedding
-        embedding = generate_embedding(full_extracted_text)
-        save_embedding(embedding, document_id)
-        
-        # Update final status
-        document.indexing_status = ProcessingStatus.INDEXED
-        document.indexed_at = datetime.utcnow()
-        document.page_count = total_pages
-        document.character_count = character_count
-        db_session.commit()
+        # Queue document for classification and indexing (sequential processing)
+        # Upload is complete, now classification and indexing will happen in the queue
+        from app.utils.document_processing_queue import queue_document_for_processing
+        queue_document_for_processing(document_id)
         
     except Exception as e:
         print(f"Error processing document {document_id}: {str(e)}")
@@ -480,7 +391,8 @@ def upload_and_process_async(
                 document_type=document_type,
                 time_period=time_period,
                 filename=file.filename,
-                unique_id=document_hash
+                unique_id=document_hash,
+                exclude_document_id=document_id  # Exclude current document from duplicate check
             )
         
         # If duplicate detected, stop and wait for user action
@@ -1061,9 +973,13 @@ async def confirm_upload_internal(
     
     db.commit()
     
-    # Start full processing and indexing asynchronously in background
+    # Queue document for full processing and indexing (sequential processing)
     # This includes: full text extraction, re-classification, summary generation, and indexing
-    background_tasks.add_task(process_document_async, document.id, file_path, db)
+    from app.utils.document_processing_queue import queue_document_for_processing
+    # Set status to UPLOADING so queue knows to do full classification and indexing
+    document.indexing_status = ProcessingStatus.UPLOADING
+    db.commit()
+    queue_document_for_processing(document.id)
     
     db.refresh(document)
     return document
@@ -1142,13 +1058,10 @@ async def replace_and_index(
     db.delete(document)
     db.commit()
     
-    # Start indexing for the existing document
-    background_tasks.add_task(
-        index_document_async,
-        existing_document_id,
-        None,  # Will extract from file_path
-        db
-    )
+    # Queue document for indexing (sequential processing)
+    # Document is already classified, just needs indexing
+    from app.utils.document_processing_queue import queue_document_for_processing
+    queue_document_for_processing(existing_document_id)
     
     db.refresh(existing_doc)
     return existing_doc
@@ -1179,6 +1092,424 @@ if DEBUG:
         
         return await replace_and_index(document_id, background_tasks, db, test_user)
 
+    @router.delete("/{document_id}/test")
+    async def delete_document_test(
+        document_id: str,
+        db: Session = Depends(get_db)
+    ):
+        """
+        TEST ENDPOINT: Delete document without authentication.
+        Only available when DEBUG=true or ENVIRONMENT=development.
+        """
+        document = db.query(Document).filter(Document.id == document_id).first()
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Only allow deletion if document is not yet indexed or is a duplicate
+        if document.indexing_status == ProcessingStatus.INDEXED and not document.duplicate_detected:
+            raise HTTPException(
+                status_code=400, 
+                detail="Cannot delete indexed document. Only unprocessed or duplicate documents can be deleted."
+            )
+        
+        # Delete file if it exists
+        if document.file_path and os.path.exists(document.file_path):
+            try:
+                os.remove(document.file_path)
+            except Exception as e:
+                print(f"Warning: Failed to delete file {document.file_path}: {str(e)}")
+        
+        # Delete embedding if it exists
+        embedding_path = os.path.join("data/storage", f"{document_id}_embedding.json")
+        if os.path.exists(embedding_path):
+            try:
+                os.remove(embedding_path)
+            except Exception as e:
+                print(f"Warning: Failed to delete embedding: {str(e)}")
+        
+        # Delete document from database
+        db.delete(document)
+        db.commit()
+        
+        return {"message": "Document deleted successfully"}
+
+
+@router.delete("/{document_id}")
+async def delete_document(
+    document_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Delete a document (useful for canceling duplicate uploads).
+    """
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Only allow deletion if document is not yet indexed or is a duplicate
+    if document.indexing_status == ProcessingStatus.INDEXED and not document.duplicate_detected:
+        raise HTTPException(
+            status_code=400, 
+            detail="Cannot delete indexed document. Only unprocessed or duplicate documents can be deleted."
+        )
+    
+    # Delete file if it exists
+    if document.file_path and os.path.exists(document.file_path):
+        try:
+            os.remove(document.file_path)
+        except Exception as e:
+            print(f"Warning: Failed to delete file {document.file_path}: {str(e)}")
+    
+    # Delete embedding if it exists
+    embedding_path = os.path.join("data/storage", f"{document_id}_embedding.json")
+    if os.path.exists(embedding_path):
+        try:
+            os.remove(embedding_path)
+        except Exception as e:
+            print(f"Warning: Failed to delete embedding: {str(e)}")
+    
+    # Delete document from database
+    db.delete(document)
+    db.commit()
+    
+    return {"message": "Document deleted successfully"}
+
+
+@router.delete("/{document_id}/permanent")
+async def delete_document_permanent(
+    document_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Permanently delete a document and all associated data including financial statements.
+    This is a destructive operation that cannot be undone.
+    """
+    from app.models.balance_sheet import BalanceSheet
+    from app.models.income_statement import IncomeStatement
+    from app.utils.financial_statement_progress import clear_progress
+    from app.utils.document_indexer import load_embedding
+    
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Store document_id to ensure we're using the correct one
+    target_document_id = document.id
+    print(f"Deleting document {target_document_id} and its associated data")
+    
+    # Delete financial statements explicitly with proper filtering
+    # Use filter_by to ensure we're only deleting for this specific document
+    balance_sheets = db.query(BalanceSheet).filter_by(document_id=target_document_id).all()
+    print(f"Found {len(balance_sheets)} balance sheet(s) for document {target_document_id}")
+    for balance_sheet in balance_sheets:
+        print(f"Deleting balance sheet {balance_sheet.id} for document {target_document_id}")
+        db.delete(balance_sheet)
+    
+    income_statements = db.query(IncomeStatement).filter_by(document_id=target_document_id).all()
+    print(f"Found {len(income_statements)} income statement(s) for document {target_document_id}")
+    for income_statement in income_statements:
+        print(f"Deleting income statement {income_statement.id} for document {target_document_id}")
+        db.delete(income_statement)
+    
+    # Commit financial statement deletions before deleting the document
+    db.commit()
+    print(f"Committed deletions of financial statements for document {target_document_id}")
+    
+    # Clear financial statement progress tracking
+    clear_progress(target_document_id)
+    
+    # Delete file if it exists
+    if document.file_path and os.path.exists(document.file_path):
+        try:
+            os.remove(document.file_path)
+        except Exception as e:
+            print(f"Warning: Failed to delete file {document.file_path}: {str(e)}")
+    
+    # Delete embedding if it exists
+    embedding_path = os.path.join("data/storage", f"{target_document_id}_embedding.json")
+    if os.path.exists(embedding_path):
+        try:
+            os.remove(embedding_path)
+        except Exception as e:
+            print(f"Warning: Failed to delete embedding: {str(e)}")
+    
+    # Delete document from database
+    db.delete(document)
+    db.commit()
+    
+    return {"message": "Document and all associated data deleted successfully"}
+
+
+if DEBUG:
+    @router.delete("/{document_id}/permanent/test")
+    async def delete_document_permanent_test(
+        document_id: str,
+        db: Session = Depends(get_db)
+    ):
+        """
+        TEST ENDPOINT: Permanently delete a document without authentication.
+        """
+        from app.models.balance_sheet import BalanceSheet
+        from app.models.income_statement import IncomeStatement
+        from app.utils.financial_statement_progress import clear_progress
+        
+        document = db.query(Document).filter(Document.id == document_id).first()
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Store document_id to ensure we're using the correct one
+        target_document_id = document.id
+        
+        # Delete financial statements explicitly with proper filtering
+        # Use filter_by to ensure we're only deleting for this specific document
+        balance_sheets = db.query(BalanceSheet).filter_by(document_id=target_document_id).all()
+        for balance_sheet in balance_sheets:
+            db.delete(balance_sheet)
+        
+        income_statements = db.query(IncomeStatement).filter_by(document_id=target_document_id).all()
+        for income_statement in income_statements:
+            db.delete(income_statement)
+        
+        # Commit financial statement deletions before deleting the document
+        db.commit()
+        
+        # Clear financial statement progress tracking
+        clear_progress(target_document_id)
+        
+        # Delete file if it exists
+        if document.file_path and os.path.exists(document.file_path):
+            try:
+                os.remove(document.file_path)
+            except Exception as e:
+                print(f"Warning: Failed to delete file {document.file_path}: {str(e)}")
+        
+        # Delete embedding if it exists
+        embedding_path = os.path.join("data/storage", f"{target_document_id}_embedding.json")
+        if os.path.exists(embedding_path):
+            try:
+                os.remove(embedding_path)
+            except Exception as e:
+                print(f"Warning: Failed to delete embedding: {str(e)}")
+        
+        # Delete document from database
+        db.delete(document)
+        db.commit()
+        
+        return {"message": "Document and all associated data deleted successfully"}
+
+
+@router.get("/{document_id}/financial-statement-progress")
+async def get_financial_statement_progress(
+    document_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get financial statement processing progress with milestones"""
+    from app.utils.financial_statement_progress import get_progress
+    from app.models.balance_sheet import BalanceSheet
+    from app.models.income_statement import IncomeStatement
+    
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    progress = get_progress(document_id)
+    
+    # Always check database state to determine actual milestone status
+    balance_sheet = db.query(BalanceSheet).filter(BalanceSheet.document_id == document_id).first()
+    income_statement = db.query(IncomeStatement).filter(IncomeStatement.document_id == document_id).first()
+    
+    # Build milestones based on database state
+    milestones = {}
+    
+    # 1. Extracting Balance Sheet: completed if non-empty balance sheet with validation passed
+    if balance_sheet and balance_sheet.line_items and len(balance_sheet.line_items) > 0 and balance_sheet.is_valid:
+        milestones["extracting_balance_sheet"] = {
+            "status": "completed",
+            "message": "Balance sheet extracted and validated",
+            "updated_at": balance_sheet.extraction_date.isoformat() if balance_sheet.extraction_date else None
+        }
+    elif balance_sheet:
+        milestones["extracting_balance_sheet"] = {
+            "status": "error",
+            "message": "Balance sheet extraction failed or validation errors",
+            "updated_at": balance_sheet.extraction_date.isoformat() if balance_sheet.extraction_date else None
+        }
+    elif progress and progress.get("milestones", {}).get("extracting_balance_sheet", {}).get("status") in ["pending", "in_progress"]:
+        # Use in-memory progress if actively processing
+        milestones["extracting_balance_sheet"] = progress["milestones"]["extracting_balance_sheet"]
+    else:
+        # No balance sheet exists - would return 404
+        milestones["extracting_balance_sheet"] = {
+            "status": "not_found",
+            "message": "Balance sheet not found",
+            "updated_at": None
+        }
+    
+    # 2. Classifying Balance Sheet: completed if balance sheet has non-empty Type column (is_operating is not null)
+    if balance_sheet and balance_sheet.line_items:
+        has_classifications = any(item.is_operating is not None for item in balance_sheet.line_items)
+        if has_classifications:
+            milestones["classifying_balance_sheet"] = {
+                "status": "completed",
+                "message": "Balance sheet classified",
+                "updated_at": balance_sheet.extraction_date.isoformat() if balance_sheet.extraction_date else None
+            }
+        else:
+            milestones["classifying_balance_sheet"] = {
+                "status": "error",
+                "message": "Balance sheet classification incomplete",
+                "updated_at": balance_sheet.extraction_date.isoformat() if balance_sheet.extraction_date else None
+            }
+    elif progress and progress.get("milestones", {}).get("classifying_balance_sheet", {}).get("status") in ["pending", "in_progress"]:
+        milestones["classifying_balance_sheet"] = progress["milestones"]["classifying_balance_sheet"]
+    elif balance_sheet:
+        # Balance sheet exists but no line items - classification not possible
+        milestones["classifying_balance_sheet"] = {
+            "status": "not_found",
+            "message": "Balance sheet not found",
+            "updated_at": None
+        }
+    else:
+        # No balance sheet exists - would return 404
+        milestones["classifying_balance_sheet"] = {
+            "status": "not_found",
+            "message": "Balance sheet not found",
+            "updated_at": None
+        }
+    
+    # 3. Extracting Income Statement: completed if non-empty income statement with validation passed
+    if income_statement and income_statement.line_items and len(income_statement.line_items) > 0 and income_statement.is_valid:
+        milestones["extracting_income_statement"] = {
+            "status": "completed",
+            "message": "Income statement extracted and validated",
+            "updated_at": income_statement.extraction_date.isoformat() if income_statement.extraction_date else None
+        }
+    elif income_statement:
+        milestones["extracting_income_statement"] = {
+            "status": "error",
+            "message": "Income statement extraction failed or validation errors",
+            "updated_at": income_statement.extraction_date.isoformat() if income_statement.extraction_date else None
+        }
+    elif progress and progress.get("milestones", {}).get("extracting_income_statement", {}).get("status") in ["pending", "in_progress"]:
+        milestones["extracting_income_statement"] = progress["milestones"]["extracting_income_statement"]
+    else:
+        # No income statement exists - would return 404
+        milestones["extracting_income_statement"] = {
+            "status": "not_found",
+            "message": "Income statement not found",
+            "updated_at": None
+        }
+    
+    # 4. Extracting Additional Items: completed if at least one additional item is not null
+    if income_statement:
+        has_additional_items = (
+            income_statement.revenue_prior_year is not None or
+            income_statement.revenue_growth_yoy is not None or
+            income_statement.amortization is not None or
+            income_statement.basic_shares_outstanding is not None or
+            income_statement.diluted_shares_outstanding is not None
+        )
+        if has_additional_items:
+            milestones["extracting_additional_items"] = {
+                "status": "completed",
+                "message": "Additional items extracted",
+                "updated_at": income_statement.extraction_date.isoformat() if income_statement.extraction_date else None
+            }
+        else:
+            milestones["extracting_additional_items"] = {
+                "status": "error",
+                "message": "Additional items not found",
+                "updated_at": income_statement.extraction_date.isoformat() if income_statement.extraction_date else None
+            }
+    elif progress and progress.get("milestones", {}).get("extracting_additional_items", {}).get("status") in ["pending", "in_progress"]:
+        milestones["extracting_additional_items"] = progress["milestones"]["extracting_additional_items"]
+    else:
+        # No income statement exists - would return 404
+        milestones["extracting_additional_items"] = {
+            "status": "not_found",
+            "message": "Additional items not found",
+            "updated_at": None
+        }
+    
+    # 5. Classifying Income Statement: completed if income statement has non-empty Type column (is_operating is not null)
+    if income_statement and income_statement.line_items:
+        has_classifications = any(item.is_operating is not None for item in income_statement.line_items)
+        if has_classifications:
+            milestones["classifying_income_statement"] = {
+                "status": "completed",
+                "message": "Income statement classified",
+                "updated_at": income_statement.extraction_date.isoformat() if income_statement.extraction_date else None
+            }
+        else:
+            milestones["classifying_income_statement"] = {
+                "status": "error",
+                "message": "Income statement classification incomplete",
+                "updated_at": income_statement.extraction_date.isoformat() if income_statement.extraction_date else None
+            }
+    elif progress and progress.get("milestones", {}).get("classifying_income_statement", {}).get("status") in ["pending", "in_progress"]:
+        milestones["classifying_income_statement"] = progress["milestones"]["classifying_income_statement"]
+    elif income_statement:
+        # Income statement exists but no line items - classification not possible
+        milestones["classifying_income_statement"] = {
+            "status": "not_found",
+            "message": "Income statement not found",
+            "updated_at": None
+        }
+    else:
+        # No income statement exists - would return 404
+        milestones["classifying_income_statement"] = {
+            "status": "not_found",
+            "message": "Income statement not found",
+            "updated_at": None
+        }
+    
+    # Determine overall status
+    # If progress exists in memory and has active processing, use that status
+    if progress:
+        has_in_progress = any(
+            m.get("status") == "in_progress" for m in milestones.values()
+        )
+        has_pending = any(
+            m.get("status") == "pending" for m in milestones.values()
+        )
+        if has_in_progress or has_pending:
+            status = "processing"
+        else:
+            has_error = any(m.get("status") == "error" for m in milestones.values())
+            all_completed = all(m.get("status") == "completed" for m in milestones.values())
+            has_not_found = any(m.get("status") == "not_found" for m in milestones.values())
+            if has_error:
+                status = "error"
+            elif all_completed:
+                status = "completed"
+            elif has_not_found:
+                status = "not_found"
+            else:
+                status = "checking"
+    else:
+        # No progress in memory - determine from database state
+        has_error = any(m.get("status") == "error" for m in milestones.values())
+        all_completed = all(m.get("status") == "completed" for m in milestones.values())
+        has_not_found = any(m.get("status") == "not_found" for m in milestones.values())
+        
+        if has_error:
+            status = "error"
+        elif all_completed:
+            status = "completed"
+        elif has_not_found:
+            status = "not_found"
+        else:
+            status = "not_started"
+    
+    return {
+        "status": status,
+        "milestones": milestones,
+        "last_updated": progress.get("last_updated") if progress else None
+    }
+
 
 @router.get("/{document_id}/status", response_model=DocumentSchema)
 async def get_document_status(
@@ -1194,6 +1525,206 @@ async def get_document_status(
 
 
 if DEBUG:
+    @router.get("/{document_id}/financial-statement-progress-test")
+    async def get_financial_statement_progress_test(
+        document_id: str,
+        db: Session = Depends(get_db)
+    ):
+        """TEST ENDPOINT: Get financial statement processing progress without authentication"""
+        # Use the same logic as the authenticated endpoint
+        from app.utils.financial_statement_progress import get_progress
+        from app.models.balance_sheet import BalanceSheet
+        from app.models.income_statement import IncomeStatement
+        
+        document = db.query(Document).filter(Document.id == document_id).first()
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        progress = get_progress(document_id)
+        
+        # Always check database state to determine actual milestone status
+        balance_sheet = db.query(BalanceSheet).filter(BalanceSheet.document_id == document_id).first()
+        income_statement = db.query(IncomeStatement).filter(IncomeStatement.document_id == document_id).first()
+        
+        # Build milestones based on database state (same logic as authenticated endpoint)
+        milestones = {}
+        
+        # 1. Extracting Balance Sheet
+        if balance_sheet and balance_sheet.line_items and len(balance_sheet.line_items) > 0 and balance_sheet.is_valid:
+            milestones["extracting_balance_sheet"] = {
+                "status": "completed",
+                "message": "Balance sheet extracted and validated",
+                "updated_at": balance_sheet.extraction_date.isoformat() if balance_sheet.extraction_date else None
+            }
+        elif balance_sheet:
+            milestones["extracting_balance_sheet"] = {
+                "status": "error",
+                "message": "Balance sheet extraction failed or validation errors",
+                "updated_at": balance_sheet.extraction_date.isoformat() if balance_sheet.extraction_date else None
+            }
+        elif progress and progress.get("milestones", {}).get("extracting_balance_sheet", {}).get("status") in ["pending", "in_progress"]:
+            milestones["extracting_balance_sheet"] = progress["milestones"]["extracting_balance_sheet"]
+        else:
+            # No balance sheet exists - would return 404
+            milestones["extracting_balance_sheet"] = {
+                "status": "not_found",
+                "message": "Balance sheet not found",
+                "updated_at": None
+            }
+        
+        # 2. Classifying Balance Sheet
+        if balance_sheet and balance_sheet.line_items:
+            has_classifications = any(item.is_operating is not None for item in balance_sheet.line_items)
+            if has_classifications:
+                milestones["classifying_balance_sheet"] = {
+                    "status": "completed",
+                    "message": "Balance sheet classified",
+                    "updated_at": balance_sheet.extraction_date.isoformat() if balance_sheet.extraction_date else None
+                }
+            else:
+                milestones["classifying_balance_sheet"] = {
+                    "status": "error",
+                    "message": "Balance sheet classification incomplete",
+                    "updated_at": balance_sheet.extraction_date.isoformat() if balance_sheet.extraction_date else None
+                }
+        elif progress and progress.get("milestones", {}).get("classifying_balance_sheet", {}).get("status") in ["pending", "in_progress"]:
+            milestones["classifying_balance_sheet"] = progress["milestones"]["classifying_balance_sheet"]
+        elif balance_sheet:
+            # Balance sheet exists but no line items - would return 404
+            milestones["classifying_balance_sheet"] = {
+                "status": "not_found",
+                "message": "Balance sheet not found",
+                "updated_at": None
+            }
+        else:
+            # No balance sheet exists - would return 404
+            milestones["classifying_balance_sheet"] = {
+                "status": "not_found",
+                "message": "Balance sheet not found",
+                "updated_at": None
+            }
+        
+        # 3. Extracting Income Statement
+        if income_statement and income_statement.line_items and len(income_statement.line_items) > 0 and income_statement.is_valid:
+            milestones["extracting_income_statement"] = {
+                "status": "completed",
+                "message": "Income statement extracted and validated",
+                "updated_at": income_statement.extraction_date.isoformat() if income_statement.extraction_date else None
+            }
+        elif income_statement:
+            milestones["extracting_income_statement"] = {
+                "status": "error",
+                "message": "Income statement extraction failed or validation errors",
+                "updated_at": income_statement.extraction_date.isoformat() if income_statement.extraction_date else None
+            }
+        elif progress and progress.get("milestones", {}).get("extracting_income_statement", {}).get("status") in ["pending", "in_progress"]:
+            milestones["extracting_income_statement"] = progress["milestones"]["extracting_income_statement"]
+        else:
+            # No income statement exists - would return 404
+            milestones["extracting_income_statement"] = {
+                "status": "not_found",
+                "message": "Income statement not found",
+                "updated_at": None
+            }
+        
+        # 4. Extracting Additional Items
+        if income_statement:
+            has_additional_items = (
+                income_statement.revenue_prior_year is not None or
+                income_statement.revenue_growth_yoy is not None or
+                income_statement.amortization is not None or
+                income_statement.basic_shares_outstanding is not None or
+                income_statement.diluted_shares_outstanding is not None
+            )
+            if has_additional_items:
+                milestones["extracting_additional_items"] = {
+                    "status": "completed",
+                    "message": "Additional items extracted",
+                    "updated_at": income_statement.extraction_date.isoformat() if income_statement.extraction_date else None
+                }
+            else:
+                milestones["extracting_additional_items"] = {
+                    "status": "error",
+                    "message": "Additional items not found",
+                    "updated_at": income_statement.extraction_date.isoformat() if income_statement.extraction_date else None
+                }
+        elif progress and progress.get("milestones", {}).get("extracting_additional_items", {}).get("status") in ["pending", "in_progress"]:
+            milestones["extracting_additional_items"] = progress["milestones"]["extracting_additional_items"]
+        else:
+            # No income statement exists - would return 404
+            milestones["extracting_additional_items"] = {
+                "status": "not_found",
+                "message": "Additional items not found",
+                "updated_at": None
+            }
+        
+        # 5. Classifying Income Statement
+        if income_statement and income_statement.line_items:
+            has_classifications = any(item.is_operating is not None for item in income_statement.line_items)
+            if has_classifications:
+                milestones["classifying_income_statement"] = {
+                    "status": "completed",
+                    "message": "Income statement classified",
+                    "updated_at": income_statement.extraction_date.isoformat() if income_statement.extraction_date else None
+                }
+            else:
+                milestones["classifying_income_statement"] = {
+                    "status": "error",
+                    "message": "Income statement classification incomplete",
+                    "updated_at": income_statement.extraction_date.isoformat() if income_statement.extraction_date else None
+                }
+        elif progress and progress.get("milestones", {}).get("classifying_income_statement", {}).get("status") in ["pending", "in_progress"]:
+            milestones["classifying_income_statement"] = progress["milestones"]["classifying_income_statement"]
+        elif income_statement:
+            # Income statement exists but no line items - classification not possible
+            milestones["classifying_income_statement"] = {
+                "status": "not_found",
+                "message": "Income statement not found",
+                "updated_at": None
+            }
+        else:
+            # No income statement exists - would return 404
+            milestones["classifying_income_statement"] = {
+                "status": "not_found",
+                "message": "Income statement not found",
+                "updated_at": None
+            }
+        
+        # Determine overall status
+        if progress:
+            has_in_progress = any(m.get("status") == "in_progress" for m in milestones.values())
+            has_pending = any(m.get("status") == "pending" for m in milestones.values())
+            if has_in_progress or has_pending:
+                status = "processing"
+            else:
+                has_error = any(m.get("status") == "error" for m in milestones.values())
+                all_completed = all(m.get("status") == "completed" for m in milestones.values())
+                if has_error:
+                    status = "error"
+                elif all_completed:
+                    status = "completed"
+                else:
+                    status = "checking"
+        else:
+            has_error = any(m.get("status") == "error" for m in milestones.values())
+            all_completed = all(m.get("status") == "completed" for m in milestones.values())
+            has_checking = any(m.get("status") == "checking" for m in milestones.values())
+            
+            if has_error:
+                status = "error"
+            elif all_completed:
+                status = "completed"
+            elif has_checking:
+                status = "checking"
+            else:
+                status = "not_started"
+        
+        return {
+            "status": status,
+            "milestones": milestones,
+            "last_updated": progress.get("last_updated") if progress else None
+        }
+    
     @router.get("/{document_id}/status-test", response_model=DocumentSchema)
     async def get_document_status_test(
         document_id: str,

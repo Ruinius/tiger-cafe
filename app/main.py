@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base
-from app.routers import auth, companies, documents, balance_sheet
+from app.routers import auth, companies, documents, balance_sheet, income_statement
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -31,6 +31,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
 app.include_router(companies.router, prefix="/api/companies", tags=["companies"])
 app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
 app.include_router(balance_sheet.router, prefix="/api/documents", tags=["balance-sheet"])
+app.include_router(income_statement.router, prefix="/api/documents", tags=["income-statement"])
 
 
 @app.get("/")
