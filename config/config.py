@@ -35,4 +35,6 @@ LOG_FILE = "logs/tiger-cafe.log"
 
 # Environment
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")  # "development" or "production"
-DEBUG = os.getenv("DEBUG", "true").lower() == "true"  # Enable test endpoints in development
+DEBUG = (
+    os.getenv("DEBUG", "true" if ENVIRONMENT == "development" else "false").lower() == "true"
+)  # Enable test endpoints in development
