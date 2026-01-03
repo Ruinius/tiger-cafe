@@ -2,17 +2,17 @@
 Balance sheet schemas
 """
 
-from pydantic import BaseModel
-from typing import List, Optional
-from decimal import Decimal
 from datetime import datetime
+from decimal import Decimal
+
+from pydantic import BaseModel
 
 
 class BalanceSheetLineItemBase(BaseModel):
     line_name: str
     line_value: Decimal
-    line_category: Optional[str] = None
-    is_operating: Optional[bool] = None
+    line_category: str | None = None
+    is_operating: bool | None = None
     line_order: int
 
 
@@ -23,30 +23,29 @@ class BalanceSheetLineItemCreate(BalanceSheetLineItemBase):
 class BalanceSheetLineItem(BalanceSheetLineItemBase):
     id: str
     balance_sheet_id: str
-    
+
     class Config:
         from_attributes = True
 
 
 class BalanceSheetBase(BaseModel):
-    time_period: Optional[str] = None
-    currency: Optional[str] = None
-    unit: Optional[str] = None  # "ones", "thousands", "millions", "billions", or "ten_thousands"
+    time_period: str | None = None
+    currency: str | None = None
+    unit: str | None = None  # "ones", "thousands", "millions", "billions", or "ten_thousands"
 
 
 class BalanceSheetCreate(BalanceSheetBase):
     document_id: str
-    line_items: List[BalanceSheetLineItemCreate]
+    line_items: list[BalanceSheetLineItemCreate]
 
 
 class BalanceSheet(BalanceSheetBase):
     id: str
     document_id: str
     is_valid: bool
-    validation_errors: Optional[str] = None
+    validation_errors: str | None = None
     extraction_date: datetime
-    line_items: List[BalanceSheetLineItem] = []
-    
+    line_items: list[BalanceSheetLineItem] = []
+
     class Config:
         from_attributes = True
-

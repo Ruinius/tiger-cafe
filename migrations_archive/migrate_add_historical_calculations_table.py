@@ -2,8 +2,9 @@
 Migration script to add historical_calculations table to the database
 """
 
-import sqlite3
 import os
+import sqlite3
+
 from config.config import DATABASE_URL
 
 db_path = DATABASE_URL.replace("sqlite:///", "")
@@ -20,7 +21,8 @@ try:
     cursor = conn.cursor()
 
     # Add historical_calculations table
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS historical_calculations (
             id TEXT PRIMARY KEY,
             document_id TEXT UNIQUE NOT NULL,
@@ -37,7 +39,8 @@ try:
             calculation_notes TEXT,
             FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE
         )
-    """)
+    """
+    )
 
     conn.commit()
     print("Historical calculations table migrated successfully.")
@@ -47,4 +50,3 @@ except sqlite3.Error as e:
 finally:
     if conn:
         conn.close()
-

@@ -2,23 +2,22 @@
 Document classification agent using Gemini LLM
 """
 
-from config.config import DEFAULT_MODEL, TEMPERATURE
-from app.models.document import DocumentType
-from app.utils.gemini_client import generate_content_safe
-from typing import Optional, Dict
 import json
 
+from app.models.document import DocumentType
+from app.utils.gemini_client import generate_content_safe
 
-def classify_document(text: str) -> Dict[str, Optional[str]]:
+
+def classify_document(text: str) -> dict[str, str | None]:
     """
     Classify a document using Gemini LLM to determine:
     - Document type (earnings announcement, filing, etc.)
     - Time period (Q3 2024, FY 2023, etc.)
     - Company name and ticker symbol
-    
+
     Args:
         text: Extracted text from the first few pages of the document
-    
+
     Returns:
         Dictionary with:
         - document_type: DocumentType enum value or None
@@ -27,8 +26,8 @@ def classify_document(text: str) -> Dict[str, Optional[str]]:
         - ticker: Ticker symbol or None
         - confidence: Confidence level (high/medium/low) or None
     """
-    
-    prompt = f"""Analyze the following document text and extract key information. 
+
+    prompt = f"""Analyze the following document text and extract key information.
 Return a JSON object with the following structure:
 {{
     "document_type": one of ["earnings_announcement", "quarterly_filing", "annual_filing", "press_release", "analyst_report", "news_article", "other"],
@@ -56,16 +55,16 @@ Return only valid JSON, no additional text."""
 
     try:
         response_text = generate_content_safe(prompt)
-        
+
         # Remove markdown code blocks if present
         if response_text.startswith("```"):
             response_text = response_text.split("```")[1]
             if response_text.startswith("json"):
                 response_text = response_text[4:]
             response_text = response_text.strip()
-        
+
         result = json.loads(response_text)
-        
+
         # Map document_type string to DocumentType enum
         if result.get("document_type"):
             try:
@@ -78,21 +77,22 @@ Return only valid JSON, no additional text."""
                     "news_article": DocumentType.NEWS_ARTICLE,
                     "other": DocumentType.OTHER,
                 }
-                result["document_type"] = doc_type_map.get(result["document_type"], DocumentType.OTHER)
+                result["document_type"] = doc_type_map.get(
+                    result["document_type"], DocumentType.OTHER
+                )
             except Exception:
                 result["document_type"] = None
-        
+
         return result
-    
-    except json.JSONDecodeError as e:
+
+    except json.JSONDecodeError:
         # If JSON parsing fails, return None values
         return {
             "document_type": None,
             "time_period": None,
             "company_name": None,
             "ticker": None,
-            "confidence": "low"
+            "confidence": "low",
         }
     except Exception as e:
         raise Exception(f"Error classifying document: {str(e)}")
-

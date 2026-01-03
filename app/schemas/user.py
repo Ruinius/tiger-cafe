@@ -2,15 +2,15 @@
 User schemas
 """
 
-from pydantic import BaseModel, EmailStr
 from datetime import datetime
-from typing import Optional
+
+from pydantic import BaseModel, EmailStr
 
 
 class UserBase(BaseModel):
     email: EmailStr
-    name: Optional[str] = None
-    picture: Optional[str] = None
+    name: str | None = None
+    picture: str | None = None
 
 
 class UserCreate(UserBase):
@@ -20,9 +20,8 @@ class UserCreate(UserBase):
 class User(UserBase):
     id: str
     created_at: datetime
-    updated_at: Optional[datetime] = None
+    updated_at: datetime | None = None
     is_active: bool
 
     class Config:
         from_attributes = True
-

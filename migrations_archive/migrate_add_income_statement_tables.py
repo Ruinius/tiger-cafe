@@ -2,8 +2,9 @@
 Migration script to add income statement tables to the database
 """
 
-import sqlite3
 import os
+import sqlite3
+
 from config.config import DATABASE_URL
 
 db_path = DATABASE_URL.replace("sqlite:///", "")
@@ -20,7 +21,8 @@ try:
     cursor = conn.cursor()
 
     # Add income_statements table
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS income_statements (
             id TEXT PRIMARY KEY,
             document_id TEXT UNIQUE NOT NULL,
@@ -36,10 +38,12 @@ try:
             validation_errors TEXT,
             FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE
         )
-    """)
+    """
+    )
 
     # Add income_statement_line_items table
-    cursor.execute("""
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS income_statement_line_items (
             id TEXT PRIMARY KEY,
             income_statement_id TEXT NOT NULL,
@@ -50,7 +54,8 @@ try:
             line_order INTEGER NOT NULL,
             FOREIGN KEY (income_statement_id) REFERENCES income_statements (id) ON DELETE CASCADE
         )
-    """)
+    """
+    )
 
     conn.commit()
     print("Income statement tables migrated successfully.")
@@ -60,4 +65,3 @@ except sqlite3.Error as e:
 finally:
     if conn:
         conn.close()
-

@@ -6,6 +6,7 @@ Copy this to config.py and update with your actual values.
 # API Keys - Load from environment or .env file
 # Set GEMINI_API_KEY in your .env file (see .env.example)
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()  # Load environment variables from .env file
@@ -35,4 +36,3 @@ LOG_FILE = "logs/tiger-cafe.log"
 # Environment
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")  # "development" or "production"
 DEBUG = os.getenv("DEBUG", "true").lower() == "true"  # Enable test endpoints in development
-

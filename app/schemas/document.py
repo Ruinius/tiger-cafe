@@ -2,18 +2,19 @@
 Document schemas
 """
 
-from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
+
+from pydantic import BaseModel
+
 from app.models.document import DocumentType, ProcessingStatus
 
 
 class DocumentBase(BaseModel):
     filename: str
-    document_type: Optional[DocumentType] = None
-    time_period: Optional[str] = None
-    summary: Optional[str] = None
-    unique_id: Optional[str] = None
+    document_type: DocumentType | None = None
+    time_period: str | None = None
+    summary: str | None = None
+    unique_id: str | None = None
 
 
 class DocumentCreate(DocumentBase):
@@ -22,13 +23,13 @@ class DocumentCreate(DocumentBase):
 
 
 class DocumentUpdate(BaseModel):
-    document_type: Optional[DocumentType] = None
-    time_period: Optional[str] = None
-    summary: Optional[str] = None
-    page_count: Optional[int] = None
-    character_count: Optional[int] = None
-    indexing_status: Optional[ProcessingStatus] = None
-    analysis_status: Optional[ProcessingStatus] = None
+    document_type: DocumentType | None = None
+    time_period: str | None = None
+    summary: str | None = None
+    page_count: int | None = None
+    character_count: int | None = None
+    indexing_status: ProcessingStatus | None = None
+    analysis_status: ProcessingStatus | None = None
 
 
 class Document(DocumentBase):
@@ -38,14 +39,14 @@ class Document(DocumentBase):
     file_path: str
     indexing_status: ProcessingStatus
     analysis_status: ProcessingStatus
-    page_count: Optional[int] = None
-    character_count: Optional[int] = None
+    page_count: int | None = None
+    character_count: int | None = None
     uploaded_at: datetime
-    indexed_at: Optional[datetime] = None
-    processed_at: Optional[datetime] = None
-    duplicate_detected: Optional[bool] = False
-    existing_document_id: Optional[str] = None
-    uploader_name: Optional[str] = None  # Name of user who uploaded the document
+    indexed_at: datetime | None = None
+    processed_at: datetime | None = None
+    duplicate_detected: bool | None = False
+    existing_document_id: str | None = None
+    uploader_name: str | None = None  # Name of user who uploaded the document
 
     class Config:
         from_attributes = True
@@ -53,27 +54,29 @@ class Document(DocumentBase):
 
 # Upload and classification response schemas
 class ClassificationResult(BaseModel):
-    document_type: Optional[DocumentType] = None
-    time_period: Optional[str] = None
-    company_name: Optional[str] = None
-    ticker: Optional[str] = None
-    confidence: Optional[str] = None  # "high", "medium", "low"
-    extracted_text_preview: Optional[str] = None
-    summary: Optional[str] = None  # LLM-generated summary
+    document_type: DocumentType | None = None
+    time_period: str | None = None
+    company_name: str | None = None
+    ticker: str | None = None
+    confidence: str | None = None  # "high", "medium", "low"
+    extracted_text_preview: str | None = None
+    summary: str | None = None  # LLM-generated summary
 
 
 class DuplicateInfo(BaseModel):
     is_duplicate: bool
-    existing_document_id: Optional[str] = None
-    existing_document_filename: Optional[str] = None
-    existing_document_uploaded_at: Optional[datetime] = None
-    existing_document_uploaded_by: Optional[str] = None
-    match_reason: Optional[str] = None  # "same_company_type_period", "same_filename", or "same_unique_id"
+    existing_document_id: str | None = None
+    existing_document_filename: str | None = None
+    existing_document_uploaded_at: datetime | None = None
+    existing_document_uploaded_by: str | None = None
+    match_reason: str | None = (
+        None  # "same_company_type_period", "same_filename", or "same_unique_id"
+    )
 
 
 class DocumentUploadResponse(BaseModel):
-    document_id: Optional[str] = None
+    document_id: str | None = None
     classification: ClassificationResult
-    duplicate_info: Optional[DuplicateInfo] = None
+    duplicate_info: DuplicateInfo | None = None
     requires_confirmation: bool = False
     message: str

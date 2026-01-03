@@ -73,12 +73,25 @@ GOOGLE_CLIENT_ID=your-google-client-id-here
 GOOGLE_CLIENT_SECRET=your-google-client-secret-here
 ```
 
-5. Run database migration (if needed):
+5. Initialize database:
+The database schema will be automatically created from models when the application starts. For a fresh database or to reset, you can run:
 ```bash
-python migrate_add_unique_id.py
+python migrate_baseline_schema.py
 ```
 
-6. Start the backend server:
+6. Set up pre-commit hooks (recommended):
+```bash
+# Install pre-commit (if not already installed)
+pip install pre-commit
+
+# Install git hooks
+uv run pre-commit install
+
+# Or if uv is not available:
+pre-commit install
+```
+
+7. Start the backend server:
 ```bash
 python run.py
 ```
@@ -150,6 +163,47 @@ Tiger-Cafe provides three main user journey epics:
 For detailed planning and user journey specifications, see [docs/PLANNING.md](docs/PLANNING.md).
 
 ## Development
+
+### Development Tools
+
+**Pre-commit Hooks:**
+This project uses pre-commit hooks to ensure code quality and security:
+
+**Installed Hooks:**
+- **detect-secrets** - Scans for API keys, tokens, passwords
+- **gitleaks** - Additional secret/credential detection
+- **detect-private-key** - Catches private key files
+- **bandit** - Python security linter
+- **ruff** - Fast Python linter + formatter
+- **check-added-large-files** - Prevents large file commits
+- **check-merge-conflict** - Catches unresolved merge conflicts
+
+**Setup:**
+```bash
+# Install hooks (run once after cloning)
+uv run pre-commit install
+
+# Run all hooks manually on all files
+uv run pre-commit run --all-files
+```
+
+Hooks will automatically run on `git commit`. The project uses `uv` for running pre-commit (see `requirements.txt`), which helps with environment consistency.
+
+### Database Migrations
+
+**Current Setup:**
+- **Baseline Migration**: `migrate_baseline_schema.py` - Creates all tables from SQLAlchemy models
+- **Old Migrations**: Archived in `migrations_archive/` for reference
+
+**For Development:**
+- Schema is automatically created from models when the app starts (`app/main.py`)
+- Use `migrate_baseline_schema.py` to initialize or reset the database
+
+**For Future Production:**
+- Baseline migration represents current schema state
+- Future schema changes will use new incremental migrations
+
+See [MIGRATION_GUIDE.md](MIGRATION_GUIDE.md) for details.
 
 This project is in active development. Stay tuned for updates!
 

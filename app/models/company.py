@@ -2,9 +2,10 @@
 Company model
 """
 
-from sqlalchemy import Column, String, DateTime, ForeignKey
+from sqlalchemy import Column, DateTime, String
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+
 from app.database import Base
 
 
@@ -19,6 +20,9 @@ class Company(Base):
 
     # Relationships
     documents = relationship("Document", back_populates="company", cascade="all, delete-orphan")
-    financial_metrics = relationship("FinancialMetric", back_populates="company", cascade="all, delete-orphan")
-    analysis_results = relationship("AnalysisResult", back_populates="company", cascade="all, delete-orphan")
-
+    financial_metrics = relationship(
+        "FinancialMetric", back_populates="company", cascade="all, delete-orphan"
+    )
+    analysis_results = relationship(
+        "AnalysisResult", back_populates="company", cascade="all, delete-orphan"
+    )

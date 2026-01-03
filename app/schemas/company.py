@@ -2,14 +2,14 @@
 Company schemas
 """
 
-from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
+
+from pydantic import BaseModel
 
 
 class CompanyBase(BaseModel):
     name: str
-    ticker: Optional[str] = None
+    ticker: str | None = None
 
 
 class CompanyCreate(CompanyBase):
@@ -19,9 +19,8 @@ class CompanyCreate(CompanyBase):
 class Company(CompanyBase):
     id: str
     created_at: datetime
-    updated_at: Optional[datetime] = None
-    document_count: Optional[int] = None  # Number of documents for this company
+    updated_at: datetime | None = None
+    document_count: int | None = None  # Number of documents for this company
 
     class Config:
         from_attributes = True
-

@@ -2,14 +2,15 @@
 Authentication routes (Google OAuth)
 """
 
+import google.auth.transport.requests
+import google.oauth2.id_token
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
+
 from app.database import get_db
 from app.models.user import User
 from app.schemas.user import User as UserSchema
-import google.auth.transport.requests
-import google.oauth2.id_token
 from config.config import GOOGLE_CLIENT_ID
 
 router = APIRouter()
@@ -21,42 +22,34 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
     try:
         request = google.auth.transport.requests.Request()
         id_token = credentials.credentials
-        
+
         # Verify the token
-        id_info = google.oauth2.id_token.verify_oauth2_token(
-            id_token, request, GOOGLE_CLIENT_ID
-        )
-        
+        id_info = google.oauth2.id_token.verify_oauth2_token(id_token, request, GOOGLE_CLIENT_ID)
+
         if id_info["iss"] not in ["accounts.google.com", "https://accounts.google.com"]:
             raise ValueError("Wrong issuer")
-        
+
         return id_info
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid authentication credentials: {str(e)}"
+            detail=f"Invalid authentication credentials: {str(e)}",
         )
 
 
 async def get_current_user(
-    id_info: dict = Depends(verify_token),
-    db: Session = Depends(get_db)
+    id_info: dict = Depends(verify_token), db: Session = Depends(get_db)
 ) -> User:
     """Get or create current user from Google ID token"""
     user_id = id_info["sub"]
     email = id_info["email"]
     name = id_info.get("name")
     picture = id_info.get("picture")
-    
+
     # Get or create user
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        user = User(
-            id=user_id,
-            email=email,
-            name=name,
-            picture=picture
-        )
+        user = User(id=user_id, email=email, name=name, picture=picture)
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -67,7 +60,7 @@ async def get_current_user(
         user.picture = picture
         db.commit()
         db.refresh(user)
-    
+
     return user
 
 
@@ -80,9 +73,4 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
 @router.post("/login")
 async def login(id_info: dict = Depends(verify_token)):
     """Login endpoint - returns user info after token verification"""
-    return {
-        "message": "Login successful",
-        "user_id": id_info["sub"],
-        "email": id_info["email"]
-    }
-
+    return {"message": "Login successful", "user_id": id_info["sub"], "email": id_info["email"]}

@@ -2,30 +2,29 @@
 Financial Metric schemas
 """
 
+from datetime import date, datetime
+
 from pydantic import BaseModel
-from datetime import datetime, date
-from typing import Optional
 
 
 class FinancialMetricBase(BaseModel):
     metric_name: str
     period: str
-    period_date: Optional[date] = None
+    period_date: date | None = None
     value: float
-    unit: Optional[str] = None
+    unit: str | None = None
 
 
 class FinancialMetricCreate(FinancialMetricBase):
     company_id: str
-    source_document_id: Optional[str] = None
+    source_document_id: str | None = None
 
 
 class FinancialMetric(FinancialMetricBase):
     id: str
     company_id: str
-    source_document_id: Optional[str] = None
+    source_document_id: str | None = None
     calculated_at: datetime
 
     class Config:
         from_attributes = True
-

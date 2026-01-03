@@ -2,18 +2,18 @@
 Database configuration and session management
 """
 
+import os
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-import os
 
 # SQLite database URL (can be upgraded to PostgreSQL later)
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./tiger_cafe.db")
 
 # Create engine
 engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
+    DATABASE_URL, connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
 )
 
 # Create session factory
@@ -30,4 +30,3 @@ def get_db():
         yield db
     finally:
         db.close()
-

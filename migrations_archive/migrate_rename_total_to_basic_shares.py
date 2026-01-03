@@ -2,8 +2,9 @@
 Migration script to rename total_shares_outstanding to basic_shares_outstanding
 """
 
-import sqlite3
 import os
+import sqlite3
+
 from config.config import DATABASE_URL
 
 db_path = DATABASE_URL.replace("sqlite:///", "")
@@ -22,14 +23,15 @@ try:
     # Check if the column exists
     cursor.execute("PRAGMA table_info(income_statements)")
     columns = [column[1] for column in cursor.fetchall()]
-    
-    if 'total_shares_outstanding' in columns and 'basic_shares_outstanding' not in columns:
+
+    if "total_shares_outstanding" in columns and "basic_shares_outstanding" not in columns:
         # SQLite doesn't support ALTER TABLE RENAME COLUMN directly in older versions
         # We need to recreate the table
         print("Renaming total_shares_outstanding to basic_shares_outstanding...")
-        
+
         # Create new table with correct column name
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE income_statements_new (
                 id TEXT PRIMARY KEY,
                 document_id TEXT UNIQUE NOT NULL,
@@ -45,12 +47,14 @@ try:
                 validation_errors TEXT,
                 FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE
             )
-        """)
-        
+        """
+        )
+
         # Copy data from old table to new table
-        cursor.execute("""
-            INSERT INTO income_statements_new 
-            SELECT 
+        cursor.execute(
+            """
+            INSERT INTO income_statements_new
+            SELECT
                 id,
                 document_id,
                 time_period,
@@ -64,20 +68,23 @@ try:
                 is_valid,
                 validation_errors
             FROM income_statements
-        """)
-        
+        """
+        )
+
         # Drop old table
         cursor.execute("DROP TABLE income_statements")
-        
+
         # Rename new table
         cursor.execute("ALTER TABLE income_statements_new RENAME TO income_statements")
-        
+
         # Recreate indexes
-        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_income_statements_document_id ON income_statements (document_id)")
-        
+        cursor.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_income_statements_document_id ON income_statements (document_id)"
+        )
+
         conn.commit()
         print("Successfully renamed total_shares_outstanding to basic_shares_outstanding.")
-    elif 'basic_shares_outstanding' in columns:
+    elif "basic_shares_outstanding" in columns:
         print("Column basic_shares_outstanding already exists. No migration needed.")
     else:
         print("Column total_shares_outstanding not found. Table may not exist yet.")
@@ -88,4 +95,3 @@ except sqlite3.Error as e:
 finally:
     if conn:
         conn.close()
-

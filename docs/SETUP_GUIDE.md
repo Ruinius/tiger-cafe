@@ -31,6 +31,16 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+**Note:** This project uses `uv` for improved dependency management and environment handling. If you want to use `uv` (recommended):
+```bash
+# Install uv
+pip install uv
+# Or use standalone installer: https://github.com/astral-sh/uv
+
+# Install dependencies with uv
+uv pip install -r requirements.txt
+```
+
 ### 4. Configure Environment Variables
 
 Create a `.env` file in the project root (you can copy from `keys.example.txt`):
@@ -65,7 +75,52 @@ mkdir -p logs
 
 ### 6. Initialize Database
 
-The database will be automatically created when you first run the application. The SQLite database file will be created at `tiger_cafe.db` in the project root.
+**Automatic Schema Creation:**
+The database schema is automatically created from SQLAlchemy models when you start the application. The SQLite database file will be created at `tiger_cafe.db` in the project root.
+
+**Manual Database Setup (optional):**
+For a fresh database or to reset an existing one, you can run the baseline migration:
+```bash
+python migrate_baseline_schema.py
+```
+
+This creates all tables from the current model definitions. See [MIGRATION_GUIDE.md](../MIGRATION_GUIDE.md) for more details.
+
+### 7. Set Up Pre-commit Hooks (Recommended)
+
+Pre-commit hooks ensure code quality, security, and consistency:
+
+```bash
+# Install pre-commit hooks
+uv run pre-commit install
+
+# Or if uv is not available:
+pre-commit install
+```
+
+**What it does:**
+- Automatically runs code quality checks on `git commit`
+- Checks for secrets, security issues, and code style
+- Formats code with ruff
+- Blocks commits with issues
+
+**Manual run:**
+```bash
+# Run all hooks on all files
+uv run pre-commit run --all-files
+
+# Or without uv:
+pre-commit run --all-files
+```
+
+**Hooks installed:**
+- `detect-secrets` - Scans for API keys and secrets
+- `gitleaks` - Additional secret detection
+- `detect-private-key` - Catches private key files
+- `bandit` - Python security linter
+- `ruff` - Python linter and formatter (replaces black, isort, flake8)
+- `check-added-large-files` - Prevents large file commits
+- `check-merge-conflict` - Catches merge conflicts
 
 ## Running the Application
 
@@ -111,8 +166,11 @@ If you need to reset the database:
 # Delete the database file
 rm tiger_cafe.db  # On Windows: del tiger_cafe.db
 
-# Restart the application (database will be recreated)
+# Option 1: Restart the application (database will be recreated automatically)
 python run.py
+
+# Option 2: Run the baseline migration explicitly
+python migrate_baseline_schema.py
 ```
 
 ### Authentication Issues
@@ -127,4 +185,24 @@ If you encounter import errors, make sure:
 - Your virtual environment is activated
 - All dependencies are installed: `pip install -r requirements.txt`
 - You're running commands from the project root directory
+
+### Pre-commit Hook Issues
+
+If pre-commit hooks are failing:
+
+```bash
+# Update hooks to latest versions
+uv run pre-commit autoupdate
+
+# Run hooks with verbose output to see errors
+uv run pre-commit run --all-files --verbose
+
+# Skip hooks for a single commit (not recommended)
+git commit --no-verify
+```
+
+**Common Issues:**
+- **Bandit encoding errors**: Resolved by using `uv run pre-commit` which handles encoding correctly
+- **Ruff auto-fixes**: Ruff may modify files. Review changes and commit them.
+- **Secret detection false positives**: Review `.secrets.baseline` file and update if needed
 

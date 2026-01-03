@@ -2,16 +2,17 @@
 Analysis Result schemas
 """
 
-from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Any
+
+from pydantic import BaseModel
 
 
 class AnalysisResultBase(BaseModel):
     analysis_type: str
-    assumptions: Optional[Dict[str, Any]] = None
-    results: Dict[str, Any]
-    summary: Optional[str] = None
+    assumptions: dict[str, Any] | None = None
+    results: dict[str, Any]
+    summary: str | None = None
 
 
 class AnalysisResultCreate(AnalysisResultBase):
@@ -25,4 +26,3 @@ class AnalysisResult(AnalysisResultBase):
 
     class Config:
         from_attributes = True
-
