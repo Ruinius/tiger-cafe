@@ -31,6 +31,7 @@ class IncomeStatementLineItem(IncomeStatementLineItemBase):
 class IncomeStatementBase(BaseModel):
     time_period: Optional[str] = None
     currency: Optional[str] = None
+    unit: Optional[str] = None  # "ones", "thousands", "millions", "billions", or "ten_thousands"
 
 
 class IncomeStatementCreate(IncomeStatementBase):
@@ -42,10 +43,14 @@ class IncomeStatement(IncomeStatementBase):
     id: str
     document_id: str
     revenue_prior_year: Optional[Decimal] = None
+    revenue_prior_year_unit: Optional[str] = None
     revenue_growth_yoy: Optional[Decimal] = None
     basic_shares_outstanding: Optional[Decimal] = None
+    basic_shares_outstanding_unit: Optional[str] = None
     diluted_shares_outstanding: Optional[Decimal] = None
+    diluted_shares_outstanding_unit: Optional[str] = None
     amortization: Optional[Decimal] = None
+    amortization_unit: Optional[str] = None
     is_valid: bool
     validation_errors: Optional[str] = None
     extraction_date: datetime

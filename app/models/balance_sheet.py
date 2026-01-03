@@ -23,6 +23,7 @@ class BalanceSheet(Base):
     # Metadata
     time_period = Column(String, nullable=True)  # e.g., "Q3 2023", "FY 2023"
     currency = Column(String, nullable=True)  # Local currency code (e.g., "USD", "EUR")
+    unit = Column(String, nullable=True)  # Unit: "ones", "thousands", "millions", "billions", or "ten_thousands" (for foreign stocks)
     extraction_date = Column(DateTime(timezone=True), server_default=func.now())
     
     # Validation flags

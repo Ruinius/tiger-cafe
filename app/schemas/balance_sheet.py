@@ -31,6 +31,7 @@ class BalanceSheetLineItem(BalanceSheetLineItemBase):
 class BalanceSheetBase(BaseModel):
     time_period: Optional[str] = None
     currency: Optional[str] = None
+    unit: Optional[str] = None  # "ones", "thousands", "millions", "billions", or "ten_thousands"
 
 
 class BalanceSheetCreate(BalanceSheetBase):

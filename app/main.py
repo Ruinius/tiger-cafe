@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base
-from app.routers import auth, companies, documents, balance_sheet, income_statement
+from app.routers import auth, companies, documents, balance_sheet, income_statement, historical_calculations
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -32,6 +32,7 @@ app.include_router(companies.router, prefix="/api/companies", tags=["companies"]
 app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
 app.include_router(balance_sheet.router, prefix="/api/documents", tags=["balance-sheet"])
 app.include_router(income_statement.router, prefix="/api/documents", tags=["income-statement"])
+app.include_router(historical_calculations.router, prefix="/api/documents", tags=["historical-calculations"])
 
 
 @app.get("/")

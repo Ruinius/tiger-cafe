@@ -8,6 +8,8 @@ function RightPanel({ selectedCompany, selectedDocument }) {
   const { isAuthenticated, token } = useAuth()
   const [balanceSheet, setBalanceSheet] = useState(null)
   const [incomeStatement, setIncomeStatement] = useState(null)
+  const [historicalCalculations, setHistoricalCalculations] = useState(null)
+  const [historicalCalculationsLoadAttempted, setHistoricalCalculationsLoadAttempted] = useState(false)
   const [financialStatementProgress, setFinancialStatementProgress] = useState(null)
   const [error, setError] = useState(null)
   const [balanceSheetLoadAttempts, setBalanceSheetLoadAttempts] = useState(0)
@@ -66,7 +68,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
   }, [selectedDocument, isEligibleForFinancialStatements, isAuthenticated, token])
 
   const loadBalanceSheet = useCallback(async () => {
-    if (!selectedDocument || balanceSheetLoadAttempts >= MAX_LOAD_ATTEMPTS) return
+    if (!selectedDocument) return
     
     try {
       const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -91,10 +93,10 @@ function RightPanel({ selectedCompany, selectedDocument }) {
         setBalanceSheetLoadAttempts(prev => prev + 1)
       }
     }
-  }, [selectedDocument, isAuthenticated, token, balanceSheetLoadAttempts])
+  }, [selectedDocument, isAuthenticated, token])
 
   const loadIncomeStatement = useCallback(async () => {
-    if (!selectedDocument || incomeStatementLoadAttempts >= MAX_LOAD_ATTEMPTS) return
+    if (!selectedDocument) return
     
     try {
       const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -119,7 +121,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
         setIncomeStatementLoadAttempts(prev => prev + 1)
       }
     }
-  }, [selectedDocument, isAuthenticated, token, incomeStatementLoadAttempts])
+  }, [selectedDocument, isAuthenticated, token])
 
   // Load progress tracker first when document is selected
   useEffect(() => {
@@ -171,22 +173,64 @@ function RightPanel({ selectedCompany, selectedDocument }) {
         clearInterval(progressPollingIntervalRef.current)
         progressPollingIntervalRef.current = null
       }
+      
+      // Send event to LeftPanel to reset isProcessing when all milestones are terminal
+      window.dispatchEvent(new CustomEvent('financialStatementsProcessingComplete'))
     }
   }, [financialStatementProgress, selectedDocument?.id, isEligibleForFinancialStatements, loadFinancialStatementProgress])
+
+  const loadHistoricalCalculations = useCallback(async () => {
+    if (!selectedDocument || !isEligibleForFinancialStatements) return
+    
+    try {
+      const endpoint = isAuthenticated ? 'historical-calculations' : 'historical-calculations/test'
+      const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+      const response = await axios.get(
+        `${API_BASE_URL}/documents/${selectedDocument.id}/${endpoint}`,
+        { headers }
+      )
+      setHistoricalCalculations(response.data)
+    } catch (err) {
+      if (err.response?.status === 404) {
+        setHistoricalCalculations(null)
+      } else {
+        console.error('Error loading historical calculations:', err)
+        setHistoricalCalculations(null)
+      }
+    }
+  }, [selectedDocument, isEligibleForFinancialStatements, isAuthenticated, token])
 
   // Load balance sheet and income statement only when all milestones are terminal
   useEffect(() => {
     if (!selectedDocument || !isEligibleForFinancialStatements) return
+    if (!areAllMilestonesTerminal()) return
     
-    // Only load if all milestones are in terminal state (completed or error)
-    if (areAllMilestonesTerminal() && balanceSheetLoadAttempts < MAX_LOAD_ATTEMPTS) {
+    // Only load if attempts haven't exceeded max and data isn't already loaded
+    if (balanceSheetLoadAttempts < MAX_LOAD_ATTEMPTS && !balanceSheet) {
       loadBalanceSheet()
     }
     
-    if (areAllMilestonesTerminal() && incomeStatementLoadAttempts < MAX_LOAD_ATTEMPTS) {
+    if (incomeStatementLoadAttempts < MAX_LOAD_ATTEMPTS && !incomeStatement) {
       loadIncomeStatement()
     }
-  }, [areAllMilestonesTerminal, selectedDocument?.id, balanceSheetLoadAttempts, incomeStatementLoadAttempts, loadBalanceSheet, loadIncomeStatement])
+  }, [areAllMilestonesTerminal, selectedDocument?.id, balanceSheetLoadAttempts, incomeStatementLoadAttempts, balanceSheet, incomeStatement, loadBalanceSheet, loadIncomeStatement])
+
+  // Reset historical calculations state when document changes
+  useEffect(() => {
+    setHistoricalCalculations(null)
+    setHistoricalCalculationsLoadAttempted(false)
+  }, [selectedDocument?.id])
+
+  // Load historical calculations only once when both balance sheet and income statement are loaded
+  useEffect(() => {
+    if (!selectedDocument || !isEligibleForFinancialStatements) return
+    
+    // Only load historical calculations once when both are loaded and we haven't attempted yet
+    if (areAllMilestonesTerminal() && balanceSheet && incomeStatement && !historicalCalculationsLoadAttempted) {
+      setHistoricalCalculationsLoadAttempted(true)
+      loadHistoricalCalculations()
+    }
+  }, [areAllMilestonesTerminal, selectedDocument?.id, balanceSheet, incomeStatement, historicalCalculationsLoadAttempted, loadHistoricalCalculations])
 
   const formatCurrency = (value, currency = 'USD') => {
     if (value === null || value === undefined) return 'N/A'
@@ -204,8 +248,20 @@ function RightPanel({ selectedCompany, selectedDocument }) {
     const handleClearData = () => {
       setBalanceSheet(null)
       setIncomeStatement(null)
+      setHistoricalCalculations(null)
+      setHistoricalCalculationsLoadAttempted(false)
       setBalanceSheetLoadAttempts(0)
       setIncomeStatementLoadAttempts(0)
+    }
+
+    // Listen for event to reload historical calculations
+    const handleReloadHistoricalCalculations = () => {
+      if (selectedDocument && isEligibleForFinancialStatements) {
+        // Reset the flag so we can reload
+        setHistoricalCalculationsLoadAttempted(false)
+        loadHistoricalCalculations()
+        setHistoricalCalculationsLoadAttempted(true)
+      }
     }
 
     // Listen for event to reset progress to PENDING
@@ -214,6 +270,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
       // Only reset if it's for the current document
       if (documentId === selectedDocument?.id) {
         // Immediately set all milestones to PENDING
+        // Use the exact milestone keys that the server uses
         setFinancialStatementProgress({
           status: 'processing',
           milestones: {
@@ -245,26 +302,34 @@ function RightPanel({ selectedCompany, selectedDocument }) {
           },
           last_updated: new Date().toISOString()
         })
+        // Don't reload immediately - let the server reset first, then reload after delay
+        setTimeout(() => {
+          loadFinancialStatementProgress()
+        }, 1000)
       }
     }
 
     // Listen for event to reload progress
     const handleReloadProgress = () => {
       if (selectedDocument && isEligibleForFinancialStatements) {
-        // Immediately reload progress to start polling
-        loadFinancialStatementProgress()
+        // Delay reload slightly to ensure server has reset milestones
+        setTimeout(() => {
+          loadFinancialStatementProgress()
+        }, 500)
       }
     }
 
     window.addEventListener('clearFinancialStatements', handleClearData)
     window.addEventListener('resetProgressToPending', handleResetProgressToPending)
     window.addEventListener('reloadProgress', handleReloadProgress)
+    window.addEventListener('reloadHistoricalCalculations', handleReloadHistoricalCalculations)
     return () => {
       window.removeEventListener('clearFinancialStatements', handleClearData)
       window.removeEventListener('resetProgressToPending', handleResetProgressToPending)
       window.removeEventListener('reloadProgress', handleReloadProgress)
+      window.removeEventListener('reloadHistoricalCalculations', handleReloadHistoricalCalculations)
     }
-  }, [selectedDocument, isEligibleForFinancialStatements, loadFinancialStatementProgress])
+  }, [selectedDocument, isEligibleForFinancialStatements, loadFinancialStatementProgress, loadHistoricalCalculations])
 
   if (selectedDocument) {
     // Check if we should show "nothing to see here" (no data and all attempts exhausted or no progress)
@@ -380,6 +445,9 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                           <div className="balance-sheet-meta">
                             <span><strong>Time Period:</strong> {balanceSheet.time_period || 'N/A'}</span>
                             <span><strong>Currency:</strong> {balanceSheet.currency || 'N/A'}</span>
+                            {balanceSheet.unit && (
+                              <span><strong>Unit:</strong> {balanceSheet.unit.replace('_', ' ')}</span>
+                            )}
                             <span className={`validation-badge ${balanceSheet.is_valid ? 'valid' : 'invalid'}`}>
                               {balanceSheet.is_valid ? '✓ Valid' : '✗ Validation Errors'}
                             </span>
@@ -455,6 +523,9 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                           <div className="balance-sheet-meta">
                             <span><strong>Time Period:</strong> {incomeStatement.time_period || 'N/A'}</span>
                             <span><strong>Currency:</strong> {incomeStatement.currency || 'N/A'}</span>
+                            {incomeStatement.unit && (
+                              <span><strong>Unit:</strong> {incomeStatement.unit.replace('_', ' ')}</span>
+                            )}
                             <span className={`validation-badge ${incomeStatement.is_valid ? 'valid' : 'invalid'}`}>
                               {incomeStatement.is_valid ? '✓ Valid' : '✗ Validation Errors'}
                             </span>
@@ -529,6 +600,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                   <tr>
                                     <th>Item</th>
                                     <th className="text-right">Value</th>
+                                    <th>Unit</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -536,30 +608,35 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                     <tr>
                                       <td>Prior Period Revenue</td>
                                       <td className="text-right">{formatCurrency(incomeStatement.revenue_prior_year, incomeStatement.currency)}</td>
+                                      <td>{incomeStatement.revenue_prior_year_unit ? incomeStatement.revenue_prior_year_unit.replace('_', ' ') : 'N/A'}</td>
                                     </tr>
                                   )}
                                   {incomeStatement.revenue_growth_yoy !== null && (
                                     <tr>
                                       <td>YOY Revenue Growth</td>
                                       <td className="text-right">{incomeStatement.revenue_growth_yoy.toFixed(2)}%</td>
+                                      <td>—</td>
                                     </tr>
                                   )}
                                   {incomeStatement.amortization !== null && (
                                     <tr>
                                       <td>Amortization</td>
                                       <td className="text-right">{formatCurrency(incomeStatement.amortization, incomeStatement.currency)}</td>
+                                      <td>{incomeStatement.amortization_unit ? incomeStatement.amortization_unit.replace('_', ' ') : 'N/A'}</td>
                                     </tr>
                                   )}
                                   {incomeStatement.basic_shares_outstanding !== null && (
                                     <tr>
                                       <td>Basic Shares Outstanding</td>
                                       <td className="text-right">{incomeStatement.basic_shares_outstanding.toLocaleString()}</td>
+                                      <td>{incomeStatement.basic_shares_outstanding_unit ? incomeStatement.basic_shares_outstanding_unit.replace('_', ' ') : 'N/A'}</td>
                                     </tr>
                                   )}
                                   {incomeStatement.diluted_shares_outstanding !== null && (
                                     <tr>
                                       <td>Diluted Shares Outstanding</td>
                                       <td className="text-right">{incomeStatement.diluted_shares_outstanding.toLocaleString()}</td>
+                                      <td>{incomeStatement.diluted_shares_outstanding_unit ? incomeStatement.diluted_shares_outstanding_unit.replace('_', ' ') : 'N/A'}</td>
                                     </tr>
                                   )}
                                 </tbody>
@@ -567,6 +644,99 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                             </div>
                           </div>
                         )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Historical Calculations Section */}
+                  {historicalCalculations && (
+                    <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
+                      <h3>Historical Calculations</h3>
+                      <div className="balance-sheet-container">
+                        <div className="balance-sheet-table-container">
+                          <table className="balance-sheet-table">
+                            <thead>
+                              <tr>
+                                <th>Metric</th>
+                                <th className="text-right">Value</th>
+                                <th>Unit</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {historicalCalculations.net_working_capital !== null && (
+                                <tr>
+                                  <td>Net Working Capital</td>
+                                  <td className="text-right">{formatCurrency(historicalCalculations.net_working_capital, historicalCalculations.currency)}</td>
+                                  <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
+                                </tr>
+                              )}
+                              {historicalCalculations.net_long_term_operating_assets !== null && (
+                                <tr>
+                                  <td>Net Long Term Operating Assets</td>
+                                  <td className="text-right">{formatCurrency(historicalCalculations.net_long_term_operating_assets, historicalCalculations.currency)}</td>
+                                  <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
+                                </tr>
+                              )}
+                              {historicalCalculations.invested_capital !== null && (
+                                <tr>
+                                  <td>Invested Capital</td>
+                                  <td className="text-right">{formatCurrency(historicalCalculations.invested_capital, historicalCalculations.currency)}</td>
+                                  <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
+                                </tr>
+                              )}
+                              {historicalCalculations.capital_turnover !== null && (
+                                <tr>
+                                  <td>Capital Turnover</td>
+                                  <td className="text-right">{parseFloat(historicalCalculations.capital_turnover).toFixed(4)}</td>
+                                  <td>—</td>
+                                </tr>
+                              )}
+                              {historicalCalculations.ebita !== null && (
+                                <tr>
+                                  <td>EBITA</td>
+                                  <td className="text-right">{formatCurrency(historicalCalculations.ebita, historicalCalculations.currency)}</td>
+                                  <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
+                                </tr>
+                              )}
+                              {historicalCalculations.ebita_margin !== null && (
+                                <tr>
+                                  <td>EBITA Margin</td>
+                                  <td className="text-right">{(parseFloat(historicalCalculations.ebita_margin) * 100).toFixed(2)}%</td>
+                                  <td>—</td>
+                                </tr>
+                              )}
+                              {historicalCalculations.effective_tax_rate !== null && (
+                                <tr>
+                                  <td>Effective Tax Rate</td>
+                                  <td className="text-right">{(parseFloat(historicalCalculations.effective_tax_rate) * 100).toFixed(2)}%</td>
+                                  <td>—</td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                        
+                        {/* Calculation Notes */}
+                        {historicalCalculations.calculation_notes && (() => {
+                          try {
+                            const notes = JSON.parse(historicalCalculations.calculation_notes)
+                            if (notes && notes.length > 0) {
+                              return (
+                                <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '4px' }}>
+                                  <h4 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem' }}>Notes:</h4>
+                                  <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                                    {notes.map((note, idx) => (
+                                      <li key={idx} style={{ fontSize: '0.85rem', marginBottom: '0.25rem' }}>{note}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )
+                            }
+                          } catch (e) {
+                            return null
+                          }
+                          return null
+                        })()}
                       </div>
                     </div>
                   )}

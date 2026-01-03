@@ -254,6 +254,7 @@ Based on UI/UX Design specifications, build the frontend interface:
 - [x] LLM-based extraction of balance sheet line items:
   - Extract balance sheet exactly line by line for the specified time period
   - Extract local currency when applicable
+  - Extract unit of measurement (ones, thousands, millions, billions, or ten_thousands for foreign stocks)
 - [x] Validation and error handling:
   - Verify that current assets sum correctly
   - Verify that total assets sum correctly
@@ -291,11 +292,13 @@ Based on UI/UX Design specifications, build the frontend interface:
 - [x] LLM-based extraction of income statement line items:
   - Extract income statement exactly line by line for the specified time period
   - Extract local currency when applicable
+  - Extract unit of measurement (ones, thousands, millions, billions, or ten_thousands for foreign stocks)
   - Extract revenue for the same period in the prior year (for year-over-year growth calculation)
 - [x] Additional data extraction (using embedding and LLM):
   - Extract basic shares outstanding for the specific time period
   - Extract diluted shares outstanding for the specific time period
   - Extract amortization for the specific time period
+  - Extract unit of measurement for each additional item (revenue_prior_year, shares outstanding, amortization)
 - [x] Validation and error handling:
   - Verify gross profit calculation
   - Verify operating income calculation
@@ -327,8 +330,50 @@ Based on UI/UX Design specifications, build the frontend interface:
   - "Delete Financial Statements" button to remove all financial statement data
   - "Delete Document" button that permanently deletes document and all associated data
 
-#### 5.3: Historical Calculations
-- [ ] (Placeholder for historical calculations requirements)
+#### 5.3: Historical Calculations (Complete)
+All calculations are performed for a specific document using the extracted balance sheet and income statement items.
+
+- [x] **Net Working Capital Calculation**
+  - Sum all Current Assets labeled as Operating
+  - Sum all Current Liabilities labeled as Operating
+  - Calculate: Net Working Capital = Current Assets Operating - Current Liabilities Operating
+
+- [x] **Net Long Term Operating Assets Calculation**
+  - Sum all Non-current Assets labeled as Operating
+  - Sum all Non-current Liabilities labeled as Operating
+  - Calculate: Net Long Term Operating Assets = Non-current Assets Operating - Non-current Liabilities Operating
+
+- [x] **Invested Capital Calculation**
+  - Calculate: Invested Capital = Net Working Capital + Net Long Term Operating Assets
+
+- [x] **Capital Turnover Calculation**
+  - Calculate: Capital Turnover = Revenue / Invested Capital
+
+- [x] **EBITA Calculation**
+  - Take Operating Income, which could be called other names such as income from operations, from income statement
+  - Subtract all items between Operating Income and Revenue that are labeled as Non-Operating
+  - Subtract Amortization if available and not already subtracted
+  - Calculate: EBITA = Operating Income - Non-Operating Items - Amortization
+
+- [x] **EBITA Margin Calculation**
+  - Calculate: EBITA Margin = EBITA / Revenue
+
+- [x] **Effective Tax Rate Calculation**
+  - Try multiple methods depending on what is available in the income statement
+  - Calculate using available tax information (income tax expense, provision for income taxes, etc.)
+
+- [ ] **Adjusted Tax Rate (Future Enhancement)**
+  - If effective tax rate appears too high (>35%): Attempt to calculate adjusted tax rate by assuming impairments and write-offs are not tax deductible
+  - If effective tax rate appears too low (<10%): Attempt to calculate adjusted tax rate (methodology to be determined)
+  - Note: These enhancements are not needed for the current phase
+
+- [x] **Display and Recalculation**
+  - Display all calculated metrics as a table in the right panel in a new section called "Historical Calculations"
+  - Display unit for each metric (monetary values use balance sheet/income statement unit, ratios/percentages show "—")
+  - Add a "Re-run Historical Calculations" button in the left panel, in the Re-run Processing section
+  - Button triggers recalculation of all historical calculations using the latest extracted balance sheet and income statement data
+  - Historical calculations automatically trigger after income statement classification completes
+  - Unit is persisted and displayed for all monetary metrics
 
 ### Phase 6: Core Analysis Agents
 - [ ] Organic growth assessment agent
@@ -356,7 +401,7 @@ Based on UI/UX Design specifications, build the frontend interface:
 
 ## Next Steps
 
-1. Phase 5.3: Historical Calculations
+1. Phase 5.3 (Enhancements): Historical Calculations - Multi-Period Analysis
    - Implement historical trend analysis
    - Calculate period-over-period changes
    - Multi-period financial statement comparison
@@ -463,6 +508,14 @@ For detailed UI/UX specifications and design guidance, see [UI_UX_DESIGN.md](UI_
 - Fallback heuristics when no lookup match
 - LLM classification for remaining items
 - Normalization: trim, case-insensitive, collapse whitespace, remove leading/trailing punctuation
+
+**Unit Support:**
+- Balance sheets and income statements extract and display units (ones, thousands, millions, billions, or ten_thousands)
+- Units are extracted by LLM from document notes (e.g., "in millions", "in thousands")
+- Units are displayed in financial statement headers (to the right of Currency)
+- Additional items each have their own unit field (displayed in Unit column)
+- Historical calculations store and display units for monetary values (ratios/percentages show "—")
+- Units are persisted in database and displayed throughout the UI
 
 <!-- Add any clarifications, decisions, or notes here as the project evolves -->
 

@@ -279,10 +279,12 @@ In general, the left side is a robust navigation with breadcrumbs showing the ra
    - Extracting Additional Items (checking/pending/in_progress/completed/error/not_found)
    - Classifying Income Statement (checking/pending/in_progress/completed/error/not_found)
 4. Once all milestones are terminal (completed/error/not_found), financial statements load
-5. Balance sheet and income statement tables display with all line items, categories, amounts, and operating/non-operating classification
-6. Additional Items table displays: prior period revenue, YOY revenue growth, amortization, basic shares outstanding, diluted shares outstanding
-7. Validation status shown (valid or with error details)
-8. Key totals are bolded for emphasis
+5. Balance sheet and income statement tables display with all line items, categories, amounts, units, and operating/non-operating classification
+6. Additional Items table displays: prior period revenue, YOY revenue growth, amortization, basic shares outstanding, diluted shares outstanding (each with units)
+7. Historical Calculations table displays: Net Working Capital, Net Long Term Operating Assets, Invested Capital, Capital Turnover, EBITA, EBITA Margin, Effective Tax Rate (monetary values with units, ratios/percentages with "—")
+8. Validation status shown (valid or with error details)
+9. Key totals are bolded for emphasis
+10. Units displayed in headers (to the right of Currency) and in table columns as appropriate
 
 ### UI Components Needed
 
@@ -307,6 +309,9 @@ In general, the left side is a robust navigation with breadcrumbs showing the ra
   - Maximum 3 load attempts before showing "nothing to see here"
 
 #### 2. Balance Sheet Table
+- **Header Section**:
+  - Time Period, Currency, Unit (displayed to the right of Currency)
+  - Unit values: ones, thousands, millions, billions, or ten thousands (for foreign stocks)
 - **Table Structure**:
   - Columns: Line Item, Category, Amount (right-aligned), Type
   - Responsive table with horizontal scroll if needed
@@ -328,14 +333,17 @@ In general, the left side is a robust navigation with breadcrumbs showing the ra
   - Monospace numbers for alignment
 
 #### 3. Income Statement Table
+- **Header Section**:
+  - Time Period, Currency, Unit (displayed to the right of Currency)
+  - Unit values: ones, thousands, millions, billions, or ten thousands (for foreign stocks)
 - **Table Structure**:
   - Columns: Line Item, Category, Amount (right-aligned), Type
   - Responsive table with horizontal scroll if needed
   - Sticky header on scroll
 - **Line Item Display**:
-  - All balance sheet line items in order
+  - All income statement line items in order
   - Currency-formatted amounts
-  - Category labels (Current Assets, Total Assets, etc.)
+  - Category labels (Revenue, Costs, Expenses, etc.)
   - Operating/Non-Operating badges with color coding
 - **Key Totals Highlighting**:
   - Total Assets: Bold text
@@ -351,19 +359,45 @@ In general, the left side is a robust navigation with breadcrumbs showing the ra
 #### 4. Additional Items Table
 - **Table Structure**:
   - Title: "Additional Items"
-  - Columns: Item, Value
+  - Columns: Item, Value, Unit
   - Displays after income statement
 - **Items Displayed**:
-  - Prior Period Revenue
-  - YOY Revenue Growth (percentage)
-  - Amortization
-  - Basic Shares Outstanding
-  - Diluted Shares Outstanding
+  - Prior Period Revenue (with unit)
+  - YOY Revenue Growth (percentage, unit shows "—")
+  - Amortization (with unit)
+  - Basic Shares Outstanding (with unit, usually "ones")
+  - Diluted Shares Outstanding (with unit, usually "ones")
+- **Unit Display**:
+  - Each item has its own unit field
+  - Units displayed in separate column to the right of Value
+  - Percentages show "—" for unit
 - **Styling**:
   - Clean table format matching balance sheet and income statement styling
   - Currency/number formatting as appropriate
 
-#### 5. Validation Status Display
+#### 5. Historical Calculations Table
+- **Table Structure**:
+  - Title: "Historical Calculations"
+  - Columns: Metric, Value, Unit
+  - Displays after income statement and additional items
+  - Section separated with border-top for visual distinction
+- **Metrics Displayed**:
+  - Net Working Capital (with unit)
+  - Net Long Term Operating Assets (with unit)
+  - Invested Capital (with unit)
+  - Capital Turnover (ratio, unit shows "—")
+  - EBITA (with unit)
+  - EBITA Margin (percentage, unit shows "—")
+  - Effective Tax Rate (percentage, unit shows "—")
+- **Unit Display**:
+  - Monetary values use the balance sheet/income statement unit
+  - Ratios and percentages show "—" for unit
+  - Units displayed in separate column to the right of Value
+- **Styling**:
+  - Clean table format matching other financial statement tables
+  - Currency/number formatting as appropriate
+
+#### 6. Validation Status Display
 - **Valid Balance Sheet**:
   - Green validation badge
   - No error messages shown
@@ -380,7 +414,7 @@ In general, the left side is a robust navigation with breadcrumbs showing the ra
   - Bulleted list format
   - Red color scheme for visibility
 
-#### 6. Operating/Non-Operating Classification
+#### 7. Operating/Non-Operating Classification
 - **Type Badges**:
   - Operating: Green badge with light green background
   - Non-Operating: Orange badge with light orange background
@@ -390,7 +424,7 @@ In general, the left side is a robust navigation with breadcrumbs showing the ra
   - LLM uses best judgment for classification
   - Persisted in database and displayed in UI
 
-#### 7. Processing Workflow
+#### 8. Processing Workflow
 - **Automatic Processing**:
   - Financial statement processing automatically starts after document indexing completes
   - Processing runs sequentially: balance sheet first, then income statement

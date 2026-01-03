@@ -150,6 +150,7 @@ If the company is foreign, extract the values in the local currency.
 Return a JSON object with the following structure:
 {{
     "currency": currency code (extract from document),
+    "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract from document, e.g., if values are in millions, use "millions"),
     "time_period": "{time_period}",
     "line_items": [
         {{
@@ -166,7 +167,9 @@ IMPORTANT:
 - Include all subtotals (Current Assets, Total Assets, Current Liabilities, Total Liabilities, Total Equity, Total Liabilities and Equity)
 - Maintain the exact order of line items as they appear in the document
 - Extract the currency code from the document if available
+- Extract the unit from the document (look for notes like "in millions", "in thousands", "in billions", or "in ten thousands" for foreign stocks)
 - Values should be numeric (not strings with commas or currency symbols)
+- Use "ten_thousands" only if the stock is foreign and the document explicitly states values are in ten thousands
 
 Document text:
 {text[:30000]}  # Limit to 30k characters

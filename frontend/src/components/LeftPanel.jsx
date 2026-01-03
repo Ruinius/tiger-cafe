@@ -162,6 +162,26 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
     }
   }, [selectedDocument?.id, isAuthenticated, token, checkFinancialStatements])
 
+  // Watch for when processing completes to reset isProcessing state
+  useEffect(() => {
+    if (selectedDocument && selectedDocument.analysis_status !== 'processing' && isProcessing) {
+      setIsProcessing(false)
+    }
+  }, [selectedDocument?.analysis_status, isProcessing])
+
+  // Listen for event when financial statements processing completes
+  useEffect(() => {
+    const handleProcessingComplete = () => {
+      setIsProcessing(false)
+    }
+    
+    window.addEventListener('financialStatementsProcessingComplete', handleProcessingComplete)
+    
+    return () => {
+      window.removeEventListener('financialStatementsProcessingComplete', handleProcessingComplete)
+    }
+  }, [])
+
   useEffect(() => {
     loadCompanies()
     // Initial load of upload progress
@@ -700,8 +720,8 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                             {},
                             { headers }
                           )
-                          // Immediately reload progress to start polling
-                          window.dispatchEvent(new CustomEvent('reloadProgress'))
+                          // Don't reload immediately - RightPanel will reload after delay in resetProgressToPending handler
+                          // This ensures server has time to reset all milestones
                         } catch (err) {
                           alert(err.response?.data?.detail || 'Failed to re-run extraction and classification')
                           setIsProcessing(false)
@@ -717,55 +737,84 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                       style={{ 
                         width: '100%', 
                         textAlign: 'left', 
-                        marginTop: '0.5rem', 
-                        backgroundColor: hasFinancialStatements ? 'var(--error-color, #dc3545)' : 'var(--bg-secondary)', 
-                        color: hasFinancialStatements ? 'white' : 'var(--text-secondary)', 
-                        border: 'none',
-                        opacity: hasFinancialStatements ? 1 : 0.6,
-                        cursor: hasFinancialStatements ? 'pointer' : 'not-allowed'
+                        marginTop: '0.5rem',
+                        opacity: !hasFinancialStatements ? 0.6 : 1,
+                        cursor: !hasFinancialStatements ? 'not-allowed' : 'pointer'
                       }}
                       onClick={async () => {
                         if (!hasFinancialStatements) return
-                        if (!window.confirm('Are you sure you want to delete all financial statements for this document? This action cannot be undone.')) {
-                          return
-                        }
                         try {
-                          const endpoint = isAuthenticated ? 'financial-statements' : 'financial-statements/test'
+                          const endpoint = isAuthenticated ? 'historical-calculations/recalculate' : 'historical-calculations/recalculate/test'
                           const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
-                          await axios.delete(
+                          await axios.post(
                             `${API_BASE_URL}/documents/${selectedDocument.id}/${endpoint}`,
+                            {},
                             { headers }
                           )
-                          // Clear financial statements data in RightPanel
-                          window.dispatchEvent(new CustomEvent('clearFinancialStatements'))
-                          // Update state to reflect that financial statements no longer exist
-                          setHasFinancialStatements(false)
-                          // Refresh document status and trigger RightPanel refresh
-                          if (onDocumentSelect && selectedDocument) {
-                            // Fetch latest status
-                            const statusEndpoint = isAuthenticated ? 'status' : 'status-test'
-                            const statusResponse = await axios.get(
-                              `${API_BASE_URL}/documents/${selectedDocument.id}/${statusEndpoint}`,
-                              { headers }
-                            )
-                            if (statusResponse.data) {
-                              onDocumentSelect(statusResponse.data)
-                            }
-                          }
+                          // Trigger reload of historical calculations in RightPanel
+                          window.dispatchEvent(new CustomEvent('reloadHistoricalCalculations'))
                         } catch (err) {
-                          alert(err.response?.data?.detail || 'Failed to delete financial statements')
+                          alert(err.response?.data?.detail || 'Failed to recalculate historical calculations')
                         }
                       }}
                     >
-                      Delete Financial Statements
+                      Re-run Historical Calculations
                     </button>
                   </div>
                 </div>
               )}
               
-              {/* Delete Document Button */}
+              {/* Danger Zone */}
               <div className="summary-section" style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
                 <strong>Danger Zone</strong>
+                <button 
+                  className="button-secondary"
+                  disabled={!hasFinancialStatements}
+                  style={{ 
+                    width: '100%', 
+                    textAlign: 'left', 
+                    marginTop: '0.75rem', 
+                    backgroundColor: hasFinancialStatements ? 'var(--error-color, #dc3545)' : 'var(--bg-secondary)', 
+                    color: hasFinancialStatements ? 'white' : 'var(--text-secondary)', 
+                    border: 'none',
+                    opacity: hasFinancialStatements ? 1 : 0.6,
+                    cursor: hasFinancialStatements ? 'pointer' : 'not-allowed'
+                  }}
+                  onClick={async () => {
+                    if (!hasFinancialStatements) return
+                    if (!window.confirm('Are you sure you want to delete all financial statements for this document? This action cannot be undone.')) {
+                      return
+                    }
+                    try {
+                      const endpoint = isAuthenticated ? 'financial-statements' : 'financial-statements/test'
+                      const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+                      await axios.delete(
+                        `${API_BASE_URL}/documents/${selectedDocument.id}/${endpoint}`,
+                        { headers }
+                      )
+                      // Clear financial statements data in RightPanel
+                      window.dispatchEvent(new CustomEvent('clearFinancialStatements'))
+                      // Update state to reflect that financial statements no longer exist
+                      setHasFinancialStatements(false)
+                      // Refresh document status and trigger RightPanel refresh
+                      if (onDocumentSelect && selectedDocument) {
+                        // Fetch latest status
+                        const statusEndpoint = isAuthenticated ? 'status' : 'status-test'
+                        const statusResponse = await axios.get(
+                          `${API_BASE_URL}/documents/${selectedDocument.id}/${statusEndpoint}`,
+                          { headers }
+                        )
+                        if (statusResponse.data) {
+                          onDocumentSelect(statusResponse.data)
+                        }
+                      }
+                    } catch (err) {
+                      alert(err.response?.data?.detail || 'Failed to delete financial statements')
+                    }
+                  }}
+                >
+                  Delete Financial Statements
+                </button>
                 <button 
                   className="button-secondary"
                   style={{ 

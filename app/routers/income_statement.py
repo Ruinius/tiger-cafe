@@ -3,6 +3,7 @@ Income statement processing routes
 """
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+import traceback
 from sqlalchemy.orm import Session
 from app.database import get_db, SessionLocal
 from app.models.document import Document, DocumentType, ProcessingStatus
@@ -11,6 +12,7 @@ from app.schemas.income_statement import IncomeStatement as IncomeStatementSchem
 from app.routers.auth import get_current_user
 from app.models.user import User
 from agents.income_statement_extractor import extract_income_statement
+from app.routers.historical_calculations import calculate_and_save_historical_calculations
 import uuid
 from datetime import datetime
 import json
@@ -159,13 +161,18 @@ def process_income_statement_async(
                     document_id=document_id,
                     time_period=extracted_data.get('time_period'),
                     currency=extracted_data.get('currency'),
+                    unit=extracted_data.get('unit'),
                     is_valid=extracted_data.get('is_valid', False),
                     validation_errors=json.dumps(extracted_data.get('validation_errors', [])) if extracted_data.get('validation_errors') else None,
                     revenue_prior_year=extracted_data.get('revenue_prior_year'),
+                    revenue_prior_year_unit=extracted_data.get('revenue_prior_year_unit'),
                     revenue_growth_yoy=extracted_data.get('revenue_growth_yoy'),
                     basic_shares_outstanding=extracted_data.get('basic_shares_outstanding'),
+                    basic_shares_outstanding_unit=extracted_data.get('basic_shares_outstanding_unit'),
                     diluted_shares_outstanding=extracted_data.get('diluted_shares_outstanding'),
-                    amortization=extracted_data.get('amortization')
+                    diluted_shares_outstanding_unit=extracted_data.get('diluted_shares_outstanding_unit'),
+                    amortization=extracted_data.get('amortization'),
+                    amortization_unit=extracted_data.get('amortization_unit')
                 )
                 db_session.add(income_statement)
                 db_session.commit()
@@ -174,13 +181,18 @@ def process_income_statement_async(
             # Update income statement fields
             income_statement.time_period = extracted_data.get('time_period')
             income_statement.currency = extracted_data.get('currency')
+            income_statement.unit = extracted_data.get('unit')
             income_statement.is_valid = extracted_data.get('is_valid', False)
             income_statement.validation_errors = json.dumps(extracted_data.get('validation_errors', [])) if extracted_data.get('validation_errors') else None
             income_statement.revenue_prior_year = extracted_data.get('revenue_prior_year')
+            income_statement.revenue_prior_year_unit = extracted_data.get('revenue_prior_year_unit')
             income_statement.revenue_growth_yoy = extracted_data.get('revenue_growth_yoy')
             income_statement.basic_shares_outstanding = extracted_data.get('basic_shares_outstanding')
+            income_statement.basic_shares_outstanding_unit = extracted_data.get('basic_shares_outstanding_unit')
             income_statement.diluted_shares_outstanding = extracted_data.get('diluted_shares_outstanding')
+            income_statement.diluted_shares_outstanding_unit = extracted_data.get('diluted_shares_outstanding_unit')
             income_statement.amortization = extracted_data.get('amortization')
+            income_statement.amortization_unit = extracted_data.get('amortization_unit')
             
             # Create line items
             for idx, item in enumerate(line_items):
@@ -207,6 +219,26 @@ def process_income_statement_async(
                 MilestoneStatus.COMPLETED,
                 classification_message
             )
+            
+            # Automatically trigger historical calculations after income statement completes
+            # Use a fresh database session to ensure we can see committed data
+            try:
+                from app.database import SessionLocal
+                calc_db = SessionLocal()
+                try:
+                    calculate_and_save_historical_calculations(document_id, calc_db)
+                    print(f"Historical calculations completed for document {document_id}")
+                finally:
+                    calc_db.close()
+            except HTTPException as calc_error:
+                # Don't fail the whole process if historical calculations fail (e.g., missing balance sheet)
+                print(f"Warning: Failed to calculate historical calculations: {calc_error.detail}")
+                # Continue without raising
+            except Exception as calc_error:
+                # Don't fail the whole process if historical calculations fail
+                print(f"Warning: Failed to calculate historical calculations: {str(calc_error)}")
+                print(traceback.format_exc())
+                # Continue without raising
         except Exception as classification_error:
             # If classification/saving fails, mark it as error
             print(f"Error during income statement classification/saving: {str(classification_error)}")

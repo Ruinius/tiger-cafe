@@ -149,7 +149,8 @@ def process_balance_sheet_async(
                 time_period=extracted_data.get('time_period'),
                 is_valid=extracted_data.get('is_valid', False),
                 validation_errors=json.dumps(extracted_data.get('validation_errors', [])) if extracted_data.get('validation_errors') else None,
-                currency=extracted_data.get('currency')
+                currency=extracted_data.get('currency'),
+                unit=extracted_data.get('unit')
             )
             db_session.add(balance_sheet)
             db_session.commit()
@@ -158,6 +159,7 @@ def process_balance_sheet_async(
             # Update balance sheet fields
             balance_sheet.time_period = extracted_data.get('time_period')
             balance_sheet.currency = extracted_data.get('currency')
+            balance_sheet.unit = extracted_data.get('unit')
             balance_sheet.is_valid = extracted_data.get('is_valid', False)
             balance_sheet.validation_errors = json.dumps(extracted_data.get('validation_errors', [])) if extracted_data.get('validation_errors') else None
 
@@ -321,6 +323,33 @@ async def rerun_financial_statements(
             detail="Document must be indexed before financial statement processing can begin."
         )
     
+    # Delete existing financial statements and historical calculations before re-run
+    from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
+    from app.models.historical_calculation import HistoricalCalculation
+    
+    # Delete existing balance sheet
+    existing_balance_sheet = db.query(BalanceSheet).filter(BalanceSheet.document_id == document_id).first()
+    if existing_balance_sheet:
+        db.query(BalanceSheetLineItem).filter(
+            BalanceSheetLineItem.balance_sheet_id == existing_balance_sheet.id
+        ).delete()
+        db.delete(existing_balance_sheet)
+    
+    # Delete existing income statement
+    existing_income_statement = db.query(IncomeStatement).filter(IncomeStatement.document_id == document_id).first()
+    if existing_income_statement:
+        db.query(IncomeStatementLineItem).filter(
+            IncomeStatementLineItem.income_statement_id == existing_income_statement.id
+        ).delete()
+        db.delete(existing_income_statement)
+    
+    # Delete existing historical calculations
+    existing_historical_calc = db.query(HistoricalCalculation).filter(HistoricalCalculation.document_id == document_id).first()
+    if existing_historical_calc:
+        db.delete(existing_historical_calc)
+    
+    db.commit()
+    
     # Reset all milestones to pending
     from app.utils.financial_statement_progress import initialize_progress
     initialize_progress(document_id)
@@ -369,6 +398,33 @@ async def rerun_financial_statements_test(
             status_code=400,
             detail="Document must be indexed before financial statement processing can begin."
         )
+    
+    # Delete existing financial statements and historical calculations before re-run
+    from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
+    from app.models.historical_calculation import HistoricalCalculation
+    
+    # Delete existing balance sheet
+    existing_balance_sheet = db.query(BalanceSheet).filter(BalanceSheet.document_id == document_id).first()
+    if existing_balance_sheet:
+        db.query(BalanceSheetLineItem).filter(
+            BalanceSheetLineItem.balance_sheet_id == existing_balance_sheet.id
+        ).delete()
+        db.delete(existing_balance_sheet)
+    
+    # Delete existing income statement
+    existing_income_statement = db.query(IncomeStatement).filter(IncomeStatement.document_id == document_id).first()
+    if existing_income_statement:
+        db.query(IncomeStatementLineItem).filter(
+            IncomeStatementLineItem.income_statement_id == existing_income_statement.id
+        ).delete()
+        db.delete(existing_income_statement)
+    
+    # Delete existing historical calculations
+    existing_historical_calc = db.query(HistoricalCalculation).filter(HistoricalCalculation.document_id == document_id).first()
+    if existing_historical_calc:
+        db.delete(existing_historical_calc)
+    
+    db.commit()
     
     # Reset all milestones to pending
     from app.utils.financial_statement_progress import initialize_progress

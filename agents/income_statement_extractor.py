@@ -153,8 +153,10 @@ Also extract the revenue for the same period in the prior year (for year-over-ye
 Return a JSON object with the following structure:
 {{
     "currency": currency code (extract from document),
+    "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract from document, e.g., if values are in millions, use "millions"),
     "time_period": "{time_period}",
     "revenue_prior_year": revenue for the same period in the prior year (as number, null if not found),
+    "revenue_prior_year_unit": unit for revenue_prior_year - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (usually same as "unit", null if revenue_prior_year is null),
     "line_items": [
         {{
             "line_name": "exact name as it appears in the document but do not include long notes in parentheses",
@@ -166,12 +168,15 @@ Return a JSON object with the following structure:
 }}
 
 IMPORTANT:
+- Stop after the net income line item is extracted
 - Extract values exactly as they appear (no rounding, include negative values if present)
 - Include all line items, including but not limited to: Revenue, Cost of Revenue/Cost of Goods Sold, Gross Profit, Operating Expenses, Operating Income, Net Income, etc.
 - Maintain the exact order of line items as they appear in the document
 - Extract the currency code from the document if available
+- Extract the unit from the document (look for notes like "in millions", "in thousands", "in billions", or "in ten thousands" for foreign stocks)
 - Values should be numeric (not strings with commas or currency symbols)
 - For revenue_prior_year, look for the same period in the prior year (e.g., if time_period is "Q3 2023", look for "Q3 2022" revenue)
+- Use "ten_thousands" only if the stock is foreign and the document explicitly states values are in ten thousands
 
 Document text:
 {text[:30000]}  # Limit to 30k characters
@@ -318,8 +323,11 @@ def extract_additional_data_llm(text: str, time_period: str) -> Dict:
 Return a JSON object with the following structure:
 {{
     "basic_shares_outstanding": number (as number, not string, null if not found),
+    "basic_shares_outstanding_unit": unit for basic_shares_outstanding - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (usually "ones", null if basic_shares_outstanding is null),
     "diluted_shares_outstanding": number (as number, not string, null if not found),
-    "amortization": number (as number, not string, null if not found)
+    "diluted_shares_outstanding_unit": unit for diluted_shares_outstanding - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (usually "ones", null if diluted_shares_outstanding is null),
+    "amortization": number (as number, not string, null if not found),
+    "amortization_unit": unit for amortization - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (usually same as income statement unit, null if amortization is null)
 }}
 
 IMPORTANT:
@@ -327,6 +335,8 @@ IMPORTANT:
 - Values should be numeric (not strings with commas)
 - If a value is not found, use null
 - Look for these values in the income statement, notes, or financial highlights sections
+- Extract units from the document (shares are usually in "ones", amortization usually matches the income statement unit)
+- Use "ten_thousands" only if the stock is foreign and the document explicitly states values are in ten thousands
 
 Document text:
 {text[:30000]}  # Limit to 30k characters
