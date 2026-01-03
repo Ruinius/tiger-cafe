@@ -5,6 +5,7 @@ Test script for document upload endpoint
 import os
 import sys
 
+import pytest
 import requests
 
 # Configuration
@@ -12,6 +13,7 @@ API_BASE_URL = "http://localhost:8000"
 UPLOAD_ENDPOINT = f"{API_BASE_URL}/api/documents/upload"
 
 
+@pytest.mark.skip(reason="Manual upload script; requires server and credentials.")
 def test_upload(pdf_path: str, google_token: str):
     """
     Test the document upload endpoint.
