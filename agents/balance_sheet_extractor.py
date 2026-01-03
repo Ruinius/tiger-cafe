@@ -16,7 +16,6 @@ from app.utils.gemini_client import generate_embedding_safe, generate_content_sa
 from typing import Dict, List, Optional, Tuple
 import json
 import os
-import csv
 import re
 from datetime import datetime
 
@@ -31,27 +30,6 @@ except ImportError:
         norm_a = sum(x * x for x in a) ** 0.5
         norm_b = sum(x * x for x in b) ** 0.5
         return dot_product / (norm_a * norm_b) if (norm_a * norm_b) > 0 else 0
-
-
-def load_balance_sheet_items_csv() -> Dict[str, str]:
-    """
-    Load balance sheet items CSV for classification context.
-    
-    Returns:
-        Dictionary mapping line names to typical classifications
-    """
-    csv_path = os.path.join("data", "balance_sheet_items.csv")
-    items = {}
-    
-    if os.path.exists(csv_path):
-        with open(csv_path, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                line_name = row.get('line_name', '').strip().lower()
-                classification = row.get('typical_classification', 'operating').strip()
-                items[line_name] = classification
-    
-    return items
 
 
 def find_balance_sheet_section(document_id: str, file_path: str, time_period: str) -> Tuple[Optional[str], Optional[int]]:
