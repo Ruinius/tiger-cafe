@@ -1,21 +1,36 @@
 # Database Schema
 
-This document describes the database schema for Tiger-Cafe.
+This document summarizes the current SQLite schema for Tiger-Cafe and points to the model definitions that act as the source of truth.
+
+## Source of Truth
+
+SQLAlchemy models live in `app/models/`:
+
+- `app/models/user.py`
+- `app/models/company.py`
+- `app/models/document.py`
+- `app/models/balance_sheet.py`
+- `app/models/income_statement.py`
+- `app/models/historical_calculation.py`
+- `app/models/financial_metric.py`
+- `app/models/analysis_result.py`
+
+If you need to update the schema, change the model definitions first, then regenerate the baseline schema with `migrate_baseline_schema.py`.
 
 ## Tables
 
-### users
+### `users`
 Stores user information from Google OAuth authentication.
 
 - `id` (String, Primary Key): Google user ID (sub claim from JWT)
 - `email` (String, Unique, Indexed): User email address
-- `name` (String, Nullable): User's display name
-- `picture` (String, Nullable): URL to user's profile picture
+- `name` (String, Nullable): Display name
+- `picture` (String, Nullable): Profile image URL
 - `created_at` (DateTime): Account creation timestamp
 - `updated_at` (DateTime, Nullable): Last update timestamp
 - `is_active` (Boolean): Account active status
 
-### companies
+### `companies`
 Stores company information.
 
 - `id` (String, Primary Key): Unique company identifier
@@ -29,23 +44,23 @@ Stores company information.
 - One-to-many with `financial_metrics`
 - One-to-many with `analysis_results`
 
-### documents
+### `documents`
 Stores uploaded document metadata and processing status.
 
 - `id` (String, Primary Key): Unique document identifier
-- `user_id` (String, Foreign Key -> users.id, Indexed): Owner of the document
-- `company_id` (String, Foreign Key -> companies.id, Indexed): Associated company
+- `user_id` (String, Foreign Key → `users.id`, Indexed): Document owner
+- `company_id` (String, Foreign Key → `companies.id`, Indexed): Associated company
 - `filename` (String): Original filename
 - `file_path` (String): Path to stored PDF file
-- `document_type` (Enum): Type of document (earnings_announcement, quarterly_filing, annual_filing, press_release, analyst_report, news_article, other)
-- `time_period` (String, Nullable): Time period (e.g., "Q3 2023", "FY 2023")
-- `unique_id` (String, Nullable, Indexed): Unique identifier for dedupe
-- `indexing_status` (Enum): Status of embedding/indexing (pending, uploading, classifying, indexing, indexed, error)
-- `analysis_status` (Enum): Status of financial analysis (pending, processing, processed, error)
+- `document_type` (Enum): `earnings_announcement`, `quarterly_filing`, `annual_filing`, `press_release`, `analyst_report`, `news_article`, `other`
+- `time_period` (String, Nullable): Time period (e.g., “Q3 2023”)
+- `unique_id` (String, Nullable, Indexed): Dedupe identifier
+- `indexing_status` (Enum): `pending`, `uploading`, `classifying`, `indexing`, `indexed`, `error`
+- `analysis_status` (Enum): `pending`, `processing`, `processed`, `error`
 - `duplicate_detected` (Boolean): Duplicate flag
 - `existing_document_id` (String, Nullable): Duplicate reference
-- `summary` (Text, Nullable): LLM-generated summary from initial upload
-- `page_count` (Integer, Nullable): Number of pages in the document
+- `summary` (Text, Nullable): LLM-generated summary
+- `page_count` (Integer, Nullable): Number of pages
 - `character_count` (Integer, Nullable): Character count of extracted text
 - `uploaded_at` (DateTime): Upload timestamp
 - `indexed_at` (DateTime, Nullable): Indexing completion timestamp
@@ -55,40 +70,33 @@ Stores uploaded document metadata and processing status.
 - Many-to-one with `users`
 - Many-to-one with `companies`
 
-### financial_metrics
-Stores calculated financial metrics for companies.
+### `financial_metrics`
+Stores calculated metrics for companies.
 
 - `id` (String, Primary Key): Unique metric identifier
-- `company_id` (String, Foreign Key -> companies.id, Indexed): Associated company
-- `metric_name` (String, Indexed): Name of the metric (e.g., "organic_growth", "operating_margin", "capital_turnover")
-- `period` (String, Indexed): Time period (e.g., "Q3 2023", "FY 2023")
+- `company_id` (String, Foreign Key → `companies.id`, Indexed): Associated company
+- `metric_name` (String, Indexed): Metric name (e.g., `organic_growth`, `operating_margin`)
+- `period` (String, Indexed): Time period (e.g., “FY 2023”)
 - `period_date` (Date, Nullable, Indexed): Specific date for the period
 - `value` (Float): Metric value
-- `unit` (String, Nullable): Unit of measurement (e.g., "percentage", "ratio", "dollars")
-- `source_document_id` (String, Foreign Key -> documents.id, Nullable): Source document
+- `unit` (String, Nullable): Unit of measurement (e.g., `percentage`, `ratio`, `dollars`)
+- `source_document_id` (String, Foreign Key → `documents.id`, Nullable): Source document
 - `calculated_at` (DateTime): Calculation timestamp
 
-**Relationships:**
-- Many-to-one with `companies`
-- Many-to-one with `documents` (optional)
-
-### analysis_results
+### `analysis_results`
 Stores analysis results (valuation, sensitivity, etc.).
 
 - `id` (String, Primary Key): Unique result identifier
-- `company_id` (String, Foreign Key -> companies.id, Indexed): Associated company
-- `analysis_type` (String, Indexed): Type of analysis (e.g., "intrinsic_value", "sensitivity", "market_belief")
+- `company_id` (String, Foreign Key → `companies.id`, Indexed): Associated company
+- `analysis_type` (String, Indexed): Type (e.g., `intrinsic_value`, `sensitivity`, `market_belief`)
 - `completed_at` (DateTime): Analysis completion timestamp
-- `assumptions` (JSON, Nullable): Input assumptions for the analysis
+- `assumptions` (JSON, Nullable): Input assumptions
 - `results` (JSON): Calculation results
-- `summary` (Text, Nullable): LLM-generated summary of the analysis
-
-**Relationships:**
-- Many-to-one with `companies`
+- `summary` (Text, Nullable): LLM-generated summary
 
 ## Enums
 
-### DocumentType
+### `DocumentType`
 - `earnings_announcement`
 - `quarterly_filing`
 - `annual_filing`
@@ -97,7 +105,7 @@ Stores analysis results (valuation, sensitivity, etc.).
 - `news_article`
 - `other`
 
-### ProcessingStatus
+### `ProcessingStatus`
 - `pending`
 - `uploading`
 - `classifying`
@@ -112,9 +120,14 @@ Stores analysis results (valuation, sensitivity, etc.).
 - `users.email`: Unique index for email lookups
 - `companies.name`: Index for company name searches
 - `companies.ticker`: Index for ticker symbol lookups
-- `documents.user_id`: Index for user's document queries
+- `documents.user_id`: Index for user document queries
 - `documents.company_id`: Index for company document queries
 - `financial_metrics.company_id`: Index for company metric queries
 - `financial_metrics.metric_name`: Index for metric type queries
 - `financial_metrics.period`: Index for time period queries
 - `analysis_results.company_id`: Index for company analysis queries
+
+## Notes
+
+- The database defaults to SQLite (`tiger_cafe.db`) via `DATABASE_URL` in `.env`.
+- Historical migrations are archived in `migrations_archive/`. New schema changes should be reflected in models + baseline migration updates.
