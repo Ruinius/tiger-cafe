@@ -8,25 +8,16 @@ This queue handles:
 3. Financial statement processing (if eligible)
 """
 
-import os
 import queue
 import threading
 import time
-import uuid
 from dataclasses import dataclass
-from datetime import datetime
 
-from agents.document_classifier import classify_document
-from agents.document_summarizer import generate_document_summary
 from app.database import SessionLocal
-from app.models.company import Company
 from app.models.document import Document, DocumentType, ProcessingStatus
 from app.routers.balance_sheet import process_balance_sheet_async
 from app.routers.income_statement import process_income_statement_async
-from app.utils.document_hash import generate_document_hash
-from app.utils.document_indexer import index_document_chunks
-from app.utils.duplicate_detector import check_duplicate_document
-from app.utils.pdf_extractor import extract_text_from_pdf
+from app.services.document_processing import DocumentProcessingMode, process_document
 
 # Task priorities: lower number = higher priority
 PRIORITY_CLASSIFICATION_INDEXING = 0  # Highest priority
@@ -52,120 +43,15 @@ _processing_thread: threading.Thread | None = None
 _queue_lock = threading.Lock()
 
 
-def _classify_and_index_document(document_id: str, db_session: SessionLocal):
-    """
-    Classify and index a document.
-    This includes: classification, duplicate check, summary generation, and embedding.
-    """
-    document = db_session.query(Document).filter(Document.id == document_id).first()
-    if not document:
-        print(f"Document {document_id} not found")
-        return
-
-    # Step 1: Extract text and classify
-    document.indexing_status = ProcessingStatus.CLASSIFYING
-    db_session.commit()
-
-    if not document.file_path or not os.path.exists(document.file_path):
-        print(f"File not found for document {document_id}")
-        document.indexing_status = ProcessingStatus.ERROR
-        db_session.commit()
-        return
-
-    # Extract text from first few pages for classification
-    extracted_text, total_pages, character_count = extract_text_from_pdf(
-        document.file_path, max_pages=5
-    )
-
-    # Generate hash from first 5000 characters
-    hash_text = extracted_text[:5000] if len(extracted_text) > 5000 else extracted_text
-    document_hash = generate_document_hash(hash_text)
-
-    # Classify document
-    classification_data = classify_document(extracted_text)
-    company_name = classification_data.get("company_name")
-
-    if not company_name:
-        document.indexing_status = ProcessingStatus.ERROR
-        db_session.commit()
-        return
-
-    # Get or create company
-    company = db_session.query(Company).filter(Company.name.ilike(company_name)).first()
-
-    if not company:
-        company = Company(
-            id=str(uuid.uuid4()), name=company_name, ticker=classification_data.get("ticker")
-        )
-        db_session.add(company)
-        db_session.commit()
-        db_session.refresh(company)
-
-    # Update document with company and classification
-    document.company_id = company.id
-    document.document_type = classification_data.get("document_type")
-    document.time_period = classification_data.get("time_period")
-    document.unique_id = document_hash
-    document.page_count = total_pages
-    document.character_count = character_count
-
-    # Check for duplicates
-    document_type = classification_data.get("document_type")
-    time_period = classification_data.get("time_period")
-    duplicate_check = None
-
-    if document_type:
-        duplicate_check = check_duplicate_document(
-            db=db_session,
-            company_id=company.id,
-            document_type=document_type,
-            time_period=time_period,
-            filename=document.filename,
-            unique_id=document_hash,
-            exclude_document_id=document_id,
-        )
-
-    # If duplicate detected, stop and wait for user action
-    if duplicate_check and duplicate_check.get("is_duplicate"):
-        existing_doc = duplicate_check["existing_document"]
-        document.duplicate_detected = True
-        document.existing_document_id = existing_doc.id
-        document.indexing_status = (
-            ProcessingStatus.CLASSIFYING
-        )  # Stay in classifying until user confirms
-        db_session.commit()
-        return  # Stop here, wait for user to click "Replace & Index"
-
-    # Step 2: No duplicate, proceed with indexing
-    document.indexing_status = ProcessingStatus.INDEXING
-    db_session.commit()
-
-    # Generate summary
+def _process_document_with_service(document_id: str, mode: DocumentProcessingMode, db_session):
     try:
-        summary = generate_document_summary(extracted_text)
-        if summary:
-            document.summary = summary
+        process_document(db_session=db_session, document_id=document_id, mode=mode)
+    except Exception as exc:
+        print(f"Error processing document {document_id} in mode {mode.value}: {exc}")
+        document = db_session.query(Document).filter(Document.id == document_id).first()
+        if document:
+            document.indexing_status = ProcessingStatus.ERROR
             db_session.commit()
-    except Exception as e:
-        print(f"Warning: Failed to generate summary: {str(e)}")
-
-    # Index document using chunk-based approach (5-page chunks)
-    # This replaces the old document-level embedding
-    index_document_chunks(document.file_path, document_id, chunk_size=5)
-
-    # Update character count (approximate, based on extracted text)
-    full_extracted_text, total_pages, character_count = extract_text_from_pdf(
-        document.file_path, max_pages=None
-    )
-
-    # Update final status
-    document.indexing_status = ProcessingStatus.INDEXED
-    document.indexed_at = datetime.utcnow()
-    document.page_count = total_pages
-    document.character_count = character_count
-    db_session.commit()
-
-    print(f"Completed classification and indexing for document {document_id}")
 
 
 def _process_financial_statements(document_id: str, db_session: SessionLocal):
@@ -235,7 +121,9 @@ def _process_document_worker():
                         or document.indexing_status == ProcessingStatus.CLASSIFYING
                     ):
                         # Document needs classification and indexing
-                        _classify_and_index_document(task.document_id, db_session)
+                        _process_document_with_service(
+                            task.document_id, DocumentProcessingMode.FULL, db_session
+                        )
 
                         # Refresh document to get updated status
                         db_session.refresh(document)
@@ -254,28 +142,9 @@ def _process_document_worker():
                     elif document.indexing_status == ProcessingStatus.INDEXING:
                         # Document is already classified, just needs indexing
                         # This can happen when replace_and_index is called
-                        if not document.file_path or not os.path.exists(document.file_path):
-                            print(f"File not found for document {task.document_id}")
-                            document.indexing_status = ProcessingStatus.ERROR
-                            db_session.commit()
-                            continue
-
-                        # Index document using chunk-based approach
-                        index_document_chunks(document.file_path, task.document_id, chunk_size=5)
-
-                        # Update character count (approximate, based on extracted text)
-                        full_extracted_text, total_pages, character_count = extract_text_from_pdf(
-                            document.file_path, max_pages=None
+                        _process_document_with_service(
+                            task.document_id, DocumentProcessingMode.INDEX_ONLY, db_session
                         )
-
-                        # Update final status
-                        document.indexing_status = ProcessingStatus.INDEXED
-                        document.indexed_at = datetime.utcnow()
-                        document.page_count = total_pages
-                        document.character_count = character_count
-                        db_session.commit()
-
-                        print(f"Completed indexing for document {task.document_id}")
 
                         # Refresh document to get updated status
                         db_session.refresh(document)
