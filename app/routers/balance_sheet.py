@@ -1,0 +1,591 @@
+"""
+Balance sheet processing routes
+"""
+
+import json
+import uuid
+from datetime import datetime
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from agents.balance_sheet_extractor import extract_balance_sheet
+from app.database import get_db
+from app.models.balance_sheet import BalanceSheet, BalanceSheetLineItem
+from app.models.document import Document, DocumentType, ProcessingStatus
+from app.models.user import User
+from app.routers.auth import get_current_user
+from app.schemas.balance_sheet import BalanceSheet as BalanceSheetSchema
+
+router = APIRouter()
+
+
+def process_balance_sheet_async(document_id: str, db: Session):
+    """
+    Background task to process balance sheet extraction.
+    """
+    from app.database import SessionLocal
+    from app.utils.financial_statement_progress import (
+        FinancialStatementMilestone,
+        MilestoneStatus,
+        get_progress,
+        initialize_progress,
+        update_milestone,
+    )
+
+    db_session = SessionLocal()
+
+    try:
+        # Get document
+        document = db_session.query(Document).filter(Document.id == document_id).first()
+        if not document:
+            print(f"Document {document_id} not found")
+            return
+
+        # Check if document type is eligible
+        eligible_types = [
+            DocumentType.EARNINGS_ANNOUNCEMENT,
+            DocumentType.QUARTERLY_FILING,
+            DocumentType.ANNUAL_FILING,
+        ]
+
+        if document.document_type not in eligible_types:
+            print(
+                f"Document type {document.document_type} is not eligible for balance sheet processing"
+            )
+            document.analysis_status = ProcessingStatus.ERROR
+            db_session.commit()
+            return
+
+        # Initialize or reset progress tracking
+        # If progress doesn't exist, initialize it
+        # If it exists, we're re-running, so reset all milestones (full re-run)
+        if not get_progress(document_id):
+            initialize_progress(document_id)
+        else:
+            # Re-running: reset all milestones for full re-run
+            from app.utils.financial_statement_progress import reset_all_milestones
+
+            reset_all_milestones(document_id)
+
+        # Update status to processing
+        document.analysis_status = ProcessingStatus.PROCESSING
+        db_session.commit()
+
+        # Delete existing balance sheet BEFORE extraction to ensure fresh start
+        existing_balance_sheet = (
+            db_session.query(BalanceSheet).filter(BalanceSheet.document_id == document_id).first()
+        )
+
+        if existing_balance_sheet:
+            # Delete existing line items first (foreign key constraint)
+            db_session.query(BalanceSheetLineItem).filter(
+                BalanceSheetLineItem.balance_sheet_id == existing_balance_sheet.id
+            ).delete()
+            # Delete the balance sheet itself
+            db_session.delete(existing_balance_sheet)
+            db_session.commit()
+            print(f"Deleted existing balance sheet for document {document_id} before re-extraction")
+
+        # Update milestone: extracting balance sheet
+        update_milestone(
+            document_id,
+            FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+            MilestoneStatus.IN_PROGRESS,
+            "Extracting balance sheet data...",
+        )
+
+        # Extract balance sheet
+        time_period = document.time_period or "Unknown"
+        extracted_data = extract_balance_sheet(
+            document_id=document_id,
+            file_path=document.file_path,
+            time_period=time_period,
+            max_retries=3,
+        )
+
+        # Check if extraction returned valid data with line items
+        line_items = extracted_data.get("line_items", [])
+        if not line_items or len(line_items) == 0:
+            error_msg = "Balance sheet extraction returned no line items"
+            print(f"Error: {error_msg}")
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+                MilestoneStatus.ERROR,
+                error_msg,
+            )
+            # Mark classification milestone as ERROR as well since we can't proceed
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.CLASSIFYING_BALANCE_SHEET,
+                MilestoneStatus.ERROR,
+                "Cannot classify: extraction failed",
+            )
+            document.analysis_status = ProcessingStatus.ERROR
+            db_session.commit()
+            return
+
+        # Update milestone: extracting balance sheet completed
+        # Note: Even if validation fails, extraction is considered completed
+        extraction_message = "Balance sheet extraction completed"
+        if not extracted_data.get("is_valid", False):
+            extraction_message += " (validation failed)"
+        update_milestone(
+            document_id,
+            FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+            MilestoneStatus.COMPLETED,
+            extraction_message,
+        )
+
+        # Update milestone: classifying balance sheet
+        update_milestone(
+            document_id,
+            FinancialStatementMilestone.CLASSIFYING_BALANCE_SHEET,
+            MilestoneStatus.IN_PROGRESS,
+            "Classifying balance sheet line items...",
+        )
+
+        try:
+            # Create new balance sheet (existing one was already deleted before extraction)
+            balance_sheet = BalanceSheet(
+                id=str(uuid.uuid4()),
+                document_id=document_id,
+                time_period=extracted_data.get("time_period"),
+                is_valid=extracted_data.get("is_valid", False),
+                validation_errors=json.dumps(extracted_data.get("validation_errors", []))
+                if extracted_data.get("validation_errors")
+                else None,
+                currency=extracted_data.get("currency"),
+                unit=extracted_data.get("unit"),
+            )
+            db_session.add(balance_sheet)
+            db_session.commit()
+            db_session.refresh(balance_sheet)
+
+            # Update balance sheet fields
+            balance_sheet.time_period = extracted_data.get("time_period")
+            balance_sheet.currency = extracted_data.get("currency")
+            balance_sheet.unit = extracted_data.get("unit")
+            balance_sheet.is_valid = extracted_data.get("is_valid", False)
+            balance_sheet.validation_errors = (
+                json.dumps(extracted_data.get("validation_errors", []))
+                if extracted_data.get("validation_errors")
+                else None
+            )
+
+            # Create line items
+            for idx, item in enumerate(line_items):
+                line_item = BalanceSheetLineItem(
+                    id=str(uuid.uuid4()),
+                    balance_sheet_id=balance_sheet.id,
+                    line_name=item["line_name"],
+                    line_value=item["line_value"],
+                    line_category=item.get("line_category"),
+                    is_operating=item.get("is_operating"),
+                    line_order=idx,
+                )
+                db_session.add(line_item)
+
+            db_session.commit()
+
+            # Update milestone: classifying balance sheet completed
+            classification_message = "Balance sheet classification completed"
+            if not extracted_data.get("is_valid", False):
+                classification_message += " (data invalid but classified)"
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.CLASSIFYING_BALANCE_SHEET,
+                MilestoneStatus.COMPLETED,
+                classification_message,
+            )
+        except Exception as classification_error:
+            # If classification/saving fails, mark it as error
+            print(f"Error during balance sheet classification/saving: {str(classification_error)}")
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.CLASSIFYING_BALANCE_SHEET,
+                MilestoneStatus.ERROR,
+                f"Classification error: {str(classification_error)}",
+            )
+            raise  # Re-raise to be caught by outer exception handler
+
+        # Update document status
+        document.analysis_status = ProcessingStatus.PROCESSED
+        document.processed_at = datetime.utcnow()
+        db_session.commit()
+
+    except Exception as e:
+        print(f"Error processing balance sheet for document {document_id}: {str(e)}")
+        from app.utils.financial_statement_progress import (
+            FinancialStatementMilestone,
+            MilestoneStatus,
+            update_milestone,
+        )
+
+        # Update milestone to error
+        current_progress = get_progress(document_id)
+        if current_progress:
+            # Find which milestone was in progress and mark it as error
+            milestones = current_progress.get("milestones", {})
+            for milestone_key, milestone_data in milestones.items():
+                if milestone_data.get("status") == MilestoneStatus.IN_PROGRESS.value:
+                    try:
+                        milestone = FinancialStatementMilestone(milestone_key)
+                        update_milestone(
+                            document_id, milestone, MilestoneStatus.ERROR, f"Error: {str(e)}"
+                        )
+                    except Exception:
+                        pass
+                    break
+
+        if document:
+            document.analysis_status = ProcessingStatus.ERROR
+            db_session.commit()
+    finally:
+        db_session.close()
+
+
+@router.post("/{document_id}/process-balance-sheet")
+async def trigger_balance_sheet_processing(
+    document_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Trigger balance sheet processing for a document.
+    Only processes earnings announcements, quarterly filings, and annual reports.
+    """
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Check if document type is eligible
+    eligible_types = [
+        DocumentType.EARNINGS_ANNOUNCEMENT,
+        DocumentType.QUARTERLY_FILING,
+        DocumentType.ANNUAL_FILING,
+    ]
+
+    if document.document_type not in eligible_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Document type {document.document_type} is not eligible for balance sheet processing. Only earnings announcements, quarterly filings, and annual reports are supported.",
+        )
+
+    # Check if document is indexed
+    if document.indexing_status != ProcessingStatus.INDEXED:
+        raise HTTPException(
+            status_code=400,
+            detail="Document must be indexed before balance sheet processing can begin.",
+        )
+
+    # Check if already processing or processed
+    if document.analysis_status == ProcessingStatus.PROCESSING:
+        raise HTTPException(
+            status_code=400,
+            detail="Balance sheet processing is already in progress for this document.",
+        )
+
+    # Start background processing
+    background_tasks.add_task(process_balance_sheet_async, document_id, db)
+
+    # Update status to processing
+    document.analysis_status = ProcessingStatus.PROCESSING
+    db.commit()
+
+    return {"message": "Balance sheet processing started", "document_id": document_id}
+
+
+@router.post("/{document_id}/rerun-financial-statements")
+async def rerun_financial_statements(
+    document_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Re-run entire financial statement pipeline (balance sheet then income statement sequentially)"""
+
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Check if document type is eligible
+    eligible_types = [
+        DocumentType.EARNINGS_ANNOUNCEMENT,
+        DocumentType.QUARTERLY_FILING,
+        DocumentType.ANNUAL_FILING,
+    ]
+
+    if document.document_type not in eligible_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Document type {document.document_type} is not eligible for financial statement processing.",
+        )
+
+    if document.indexing_status != ProcessingStatus.INDEXED:
+        raise HTTPException(
+            status_code=400,
+            detail="Document must be indexed before financial statement processing can begin.",
+        )
+
+    # Delete existing financial statements and historical calculations before re-run
+    from app.models.historical_calculation import HistoricalCalculation
+    from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
+
+    # Delete existing balance sheet
+    existing_balance_sheet = (
+        db.query(BalanceSheet).filter(BalanceSheet.document_id == document_id).first()
+    )
+    if existing_balance_sheet:
+        db.query(BalanceSheetLineItem).filter(
+            BalanceSheetLineItem.balance_sheet_id == existing_balance_sheet.id
+        ).delete()
+        db.delete(existing_balance_sheet)
+
+    # Delete existing income statement
+    existing_income_statement = (
+        db.query(IncomeStatement).filter(IncomeStatement.document_id == document_id).first()
+    )
+    if existing_income_statement:
+        db.query(IncomeStatementLineItem).filter(
+            IncomeStatementLineItem.income_statement_id == existing_income_statement.id
+        ).delete()
+        db.delete(existing_income_statement)
+
+    # Delete existing historical calculations
+    existing_historical_calc = (
+        db.query(HistoricalCalculation)
+        .filter(HistoricalCalculation.document_id == document_id)
+        .first()
+    )
+    if existing_historical_calc:
+        db.delete(existing_historical_calc)
+
+    db.commit()
+
+    # Reset all milestones to pending
+    from app.utils.financial_statement_progress import initialize_progress
+
+    initialize_progress(document_id)
+
+    # Queue document for financial statement processing (lower priority)
+    from app.utils.document_processing_queue import queue_financial_statements_processing
+
+    queue_financial_statements_processing(document_id)
+
+    # Update status to processing
+    document.analysis_status = ProcessingStatus.PROCESSING
+    db.commit()
+
+    return {
+        "message": "Financial statement extraction and classification re-run started",
+        "document_id": document_id,
+    }
+
+
+@router.post("/{document_id}/rerun-financial-statements/test")
+async def rerun_financial_statements_test(
+    document_id: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)
+):
+    """TEST ENDPOINT: Re-run entire financial statement pipeline without authentication"""
+
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Check if document type is eligible
+    eligible_types = [
+        DocumentType.EARNINGS_ANNOUNCEMENT,
+        DocumentType.QUARTERLY_FILING,
+        DocumentType.ANNUAL_FILING,
+    ]
+
+    if document.document_type not in eligible_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Document type {document.document_type} is not eligible for financial statement processing.",
+        )
+
+    if document.indexing_status != ProcessingStatus.INDEXED:
+        raise HTTPException(
+            status_code=400,
+            detail="Document must be indexed before financial statement processing can begin.",
+        )
+
+    # Delete existing financial statements and historical calculations before re-run
+    from app.models.historical_calculation import HistoricalCalculation
+    from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
+
+    # Delete existing balance sheet
+    existing_balance_sheet = (
+        db.query(BalanceSheet).filter(BalanceSheet.document_id == document_id).first()
+    )
+    if existing_balance_sheet:
+        db.query(BalanceSheetLineItem).filter(
+            BalanceSheetLineItem.balance_sheet_id == existing_balance_sheet.id
+        ).delete()
+        db.delete(existing_balance_sheet)
+
+    # Delete existing income statement
+    existing_income_statement = (
+        db.query(IncomeStatement).filter(IncomeStatement.document_id == document_id).first()
+    )
+    if existing_income_statement:
+        db.query(IncomeStatementLineItem).filter(
+            IncomeStatementLineItem.income_statement_id == existing_income_statement.id
+        ).delete()
+        db.delete(existing_income_statement)
+
+    # Delete existing historical calculations
+    existing_historical_calc = (
+        db.query(HistoricalCalculation)
+        .filter(HistoricalCalculation.document_id == document_id)
+        .first()
+    )
+    if existing_historical_calc:
+        db.delete(existing_historical_calc)
+
+    db.commit()
+
+    # Reset all milestones to pending
+    from app.utils.financial_statement_progress import initialize_progress
+
+    initialize_progress(document_id)
+
+    # Queue document for financial statement processing (lower priority)
+    from app.utils.document_processing_queue import queue_financial_statements_processing
+
+    queue_financial_statements_processing(document_id)
+
+    # Update status to processing
+    document.analysis_status = ProcessingStatus.PROCESSING
+    db.commit()
+
+    return {
+        "message": "Financial statement extraction and classification re-run started",
+        "document_id": document_id,
+    }
+
+
+@router.delete("/{document_id}/financial-statements")
+async def delete_financial_statements(
+    document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    """Delete all financial statements (balance sheet and income statement) for a document"""
+    from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
+    from app.utils.financial_statement_progress import clear_progress
+
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Delete balance sheet and its line items
+    balance_sheet = db.query(BalanceSheet).filter(BalanceSheet.document_id == document_id).first()
+    if balance_sheet:
+        # Delete line items (cascade should handle this, but being explicit)
+        db.query(BalanceSheetLineItem).filter(
+            BalanceSheetLineItem.balance_sheet_id == balance_sheet.id
+        ).delete()
+        db.delete(balance_sheet)
+
+    # Delete income statement and its line items
+    income_statement = (
+        db.query(IncomeStatement).filter(IncomeStatement.document_id == document_id).first()
+    )
+    if income_statement:
+        # Delete line items (cascade should handle this, but being explicit)
+        db.query(IncomeStatementLineItem).filter(
+            IncomeStatementLineItem.income_statement_id == income_statement.id
+        ).delete()
+        db.delete(income_statement)
+
+    # Clear progress tracking
+    clear_progress(document_id)
+
+    # Reset document analysis status
+    document.analysis_status = ProcessingStatus.PENDING
+    document.processed_at = None
+
+    db.commit()
+
+    return {"message": "Financial statements deleted successfully", "document_id": document_id}
+
+
+@router.delete("/{document_id}/financial-statements/test")
+async def delete_financial_statements_test(document_id: str, db: Session = Depends(get_db)):
+    """TEST ENDPOINT: Delete all financial statements without authentication"""
+    from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
+    from app.utils.financial_statement_progress import clear_progress
+
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Delete balance sheet and its line items
+    balance_sheet = db.query(BalanceSheet).filter(BalanceSheet.document_id == document_id).first()
+    if balance_sheet:
+        # Delete line items (cascade should handle this, but being explicit)
+        db.query(BalanceSheetLineItem).filter(
+            BalanceSheetLineItem.balance_sheet_id == balance_sheet.id
+        ).delete()
+        db.delete(balance_sheet)
+
+    # Delete income statement and its line items
+    income_statement = (
+        db.query(IncomeStatement).filter(IncomeStatement.document_id == document_id).first()
+    )
+    if income_statement:
+        # Delete line items (cascade should handle this, but being explicit)
+        db.query(IncomeStatementLineItem).filter(
+            IncomeStatementLineItem.income_statement_id == income_statement.id
+        ).delete()
+        db.delete(income_statement)
+
+    # Clear progress tracking
+    clear_progress(document_id)
+
+    # Reset document analysis status
+    document.analysis_status = ProcessingStatus.PENDING
+    document.processed_at = None
+
+    db.commit()
+
+    return {"message": "Financial statements deleted successfully", "document_id": document_id}
+
+
+@router.get("/{document_id}/balance-sheet")
+async def get_balance_sheet(
+    document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    """
+    Get balance sheet data for a document.
+    Returns three possible states:
+    1. Balance sheet exists - returns balance sheet data
+    2. Processing - returns processing status with milestones
+    3. Does not exist and not processing - returns 404
+    """
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    balance_sheet = db.query(BalanceSheet).filter(BalanceSheet.document_id == document_id).first()
+
+    # State 1: Balance sheet exists
+    if balance_sheet:
+        # Convert to schema for proper serialization
+        balance_sheet_schema = BalanceSheetSchema.model_validate(balance_sheet)
+        return {"status": "exists", "data": balance_sheet_schema.model_dump()}
+
+    # State 2: Processing
+    if document.analysis_status == ProcessingStatus.PROCESSING:
+        # Get processing milestones/logs (for now, return status)
+        return {
+            "status": "processing",
+            "message": "Balance sheet processing in progress",
+            "milestones": {"step": "extracting", "progress": "Processing balance sheet data..."},
+        }
+
+    # State 3: Does not exist and not processing
+    raise HTTPException(status_code=404, detail="Balance sheet not found for this document")

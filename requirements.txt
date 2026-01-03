@@ -1,0 +1,51 @@
+# Core dependencies for AI agents and equity analysis
+# Add dependencies as needed during development
+
+# Data processing
+# pandas>=2.0.0
+numpy>=1.24.0
+
+# API clients
+# requests>=2.31.0
+
+# AI/ML libraries
+# openai>=1.0.0
+# langchain>=0.1.0
+
+# Financial data
+# yfinance>=0.2.0
+# pandas-datareader>=0.10.0
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+email-validator>=2.0.0
+pre-commit>=3.6.0
+
+# PDF Processing
+PyPDF2>=3.0.0
+pdfplumber>=0.10.0
+
+# Web Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.12.0
+
+# Authentication
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.1.1
+
+# Gemini API
+google-genai>=0.1.0
+
+# Development tools (for pre-commit hooks)
+uv>=0.1.0
+ruff>=0.1.15
+bandit>=1.7.8
+detect-secrets>=1.5.0
+
