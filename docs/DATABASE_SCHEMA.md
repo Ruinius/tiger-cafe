@@ -39,8 +39,11 @@ Stores uploaded document metadata and processing status.
 - `file_path` (String): Path to stored PDF file
 - `document_type` (Enum): Type of document (earnings_announcement, quarterly_filing, annual_filing, press_release, analyst_report, news_article, other)
 - `time_period` (String, Nullable): Time period (e.g., "Q3 2023", "FY 2023")
-- `indexing_status` (Enum): Status of embedding/indexing (pending, indexing, indexed, error)
+- `unique_id` (String, Nullable, Indexed): Unique identifier for dedupe
+- `indexing_status` (Enum): Status of embedding/indexing (pending, uploading, classifying, indexing, indexed, error)
 - `analysis_status` (Enum): Status of financial analysis (pending, processing, processed, error)
+- `duplicate_detected` (Boolean): Duplicate flag
+- `existing_document_id` (String, Nullable): Duplicate reference
 - `summary` (Text, Nullable): LLM-generated summary from initial upload
 - `page_count` (Integer, Nullable): Number of pages in the document
 - `character_count` (Integer, Nullable): Character count of extracted text
@@ -96,8 +99,12 @@ Stores analysis results (valuation, sensitivity, etc.).
 
 ### ProcessingStatus
 - `pending`
-- `indexing` / `processing`
-- `indexed` / `processed`
+- `uploading`
+- `classifying`
+- `indexing`
+- `indexed`
+- `processing`
+- `processed`
 - `error`
 
 ## Indexes
@@ -111,4 +118,3 @@ Stores analysis results (valuation, sensitivity, etc.).
 - `financial_metrics.metric_name`: Index for metric type queries
 - `financial_metrics.period`: Index for time period queries
 - `analysis_results.company_id`: Index for company analysis queries
-
