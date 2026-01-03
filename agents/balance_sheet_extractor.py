@@ -5,28 +5,8 @@ Balance sheet extraction agent using Gemini LLM and embeddings
 import json
 import re
 
-from app.utils.document_indexer import (
-    get_chunk_metadata,
-    get_chunk_text,
-    load_chunk_embedding,
-    save_chunk_embedding,
-)
-from app.utils.gemini_client import generate_content_safe, generate_embedding_safe
-from app.utils.pdf_extractor import extract_text_from_pdf
-
-try:
-    import numpy as np
-
-    HAS_NUMPY = True
-except ImportError:
-    HAS_NUMPY = False
-
-    # Fallback for cosine similarity without numpy
-    def cosine_similarity(a, b):
-        dot_product = sum(x * y for x, y in zip(a, b, strict=False))
-        norm_a = sum(x * x for x in a) ** 0.5
-        norm_b = sum(x * x for x in b) ** 0.5
-        return dot_product / (norm_a * norm_b) if (norm_a * norm_b) > 0 else 0
+from app.utils.gemini_client import generate_content_safe
+from app.utils.document_section_finder import find_document_section
 
 
 def find_balance_sheet_section(
@@ -44,21 +24,6 @@ def find_balance_sheet_section(
         Tuple of (extracted_text, start_page) or (None, None) if not found
     """
     try:
-        # Load chunk metadata
-        chunk_metadata = get_chunk_metadata(document_id)
-        if not chunk_metadata:
-            print(
-                f"No chunk metadata found for document {document_id}, falling back to full document extraction"
-            )
-            return None, None
-
-        chunk_size = chunk_metadata.get("chunk_size", 5)
-        num_chunks = chunk_metadata.get("num_chunks", 0)
-
-        if num_chunks == 0:
-            print(f"No chunks found for document {document_id}")
-            return None, None
-
         # Generate query embeddings for various balance sheet names
         query_texts = [
             "consolidated balance sheet",
@@ -66,76 +31,14 @@ def find_balance_sheet_section(
             "total assets",
             "total liabilities",
         ]
-
-        query_embeddings = []
-        for query_text in query_texts:
-            query_embedding = generate_embedding_safe(
-                query_text, max_chars=20000, task_type="retrieval_query"
-            )
-            query_embeddings.append(query_embedding)
-
-        # Search through persisted chunk embeddings
-        best_score = -1
-        best_chunk_index = -1
-
-        # Search through all chunks
-        for chunk_index in range(num_chunks):
-            # Load chunk embedding (or generate if missing)
-            chunk_embedding = load_chunk_embedding(document_id, chunk_index)
-
-            if not chunk_embedding:
-                # Chunk embedding doesn't exist, generate it
-                print(f"Chunk {chunk_index} embedding not found, generating...")
-                chunk_text, start_page, end_page = get_chunk_text(
-                    file_path, chunk_index, chunk_size
-                )
-                chunk_embedding = generate_embedding_safe(
-                    chunk_text[:20000], max_chars=20000, task_type="retrieval_document"
-                )
-                save_chunk_embedding(chunk_embedding, document_id, chunk_index)
-
-            # Calculate similarity with all query embeddings
-            for query_embedding in query_embeddings:
-                if HAS_NUMPY:
-                    similarity = np.dot(chunk_embedding, query_embedding) / (
-                        np.linalg.norm(chunk_embedding) * np.linalg.norm(query_embedding)
-                    )
-                else:
-                    similarity = cosine_similarity(chunk_embedding, query_embedding)
-
-                if similarity > best_score:
-                    best_score = similarity
-                    best_chunk_index = chunk_index
-
-        # If we found a good match, extract text for that chunk and surrounding chunks
-        if best_score > 0.3 and best_chunk_index >= 0:
-            # Get text for the best matching chunk
-            chunk_text, start_page, end_page = get_chunk_text(
-                file_path, best_chunk_index, chunk_size
-            )
-
-            # Extract a larger section around the match (include adjacent chunks)
-            # Get total pages
-            import pdfplumber
-
-            with pdfplumber.open(file_path) as pdf:
-                total_pages = len(pdf.pages)
-
-            # Extract 2 chunks before and 2 chunks after (if available)
-            start_extract_chunk = max(0, best_chunk_index - 2)
-            end_extract_chunk = min(num_chunks, best_chunk_index + 3)
-
-            start_extract_page = start_extract_chunk * chunk_size
-            end_extract_page = min(total_pages, end_extract_chunk * chunk_size)
-
-            extracted_text, _, _ = extract_text_from_pdf(file_path, max_pages=end_extract_page)
-            if start_extract_page > 0:
-                prev_text, _, _ = extract_text_from_pdf(file_path, max_pages=start_extract_page)
-                extracted_text = extracted_text[len(prev_text) :]
-
-            return extracted_text, start_extract_page
-
-        return None, None
+        return find_document_section(
+            document_id=document_id,
+            file_path=file_path,
+            query_texts=query_texts,
+            chunk_size=None,
+            score_threshold=0.3,
+            window_chunks=2,
+        )
 
     except Exception as e:
         print(f"Error finding balance sheet section: {str(e)}")
