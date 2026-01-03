@@ -12,7 +12,6 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from agents.document_classifier import classify_document
-from agents.document_summarizer import generate_document_summary
 from app.database import get_db
 from app.models.company import Company
 from app.models.document import Document, ProcessingStatus
@@ -27,8 +26,8 @@ from app.schemas.document import (
 )
 from app.schemas.document import Document as DocumentSchema
 from app.utils.document_hash import generate_document_hash
-from app.utils.document_indexer import generate_embedding, save_embedding
-from app.utils.duplicate_detector import check_duplicate_document
+from app.services.document_processing import DocumentProcessingMode, process_document
+from app.utils.document_indexer import delete_chunk_embeddings
 from app.utils.pdf_extractor import extract_text_from_pdf
 from config.config import DEBUG, UPLOAD_DIR
 
@@ -329,101 +328,11 @@ def upload_and_process_async(file: UploadFile, document_id: str, user_id: str, d
         # Update document with file path
         document.file_path = file_path
         db_session.commit()
-
-        # Step 2: Extract text and classify (CLASSIFYING status)
-        document.indexing_status = ProcessingStatus.CLASSIFYING
-        db_session.commit()
-
-        # Extract text from first few pages for classification
-        extracted_text, total_pages, character_count = extract_text_from_pdf(file_path, max_pages=5)
-
-        # Generate hash from first 5000 characters (avoids large document issues)
-        hash_text = extracted_text[:5000] if len(extracted_text) > 5000 else extracted_text
-        document_hash = generate_document_hash(hash_text)
-
-        # Classify document
-        classification_data = classify_document(extracted_text)
-        company_name = classification_data.get("company_name")
-
-        if not company_name:
-            document.indexing_status = ProcessingStatus.ERROR
-            db_session.commit()
-            return
-
-        # Get or create company
-        company = db_session.query(Company).filter(Company.name.ilike(company_name)).first()
-
-        if not company:
-            company = Company(
-                id=str(uuid.uuid4()), name=company_name, ticker=classification_data.get("ticker")
-            )
-            db_session.add(company)
-            db_session.commit()
-            db_session.refresh(company)
-
-        # Update document with company and classification
-        document.company_id = company.id
-        document.document_type = classification_data.get("document_type")
-        document.time_period = classification_data.get("time_period")
-        document.unique_id = document_hash
-        document.page_count = total_pages
-        document.character_count = character_count
-
-        # Step 3: Check for duplicates
-        document_type = classification_data.get("document_type")
-        time_period = classification_data.get("time_period")
-        duplicate_check = None
-
-        if document_type:
-            duplicate_check = check_duplicate_document(
-                db=db_session,
-                company_id=company.id,
-                document_type=document_type,
-                time_period=time_period,
-                filename=file.filename,
-                unique_id=document_hash,
-                exclude_document_id=document_id,  # Exclude current document from duplicate check
-            )
-
-        # If duplicate detected, stop and wait for user action
-        if duplicate_check and duplicate_check.get("is_duplicate"):
-            existing_doc = duplicate_check["existing_document"]
-            document.duplicate_detected = True
-            document.existing_document_id = existing_doc.id
-            document.indexing_status = (
-                ProcessingStatus.CLASSIFYING
-            )  # Stay in classifying until user confirms
-            db_session.commit()
-            return  # Stop here, wait for user to click "Replace & Index"
-
-        # Step 4: No duplicate, proceed with indexing
-        document.indexing_status = ProcessingStatus.INDEXING
-        db_session.commit()
-
-        # Generate summary
-        try:
-            summary = generate_document_summary(extracted_text)
-            if summary:
-                document.summary = summary
-                db_session.commit()
-        except Exception as e:
-            print(f"Warning: Failed to generate summary: {str(e)}")
-
-        # Extract full text for indexing
-        full_extracted_text, total_pages, character_count = extract_text_from_pdf(
-            file_path, max_pages=None
+        process_document(
+            db_session=db_session,
+            document_id=document_id,
+            mode=DocumentProcessingMode.FULL,
         )
-
-        # Generate and save embedding
-        embedding = generate_embedding(full_extracted_text)
-        save_embedding(embedding, document_id)
-
-        # Update final status
-        document.indexing_status = ProcessingStatus.INDEXED
-        document.indexed_at = datetime.utcnow()
-        document.page_count = total_pages
-        document.character_count = character_count
-        db_session.commit()
 
     except Exception as e:
         print(f"Error processing document {document_id}: {str(e)}")
@@ -493,34 +402,24 @@ async def upload_document_internal(file: UploadFile, db: Session, current_user: 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
 
-    # Extract text from first few pages for classification
     try:
-        extracted_text, total_pages, character_count = extract_text_from_pdf(file_path, max_pages=5)
-        text_preview = extracted_text[:500]  # First 500 chars for preview
-    except Exception as e:
-        # Clean up file on error
+        processing_result = process_document(
+            db_session=db,
+            mode=DocumentProcessingMode.PREVIEW,
+            file_path=file_path,
+            filename=file.filename,
+            document_id=document_id,
+        )
+    except ValueError as e:
         os.remove(file_path)
-        raise HTTPException(status_code=500, detail=f"Error extracting text from PDF: {str(e)}")
-
-    # Generate document hash from first 5000 characters (avoids large document issues)
-    hash_text = extracted_text[:5000] if len(extracted_text) > 5000 else extracted_text
-    document_hash = generate_document_hash(hash_text)
-
-    # Classify document using LLM
-    try:
-        classification_data = classify_document(extracted_text)
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        # Clean up file on error
         os.remove(file_path)
-        raise HTTPException(status_code=500, detail=f"Error classifying document: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing document: {str(e)}")
 
-    # Generate preliminary summary using LLM (based on first few pages)
-    preliminary_summary = None
-    try:
-        preliminary_summary = generate_document_summary(extracted_text)
-    except Exception as e:
-        # Summary generation is non-blocking - log error but continue
-        print(f"Warning: Failed to generate preliminary summary: {str(e)}")
+    classification_data = processing_result.classification_data
+    text_preview = processing_result.extracted_text_preview
+    preliminary_summary = processing_result.summary
 
     # Get or create company
     company_name = classification_data.get("company_name")
@@ -534,43 +433,26 @@ async def upload_document_internal(file: UploadFile, db: Session, current_user: 
             detail="Could not identify company from document. Please ensure the document contains company information.",
         )
 
-    # Find or create company
-    company = db.query(Company).filter(Company.name.ilike(company_name)).first()
-
-    if not company:
-        # Create new company
-        company = Company(id=str(uuid.uuid4()), name=company_name, ticker=ticker)
-        db.add(company)
-        db.commit()
-        db.refresh(company)
+    company = processing_result.company
 
     # Check for duplicates
     duplicate_info = None
     document_type = classification_data.get("document_type")
     time_period = classification_data.get("time_period")
+    duplicate_check = processing_result.duplicate_check
 
-    if document_type:
-        duplicate_check = check_duplicate_document(
-            db=db,
-            company_id=company.id,
-            document_type=document_type,
-            time_period=time_period,
-            filename=file.filename,
-            unique_id=document_hash,
+    if duplicate_check and duplicate_check.get("is_duplicate"):
+        existing_doc = duplicate_check["existing_document"]
+        existing_user = db.query(User).filter(User.id == existing_doc.user_id).first()
+
+        duplicate_info = DuplicateInfo(
+            is_duplicate=True,
+            existing_document_id=existing_doc.id,
+            existing_document_filename=existing_doc.filename,
+            existing_document_uploaded_at=existing_doc.uploaded_at,
+            existing_document_uploaded_by=existing_user.name if existing_user else "Unknown",
+            match_reason=duplicate_check["match_reason"],
         )
-
-        if duplicate_check and duplicate_check["is_duplicate"]:
-            existing_doc = duplicate_check["existing_document"]
-            existing_user = db.query(User).filter(User.id == existing_doc.user_id).first()
-
-            duplicate_info = DuplicateInfo(
-                is_duplicate=True,
-                existing_document_id=existing_doc.id,
-                existing_document_filename=existing_doc.filename,
-                existing_document_uploaded_at=existing_doc.uploaded_at,
-                existing_document_uploaded_by=existing_user.name if existing_user else "Unknown",
-                match_reason=duplicate_check["match_reason"],
-            )
 
     # Create classification result
     classification_result = ClassificationResult(
@@ -730,117 +612,6 @@ if DEBUG:
         )
 
 
-def index_document_async(document_id: str, extracted_text: str | None, db: Session):
-    """
-    Background task to index a document asynchronously.
-    If extracted_text is None, will extract from file_path stored in document.
-    """
-    from app.database import SessionLocal
-
-    # Create a new database session for the background task
-    db_session = SessionLocal()
-    try:
-        document = db_session.query(Document).filter(Document.id == document_id).first()
-        if not document:
-            print(f"Document {document_id} not found for indexing")
-            return
-
-        # Extract text if not provided
-        if extracted_text is None:
-            try:
-                extracted_text, _, _ = extract_text_from_pdf(document.file_path, max_pages=5)
-                # Update hash with first 5000 characters
-                hash_text = extracted_text[:5000] if len(extracted_text) > 5000 else extracted_text
-                document.unique_id = generate_document_hash(hash_text)
-                db_session.commit()
-            except Exception as e:
-                print(f"Error extracting text for indexing document {document_id}: {str(e)}")
-                document.indexing_status = ProcessingStatus.ERROR
-                db_session.commit()
-                return
-
-        # Update status to indexing (if not already)
-        if document.indexing_status != ProcessingStatus.INDEXING:
-            document.indexing_status = ProcessingStatus.INDEXING
-            db_session.commit()
-
-        try:
-            # Generate embedding
-            embedding = generate_embedding(extracted_text)
-            # Save embedding
-            save_embedding(embedding, document_id)
-
-            # Update document status
-            document.indexing_status = ProcessingStatus.INDEXED
-            document.indexed_at = datetime.utcnow()
-            db_session.commit()
-        except Exception as e:
-            # Mark as error but don't fail the request
-            document.indexing_status = ProcessingStatus.ERROR
-            db_session.commit()
-            # Log error (in production, use proper logging)
-            print(f"Error indexing document {document_id}: {str(e)}")
-    finally:
-        db_session.close()
-
-
-def process_document_async(document_id: str, file_path: str, db: Session):
-    """
-    Background task to process document: extract full text, re-classify, generate summary, and index.
-    This allows the confirm endpoint to return quickly.
-    """
-    from app.database import SessionLocal
-
-    db_session = SessionLocal()
-    extracted_text = None
-    try:
-        document = db_session.query(Document).filter(Document.id == document_id).first()
-        if not document:
-            print(f"Document {document_id} not found for processing")
-            return
-
-        # Extract full text
-        try:
-            extracted_text, total_pages, character_count = extract_text_from_pdf(
-                file_path, max_pages=None
-            )
-        except Exception as e:
-            print(f"Error extracting text for document {document_id}: {str(e)}")
-            return
-
-        # Update hash with full document hash
-        document.unique_id = generate_document_hash(extracted_text)
-
-        # Re-classify with full document (more accurate)
-        try:
-            classification_data = classify_document(extracted_text)
-            # Update document with refined classification
-            document.document_type = classification_data.get("document_type")
-            document.time_period = classification_data.get("time_period")
-            document.page_count = total_pages
-            document.character_count = character_count
-            db_session.commit()
-        except Exception as e:
-            print(f"Warning: Failed to re-classify document {document_id}: {str(e)}")
-
-        # Generate summary asynchronously
-        try:
-            summary = generate_document_summary(extracted_text)
-            if summary:
-                document.summary = summary
-                db_session.commit()
-        except Exception as e:
-            print(f"Warning: Failed to generate summary for document {document_id}: {str(e)}")
-
-        # Now trigger indexing with the extracted text
-        try:
-            index_document_async(document_id, extracted_text, db)
-        except Exception as e:
-            print(f"Warning: Failed to trigger indexing for document {document_id}: {str(e)}")
-
-    finally:
-        db_session.close()
-
 
 async def confirm_upload_internal(
     document_id: str,
@@ -919,13 +690,8 @@ async def confirm_upload_internal(
         document.uploaded_at = datetime.utcnow()
         # Summary will be generated in background
 
-        # Delete old embedding if it exists
-        old_embedding_path = os.path.join("data/storage", f"{existing_document_id}.json")
-        if os.path.exists(old_embedding_path):
-            try:
-                os.remove(old_embedding_path)
-            except Exception as e:
-                print(f"Warning: Failed to delete old embedding: {str(e)}")
+        # Delete old chunk embeddings if they exist
+        delete_chunk_embeddings(existing_document_id)
     else:
         # Create new document record (basic info, will be refined in background)
         filename = os.path.basename(file_path)
@@ -1004,19 +770,13 @@ async def replace_and_index(
     if not existing_doc:
         raise HTTPException(status_code=404, detail="Existing document not found")
 
-    # Delete old file and embedding
+    # Delete old file and chunk embeddings
     if os.path.exists(existing_doc.file_path):
         try:
             os.remove(existing_doc.file_path)
         except Exception as e:
             print(f"Warning: Failed to delete old file: {str(e)}")
-
-    old_embedding_path = os.path.join("data/storage", f"{existing_document_id}_embedding.json")
-    if os.path.exists(old_embedding_path):
-        try:
-            os.remove(old_embedding_path)
-        except Exception as e:
-            print(f"Warning: Failed to delete old embedding: {str(e)}")
+    delete_chunk_embeddings(existing_document_id)
 
     # Update existing document with new document's data
     existing_doc.user_id = document.user_id
@@ -1092,13 +852,8 @@ if DEBUG:
             except Exception as e:
                 print(f"Warning: Failed to delete file {document.file_path}: {str(e)}")
 
-        # Delete embedding if it exists
-        embedding_path = os.path.join("data/storage", f"{document_id}_embedding.json")
-        if os.path.exists(embedding_path):
-            try:
-                os.remove(embedding_path)
-            except Exception as e:
-                print(f"Warning: Failed to delete embedding: {str(e)}")
+        # Delete chunk embeddings if they exist
+        delete_chunk_embeddings(document_id)
 
         # Delete document from database
         db.delete(document)
@@ -1132,13 +887,8 @@ async def delete_document(
         except Exception as e:
             print(f"Warning: Failed to delete file {document.file_path}: {str(e)}")
 
-    # Delete embedding if it exists
-    embedding_path = os.path.join("data/storage", f"{document_id}_embedding.json")
-    if os.path.exists(embedding_path):
-        try:
-            os.remove(embedding_path)
-        except Exception as e:
-            print(f"Warning: Failed to delete embedding: {str(e)}")
+    # Delete chunk embeddings if they exist
+    delete_chunk_embeddings(document_id)
 
     # Delete document from database
     db.delete(document)
@@ -1195,13 +945,8 @@ async def delete_document_permanent(
         except Exception as e:
             print(f"Warning: Failed to delete file {document.file_path}: {str(e)}")
 
-    # Delete embedding if it exists
-    embedding_path = os.path.join("data/storage", f"{target_document_id}_embedding.json")
-    if os.path.exists(embedding_path):
-        try:
-            os.remove(embedding_path)
-        except Exception as e:
-            print(f"Warning: Failed to delete embedding: {str(e)}")
+    # Delete chunk embeddings if they exist
+    delete_chunk_embeddings(target_document_id)
 
     # Delete document from database
     db.delete(document)
@@ -1253,13 +998,8 @@ if DEBUG:
             except Exception as e:
                 print(f"Warning: Failed to delete file {document.file_path}: {str(e)}")
 
-        # Delete embedding if it exists
-        embedding_path = os.path.join("data/storage", f"{target_document_id}_embedding.json")
-        if os.path.exists(embedding_path):
-            try:
-                os.remove(embedding_path)
-            except Exception as e:
-                print(f"Warning: Failed to delete embedding: {str(e)}")
+        # Delete chunk embeddings if they exist
+        delete_chunk_embeddings(target_document_id)
 
         # Delete document from database
         db.delete(document)

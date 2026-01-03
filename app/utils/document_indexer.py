@@ -2,6 +2,7 @@
 Document indexing with Gemini embeddings
 """
 
+import glob
 import json
 import os
 
@@ -9,69 +10,6 @@ import pdfplumber
 
 from app.utils.gemini_client import generate_embedding_safe
 from app.utils.pdf_extractor import extract_text_from_pdf
-
-
-def generate_embedding(text: str, max_chars: int = 20000) -> list[float]:
-    """
-    Generate embedding for text using Gemini embedding model.
-
-    Args:
-        text: Text to generate embedding for
-        max_chars: Maximum characters to use for embedding (default: 20000)
-                   Gemini embedding model has token limits, so we truncate very long text
-
-    Returns:
-        List of floats representing the embedding vector
-    """
-    try:
-        # Use the safe wrapper which handles truncation, rate limiting, and retries
-        return generate_embedding_safe(text, max_chars=max_chars, task_type="retrieval_document")
-    except Exception as e:
-        raise Exception(f"Error generating embedding: {str(e)}")
-
-
-def save_embedding(
-    embedding: list[float], document_id: str, storage_dir: str = "data/storage"
-) -> str:
-    """
-    Save embedding to disk.
-
-    Args:
-        embedding: Embedding vector
-        document_id: Document ID
-        storage_dir: Directory to save embeddings
-
-    Returns:
-        Path to saved embedding file
-    """
-    os.makedirs(storage_dir, exist_ok=True)
-
-    embedding_path = os.path.join(storage_dir, f"{document_id}_embedding.json")
-
-    with open(embedding_path, "w") as f:
-        json.dump(embedding, f)
-
-    return embedding_path
-
-
-def load_embedding(document_id: str, storage_dir: str = "data/storage") -> list[float] | None:
-    """
-    Load document-level embedding from disk (for backward compatibility).
-
-    Args:
-        document_id: Document ID
-        storage_dir: Directory where embeddings are stored
-
-    Returns:
-        Embedding vector or None if not found
-    """
-    embedding_path = os.path.join(storage_dir, f"{document_id}_embedding.json")
-
-    if not os.path.exists(embedding_path):
-        return None
-
-    with open(embedding_path) as f:
-        return json.load(f)
 
 
 def save_chunk_embedding(
@@ -162,6 +100,29 @@ def save_chunk_metadata(metadata: dict, document_id: str, storage_dir: str = "da
         json.dump(metadata, f)
 
     return metadata_path
+
+
+def delete_chunk_embeddings(document_id: str, storage_dir: str = "data/storage") -> None:
+    """
+    Delete all chunk embeddings and metadata for a document.
+
+    Args:
+        document_id: Document ID
+        storage_dir: Directory where embeddings are stored
+    """
+    chunk_pattern = os.path.join(storage_dir, f"{document_id}_chunk_*_embedding.json")
+    for chunk_path in glob.glob(chunk_pattern):
+        try:
+            os.remove(chunk_path)
+        except OSError:
+            pass
+
+    metadata_path = os.path.join(storage_dir, f"{document_id}_chunks_metadata.json")
+    if os.path.exists(metadata_path):
+        try:
+            os.remove(metadata_path)
+        except OSError:
+            pass
 
 
 def index_document_chunks(
