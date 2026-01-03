@@ -12,6 +12,7 @@ from app.utils.document_indexer import (
 )
 from app.utils.gemini_client import generate_content_safe, generate_embedding_safe
 from app.utils.pdf_extractor import extract_text_from_pdf
+from app.utils.llm_parsing import parse_json_response
 
 try:
     import numpy as np
@@ -193,30 +194,32 @@ Document text:
 
 Return only valid JSON, no additional text."""
 
+    fallback = {
+        "currency": None,
+        "unit": None,
+        "time_period": time_period,
+        "revenue_prior_year": None,
+        "revenue_prior_year_unit": None,
+        "line_items": [],
+    }
+
     try:
         response_text = generate_content_safe(prompt)
-
-        # Remove markdown code blocks if present
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
-
-        result = json.loads(response_text)
-
-        # Ensure line_items exists and is a list
-        if "line_items" not in result:
-            result["line_items"] = []
-        elif not isinstance(result["line_items"], list):
-            result["line_items"] = []
-
-        return result
-
-    except json.JSONDecodeError as e:
-        raise Exception(f"Failed to parse LLM response as JSON: {str(e)}")
     except Exception as e:
-        raise Exception(f"Error extracting income statement: {str(e)}")
+        print(f"Error generating income statement response: {str(e)}")
+        return fallback
+
+    result = parse_json_response(
+        response_text,
+        fallback=fallback,
+        required_keys=["line_items"],
+    )
+
+    # Ensure line_items exists and is a list
+    if not isinstance(result.get("line_items"), list):
+        result["line_items"] = []
+
+    return result
 
 
 def find_additional_data_section(document_id: str, file_path: str, time_period: str) -> str | None:

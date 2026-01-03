@@ -2,10 +2,9 @@
 Document classification agent using Gemini LLM
 """
 
-import json
-
 from app.models.document import DocumentType
 from app.utils.gemini_client import generate_content_safe
+from app.utils.llm_parsing import parse_json_response
 
 
 def classify_document(text: str) -> dict[str, str | None]:
@@ -53,46 +52,42 @@ Document text (first few pages):
 
 Return only valid JSON, no additional text."""
 
+    fallback = {
+        "document_type": None,
+        "time_period": None,
+        "company_name": None,
+        "ticker": None,
+        "confidence": "low",
+    }
+
     try:
         response_text = generate_content_safe(prompt)
-
-        # Remove markdown code blocks if present
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
-
-        result = json.loads(response_text)
-
-        # Map document_type string to DocumentType enum
-        if result.get("document_type"):
-            try:
-                doc_type_map = {
-                    "earnings_announcement": DocumentType.EARNINGS_ANNOUNCEMENT,
-                    "quarterly_filing": DocumentType.QUARTERLY_FILING,
-                    "annual_filing": DocumentType.ANNUAL_FILING,
-                    "press_release": DocumentType.PRESS_RELEASE,
-                    "analyst_report": DocumentType.ANALYST_REPORT,
-                    "news_article": DocumentType.NEWS_ARTICLE,
-                    "other": DocumentType.OTHER,
-                }
-                result["document_type"] = doc_type_map.get(
-                    result["document_type"], DocumentType.OTHER
-                )
-            except Exception:
-                result["document_type"] = None
-
-        return result
-
-    except json.JSONDecodeError:
-        # If JSON parsing fails, return None values
-        return {
-            "document_type": None,
-            "time_period": None,
-            "company_name": None,
-            "ticker": None,
-            "confidence": "low",
-        }
     except Exception as e:
-        raise Exception(f"Error classifying document: {str(e)}")
+        print(f"Error generating classification response: {str(e)}")
+        return fallback
+
+    result = parse_json_response(
+        response_text,
+        fallback=fallback,
+        required_keys=["document_type", "confidence"],
+    )
+
+    # Map document_type string to DocumentType enum
+    if result.get("document_type"):
+        try:
+            doc_type_map = {
+                "earnings_announcement": DocumentType.EARNINGS_ANNOUNCEMENT,
+                "quarterly_filing": DocumentType.QUARTERLY_FILING,
+                "annual_filing": DocumentType.ANNUAL_FILING,
+                "press_release": DocumentType.PRESS_RELEASE,
+                "analyst_report": DocumentType.ANALYST_REPORT,
+                "news_article": DocumentType.NEWS_ARTICLE,
+                "other": DocumentType.OTHER,
+            }
+            result["document_type"] = doc_type_map.get(
+                result["document_type"], DocumentType.OTHER
+            )
+        except Exception:
+            result["document_type"] = None
+
+    return result
