@@ -67,6 +67,7 @@ htmlcov/
 secrets/
 *.key
 *.pem
+keys.txt
 
 # OS
 Thumbs.db
