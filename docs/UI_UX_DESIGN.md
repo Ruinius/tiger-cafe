@@ -2,244 +2,177 @@
 
 **A private project for Tiger and his friends to play with AI agents performing financial analysis.**
 
-This document outlines the user interface and user experience design specifications for Tiger-Cafe.
+This document captures the UI/UX requirements for the Tiger-Cafe application, with emphasis on the shared dashboard workflow and document processing lifecycle.
 
 ## Design Principles
-1. Day and night toggle options
-2. After successful login, all the workspace is two adjustable split screens
-3. **Shared Global Dashboard**: All users work on the same global dashboard - no user-specific views or data isolation
-4. **Login Purpose**: Authentication is only used to track attribution (who uploaded documents and initiated analyses)
+
+1. **Day/night mode** with a persistent toggle.
+2. **Two-panel workspace** after login (adjustable split screens).
+3. **Shared global dashboard**: every authenticated user sees the same workspace.
+4. **Attribution-only authentication**: login is used to track who did what, not to isolate data.
 
 ## Global Dashboard Architecture
 
-### Overview
-The Tiger-Cafe application uses a **shared global dashboard** where all authenticated users see and interact with the same data. Users can view all companies, documents, and analyses regardless of who uploaded or created them. Login serves purely for **attribution tracking** - to record which user performed which actions.
+### Shared Workspace
 
-### Key Implications
-- **No user filtering**: Users see all companies and documents in the system
-- **Attribution display**: UI shows who uploaded documents and who initiated analyses (for transparency and collaboration)
-- **Collaborative workspace**: Multiple users can work on the same companies and analyses simultaneously
-- **Shared state**: All users see real-time updates from all other users
+All users interact with the same dataset:
+
+- **No user-specific filtering** of companies, documents, or analyses.
+- **Attribution is visible** (who uploaded, who initiated analysis).
+- **Collaborative workflow** with shared, real-time updates.
 
 ### Attribution Display
 
-User name next to uploaded documents
-User name next to initiated analyses
-Timestamp of actions
-
-
+- User name next to uploaded documents
+- User name next to initiated analyses
+- Timestamp of actions
 
 ## Login Page
 
 ### Purpose
-During development, the landing page is the login page.
-The login page allows users to authenticate using their Google account via OAuth. This is the entry point for authenticated users.
+
+The login page is the landing page during development and is the gateway to the shared dashboard.
 
 ### User Flow
-1. User arrives at login page (from landing page or direct navigation)
-2. User clicks "Sign in with Google" button
-3. User is redirected to Google OAuth consent screen
-4. User grants permissions
+
+1. User arrives on login page
+2. User clicks **Sign in with Google**
+3. OAuth consent screen opens
+4. User authorizes access
 5. User is redirected back to Tiger-Cafe
-6. User is authenticated and redirected to main application (company list or dashboard)
+6. User lands in the Global Dashboard (two-panel layout)
 
-### UI Components Needed
+### UI Requirements
 
-#### 1. Login Form/Interface
-Centered card for the Google login.
-There is nothing else.
+#### Login Card
+- Centered card containing a single Google login button
+- Minimal distractions (no extra content)
 
-#### 2. Google OAuth Button
-- Follow Google's branding guidelines for "Sign in with Google" button
-- Standard button size: minimum 240px width, 40px height
-- Google logo icon on the left side of button text
-- Button text: "Sign in with Google"
-- Hover state: slight elevation/shadow increase
-- Active state: slight press animation
-- Use Google's official brand colors (blue #4285F4)
-- Button should be clearly visible and accessible
+#### Google OAuth Button
+- Use Google branding guidelines
+- Minimum size: **240px × 40px**
+- Blue primary color: **#4285F4**
+- Google logo left of text
+- Hover: subtle elevation/shadow
+- Active: slight press animation
 
-#### 3. Error Handling
-- Display error messages in a non-intrusive banner or toast notification
-- Use clear, user-friendly language (avoid technical jargon)
-- Common error scenarios:
-  - OAuth cancellation: "Sign in was cancelled. Please try again."
-  - Network error: "Unable to connect. Please check your internet connection."
-  - Server error: "Something went wrong. Please try again later."
-- Error messages should be dismissible
-- Provide retry option when applicable
-- Log technical details server-side for debugging
+#### Error Handling
+- Toast or banner with user-friendly language
+- Dismissible errors
+- Common errors:
+  - OAuth cancellation
+  - Network error
+  - Server error
 
-#### 4. Loading States
-- Show loading spinner or skeleton screen during OAuth redirect
-- Display "Signing you in..." message during authentication processing
-- Smooth fade-in transition when redirecting to dashboard
-- Loading indicator should be centered and clearly visible
-- Prevent multiple clicks during loading state
-
-#### 5. Post-Login Redirect
-After successful login, users are redirected to the **Global Dashboard** with the two adjustable split screens layout. All users see the same shared workspace regardless of who logged in.
+#### Loading States
+- Centered loading spinner
+- “Signing you in…” text
+- Prevent multiple clicks while in progress
 
 ## Global Dashboard Layout
 
 ### Two Adjustable Split Screens
-After successful login, the entire workspace consists of two adjustable split screens that can be resized by the user.
 
-#### Split Screen Configuration
-1. Split is vertical.
-2. Resizing is a draggable divider
-3. Minimum and maximum sizes are 20% and 80%
-4. Default split ratio is 50%
-5. Split preference is per user
+- Vertical split with draggable divider
+- Min/max widths: **20% / 80%**
+- Default split: **50% / 50%**
+- Split preference stored per user
 
-#### Left/First Panel
-In general, the left side is a robust navigation with breadcrumbs showing the raw data and document
-1. List of companies (default view)
-2. There is an "Add Document" button on the bottom to initiate the add document flow
-3. During active uploads, button changes to "Check Uploads" with spinner
-4. Clicking "Check Uploads" shows upload progress view with list of uploading documents
-5. Clicking into the company shows a list of underlying documents on the left and updates the right with analysis for the company
-6. Clicking into a document shows the underlying document on the left and the relevant extractions on the right
+### Left Panel (Navigation)
 
-#### Right/Second Panel
-1. Default is a home page with a list of the latest completed company analysis
-2. The page with all the company analysis if a company is selected
-3. Extracted information from the document if one is selected on the left panel:
-   - For eligible documents (earnings announcements, quarterly filings, annual reports): Financial statements display
-   - Progress tracker showing 5 milestones with real-time status updates
-   - Balance sheet table with line items, validation status, and operating/non-operating classification
-   - Income statement table with line items, validation status, and operating/non-operating classification
-   - Additional Items table with: prior period revenue, YOY revenue growth, amortization, basic shares outstanding, diluted shares outstanding
-   - Re-run and delete buttons in document detail view (left panel)
+- Company list (default view)
+- **Add Document** button at bottom
+  - Changes to **Check Uploads** during active uploads
+- Selecting a company shows company documents
+- Selecting a document shows document details
+
+### Right Panel (Content)
+
+- Default: recent completed analysis list
+- Company selected: company analysis dashboard
+- Document selected: extracted data + progress view
+  - Financial statements tables
+  - Validation indicators
+  - Operating vs. non-operating classification
+  - Additional items table
+  - Re-run and delete actions
 
 ### Day/Night Toggle
-- Toggle button placement: Top-right corner of the header/navbar
-- Visual design: Icon toggle (sun/moon icons) or switch component
-- Day mode color scheme:
-  - Background: Light gray/white (#FFFFFF, #F5F5F5)
-  - Text: Dark gray/black (#212121, #000000)
-  - Accent: Primary brand color
-- Night mode color scheme:
-  - Background: Dark gray/black (#121212, #1E1E1E)
-  - Text: Light gray/white (#E0E0E0, #FFFFFF)
-  - Accent: Lighter shade of primary brand color
-- Smooth transition: 200-300ms fade transition between modes
-- Persistence: Preference stored per user in browser/localStorage
-- Apply theme immediately on page load based on saved preference
 
-## Phase 2: Document Upload and Classification UI/UX
+- Location: top-right in header/navbar
+- Visual design: icon toggle (sun/moon) or switch
+- **Day mode**
+  - Background: #FFFFFF / #F5F5F5
+  - Text: #212121 / #000000
+- **Night mode**
+  - Background: #121212 / #1E1E1E
+  - Text: #E0E0E0 / #FFFFFF
+- Transition: 200–300ms fade
+- Preference stored in localStorage
 
-### User Flow (New Multi-Document Upload Workflow)
-1. User clicks "Add Document" button in left panel
-2. Modal opens with drag-and-drop interface for multiple documents (up to 10 files)
-3. User drags and drops or selects multiple PDF files (up to 10)
-4. Modal closes immediately after files are selected
-5. **Upload step**: Files are saved in parallel (file I/O only, no API calls)
-6. **Classification & Indexing**: Documents are queued for sequential processing (one at a time) to prevent API overload
-7. "Add Document" button transforms into "Check Uploads" button with spinning indicator while uploads are in progress
-8. User can click "Check Uploads" to view upload progress
-9. Left panel shows list of uploading documents with progress bars and milestones
-10. If duplicate detected, progress stops before indexing and shows warning with "Replace & Index" button
-11. If no duplicate, indexing proceeds automatically through the sequential queue
-12. After indexing completes, financial statement processing automatically starts (if eligible)
-13. Attribution shows who uploaded each document
+## Phase 2: Document Upload & Classification UI
 
-### UI Components Needed
+### Multi-Document Upload Flow
 
-#### 1. Multi-Document Upload Modal
-- Drag-and-drop interface supporting up to 10 PDF files
-- Clear indication of file limit: "Upload up to 10 PDF documents"
+1. User clicks **Add Document**
+2. Modal opens with drag-and-drop interface
+3. User selects up to 10 PDFs
+4. Modal closes immediately after selection
+5. Uploads start in parallel (file I/O only)
+6. Classification + indexing run sequentially
+7. **Add Document** becomes **Check Uploads** with spinner
+8. User opens upload progress view
+9. Duplicate detection stops at classification with warning
+10. If no duplicate, indexing continues automatically
+11. After indexing, financial statement processing starts (if eligible)
+
+### Upload Modal Requirements
+
+- Drag-and-drop + manual file picker
+- Clear limit indicator: “Upload up to 10 PDF documents”
 - Visual drop zone with dashed border
-- File list showing selected files before upload
-- Remove file option for each selected file
-- "Upload" button to start the process
-- Modal closes immediately after files are selected and upload starts
-- All processing happens asynchronously in background
+- List of selected files + remove option
+- **Upload** button triggers process
 
-#### 2. Add Document / Check Uploads Button
-- Default state: "Add Document" button
-- Active upload state: "Check Uploads" button with spinning indicator
-- Button located at bottom of left panel
-- Spinner indicates active uploads in progress
-- Clicking "Check Uploads" switches left panel to upload progress view
+### Upload Progress View (Left Panel)
 
-#### 3. Upload Progress View (Left Panel)
-- Replaces company/document list when "Check Uploads" is active
-- Shows list of all documents currently being processed
-- Each document item displays:
-  - Document filename
-  - Progress bar with three milestones: Uploading → Classification → Indexing
-  - Current milestone highlighted/active
-  - Percentage or status for current step
-- Real-time updates via polling (every 1-2 seconds)
-- Documents automatically removed from list when complete
+- List of all in-progress documents
+- Each item shows:
+  - Filename
+  - Progress bar with milestones
+  - Current status text
 
-#### 4. Duplicate Detection in Progress View
-- When duplicate is detected during classification:
-  - Progress stops at "Classification" milestone
-  - Warning banner appears below progress bar
-  - Shows existing document information (name, uploader, date)
-  - "Replace & Index" button appears next to the document
-  - User can click "Replace & Index" to proceed with replacement
-  - After replacement, indexing milestone activates and continues
+### Milestones & Status Indicators
 
-#### 5. Milestone Progress Indicators
-- Three clear milestones displayed as steps or progress segments:
-  1. **Uploading**: File upload to server (0-33%)
-  2. **Classification**: LLM classification and duplicate check (33-66%)
-  3. **Indexing**: Embedding generation and storage (66-100%)
-- Visual indicators:
-  - Completed milestones: Green checkmark or filled segment
-  - Active milestone: Highlighted with animation
-  - Pending milestones: Grayed out
-- Progress bar shows overall completion percentage
+**Milestones**
+1. Uploading
+2. Classification
+3. Indexing
 
-#### 6. Background Processing
-- All upload, classification, and indexing happens asynchronously
-- No blocking UI - user can continue working while uploads process
-- Real-time status updates via API polling
-- Automatic progression through milestones when no duplicates
-- User intervention only required for duplicate documents
+**States**
+- Completed: green check
+- Active: highlighted with animation
+- Pending: muted/gray
 
-## Phase 3: Company Document Management UI/UX
+### Duplicate Detection UX
 
-### User Flow
-1. User views **shared** list of companies with uploaded documents (all users see the same list)
-2. User selects a company
-3. System displays document list with metadata (including attribution showing who uploaded each document)
-4. Any user can trigger financial analysis on unprocessed documents (attribution tracked to the user who initiated it)
+- Progress halts at **Classification**
+- Warning banner appears
+- Shows existing document metadata
+- **Replace & Index** button resumes pipeline
 
-### UI Components Needed
+### Financial Statement Processing (Document View)
 
-#### 1. Company List View
-- Layout: Vertical list view in left panel
-- Company items: Each row shows:
-  - Company name (primary)
-  - Ticker symbol (secondary, if available)
-  - Document count badge
-  - Last updated timestamp
-- Search functionality: Search bar at top of list (filter by company name or ticker)
-- Sorting options: Alphabetical (A-Z, Z-A), by document count, by last updated
-- Click to expand/navigate to company detail
-- Show empty state if no companies exist
-- Pagination or infinite scroll if list is long
+When a document is selected:
 
-#### 2. Company Detail Page
-- Header: Company name, ticker symbol, and key stats (total documents, analyses)
-- Document list: Vertical list in left panel when company is selected
-- Document card/row design:
-  - Document filename (truncate if long)
-  - Document type badge
-  - Upload date and time
-  - Uploader attribution: User name with avatar/initials
-  - Status indicators (indexed, processing, error)
-  - Quick actions (view, delete if user is uploader)
-- Attribution display:
-  - User avatar (circular, with initials if no picture)
-  - User name next to "Uploaded by [Name]"
-  - Timestamp in relative format (e.g., "2 hours ago")
-- Hover state: Highlight row and show additional actions
-- Click document to view in right panel
+- Progress tracker shows **5 milestones**:
+  1. Extracting balance sheet
+  2. Classifying balance sheet
+  3. Extracting income statement
+  4. Extracting additional items
+  5. Classifying income statement
+- Real-time status: `checking`, `pending`, `in_progress`, `completed`, `error`, `not_found`
+- Tables include validation status and operating/non-operating labels
 
 #### 3. Document Status Indicators
 - Status badges with color coding:
@@ -771,3 +704,10 @@ In general, the left side is a robust navigation with breadcrumbs showing the ra
 
 <!-- Add any additional UI/UX decisions, trade-offs, or notes as the design evolves -->
 
+## Visual Summary Checklist
+
+- [ ] Shared global dashboard (no per-user data)
+- [ ] Attribution visible in lists and details
+- [ ] Two-panel adjustable layout
+- [ ] Upload flow with progress + duplicate handling
+- [ ] Day/night toggle with persistence
