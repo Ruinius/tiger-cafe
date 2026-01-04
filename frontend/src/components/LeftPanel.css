@@ -458,11 +458,20 @@
 
 .milestone.active .milestone-icon {
   color: var(--primary);
-  animation: spin 1s linear infinite;
 }
 
 .milestone.completed .milestone-icon {
   color: var(--success);
+}
+
+.status-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 999px;
+  animation: spin 0.8s linear infinite;
 }
 
 .milestone-label {
@@ -520,13 +529,13 @@
 
 .add-document-button.has-uploads .button-spinner {
   display: inline-block;
-  animation: spin 1s linear infinite;
-  margin-right: 0.5rem;
-  width: auto;
-  height: auto;
-  border: none;
-  border-radius: 0;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
   border-top-color: transparent;
+  border-radius: 999px;
+  animation: spin 0.8s linear infinite;
+  margin-right: 0.5rem;
   color: inherit;
   font-size: inherit;
 }
