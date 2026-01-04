@@ -19,6 +19,7 @@ class HistoricalCalculationBase(BaseModel):
     ebita: Decimal | None = None
     ebita_margin: Decimal | None = None
     effective_tax_rate: Decimal | None = None
+    adjusted_tax_rate: Decimal | None = None
     calculation_notes: str | None = None
 
 

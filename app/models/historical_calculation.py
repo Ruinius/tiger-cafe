@@ -35,6 +35,9 @@ class HistoricalCalculation(Base):
     effective_tax_rate = Column(
         Numeric(10, 4), nullable=True
     )  # Stored as decimal (e.g., 0.25 for 25%)
+    adjusted_tax_rate = Column(
+        Numeric(10, 4), nullable=True
+    )  # Stored as decimal (e.g., 0.25 for 25%)
 
     # Calculation notes/errors
     calculation_notes = Column(Text, nullable=True)  # JSON string for any notes or warnings

@@ -2,12 +2,106 @@
 Historical calculations utility for computing financial metrics
 """
 
+import json
 import re
 from decimal import ROUND_HALF_UP, Decimal
+from difflib import SequenceMatcher
 from typing import Any
 
 from app.models.balance_sheet import BalanceSheet
-from app.models.income_statement import IncomeStatement
+from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
+from app.utils.gemini_client import generate_content_safe
+
+
+def _normalize_line_name(line_name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", line_name.lower()).strip()
+
+
+def _match_line_item(
+    line_items: list[IncomeStatementLineItem], target_name: str | None
+) -> IncomeStatementLineItem | None:
+    if not target_name:
+        return None
+
+    normalized_target = _normalize_line_name(target_name)
+    best_item = None
+    best_ratio = 0.0
+
+    for item in line_items:
+        normalized_item = _normalize_line_name(item.line_name)
+        if normalized_item == normalized_target:
+            return item
+
+        ratio = SequenceMatcher(None, normalized_item, normalized_target).ratio()
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_item = item
+
+    if best_ratio >= 0.75:
+        return best_item
+
+    return None
+
+
+def _parse_llm_json_response(response_text: str) -> dict[str, Any]:
+    if response_text.startswith("```"):
+        response_text = response_text.split("```")[1]
+        if response_text.startswith("json"):
+            response_text = response_text[4:]
+        response_text = response_text.strip()
+
+    return json.loads(response_text)
+
+
+def get_income_statement_llm_insights(
+    income_statement: IncomeStatement,
+) -> tuple[dict[str, Any], list[str]]:
+    if not income_statement or not income_statement.line_items:
+        return {}, []
+
+    line_items_text = "\n".join(
+        [
+            f"{idx + 1}. {item.line_name} | {item.line_value}"
+            for idx, item in enumerate(income_statement.line_items)
+        ]
+    )
+
+    prompt = f"""You are analyzing an income statement. Identify key line items by name.
+Return ONLY valid JSON using the exact line names provided.
+
+Line items:
+{line_items_text}
+
+Return this JSON structure:
+{{
+    "operating_income_line": "exact line name for operating income or null",
+    "pretax_income_line": "exact line name for income before taxes or null",
+    "net_income_line": "exact line name for net income or null",
+    "tax_expense_line": "exact line name for tax expense or null"
+}}
+
+Guidance:
+- Operating income may be labeled as income from operations, operating profit, operating earnings.
+- Pretax income may be labeled as income before tax, earnings before income tax, profit before tax.
+    - Tax expense may include income tax expense, provision for income taxes, taxes.
+
+Return only JSON with no extra text."""
+
+    try:
+        response_text = generate_content_safe(prompt)
+        insights = _parse_llm_json_response(response_text)
+
+        return (
+            {
+                "operating_income_line": insights.get("operating_income_line"),
+                "pretax_income_line": insights.get("pretax_income_line"),
+                "net_income_line": insights.get("net_income_line"),
+                "tax_expense_line": insights.get("tax_expense_line"),
+            },
+            [],
+        )
+    except Exception as exc:
+        return {}, [f"LLM insights unavailable: {str(exc)}"]
 
 
 def calculate_net_working_capital(balance_sheet: BalanceSheet) -> Decimal | None:
@@ -116,15 +210,16 @@ def calculate_capital_turnover(
     return turnover.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
 
-def get_revenue(income_statement: IncomeStatement) -> Decimal | None:
+def get_revenue_line_item(
+    income_statement: IncomeStatement,
+) -> IncomeStatementLineItem | None:
     """
-    Extract revenue from income statement line items.
+    Extract the revenue line item from the income statement.
     """
     if not income_statement or not income_statement.line_items:
         return None
 
     for item in income_statement.line_items:
-        # Look for revenue line item
         name_lower = item.line_name.lower()
         category_lower = item.line_category.lower() if item.line_category else ""
 
@@ -134,13 +229,23 @@ def get_revenue(income_statement: IncomeStatement) -> Decimal | None:
             or "sales" in name_lower
             or "net sales" in name_lower
         ):
-            if item.line_value > 0:  # Revenue should be positive
-                return item.line_value
+            if item.line_value > 0:
+                return item
 
     return None
 
 
-def get_operating_income(income_statement: IncomeStatement) -> Decimal | None:
+def get_revenue(income_statement: IncomeStatement) -> Decimal | None:
+    """
+    Extract revenue from income statement line items.
+    """
+    revenue_item = get_revenue_line_item(income_statement)
+    return revenue_item.line_value if revenue_item else None
+
+
+def get_operating_income(
+    income_statement: IncomeStatement, llm_insights: dict[str, Any] | None = None
+) -> Decimal | None:
     """
     Extract operating income from income statement line items.
     Operating income might be called: Operating Income, Income from Operations, etc.
@@ -148,10 +253,15 @@ def get_operating_income(income_statement: IncomeStatement) -> Decimal | None:
     if not income_statement or not income_statement.line_items:
         return None
 
+    if llm_insights:
+        llm_line = llm_insights.get("operating_income_line")
+        matched_item = _match_line_item(income_statement.line_items, llm_line)
+        if matched_item:
+            return matched_item.line_value
+
     for item in income_statement.line_items:
         name_lower = item.line_name.lower()
 
-        # Look for operating income by various names
         if any(
             term in name_lower
             for term in [
@@ -162,15 +272,26 @@ def get_operating_income(income_statement: IncomeStatement) -> Decimal | None:
                 "operating result",
             ]
         ):
-            # Make sure it's not a total or subtotal
             if "total" not in name_lower and "subtotal" not in name_lower:
                 return item.line_value
 
     return None
 
 
-def get_non_operating_items_between_revenue_and_operating_income(
+def get_non_operating_line_items(
     income_statement: IncomeStatement,
+) -> list[IncomeStatementLineItem]:
+    """
+    Identify non-operating line items using persisted classification.
+    """
+    if not income_statement or not income_statement.line_items:
+        return []
+
+    return [item for item in income_statement.line_items if item.is_operating is False]
+
+
+def get_non_operating_items_between_revenue_and_operating_income(
+    income_statement: IncomeStatement, llm_insights: dict[str, Any] | None = None
 ) -> Decimal:
     """
     Get sum of all non-operating items between Revenue and Operating Income.
@@ -179,59 +300,66 @@ def get_non_operating_items_between_revenue_and_operating_income(
     if not income_statement or not income_statement.line_items:
         return Decimal("0")
 
-    # Sort items by line_order to maintain statement order
     sorted_items = sorted(income_statement.line_items, key=lambda x: x.line_order)
+    revenue_item = get_revenue_line_item(income_statement)
+    operating_item = None
 
-    revenue_found = False
-    operating_income_found = False
+    if llm_insights:
+        operating_item = _match_line_item(
+            income_statement.line_items, llm_insights.get("operating_income_line")
+        )
+
+    if not operating_item:
+        for item in sorted_items:
+            name_lower = item.line_name.lower()
+            if any(
+                term in name_lower
+                for term in ["operating income", "income from operations", "operating profit"]
+            ):
+                operating_item = item
+                break
+
+    non_operating_candidates = get_non_operating_line_items(income_statement)
+    candidate_names = {_normalize_line_name(item.line_name) for item in non_operating_candidates}
+
     non_operating_sum = Decimal("0")
+    use_range = revenue_item and operating_item
 
     for item in sorted_items:
-        name_lower = item.line_name.lower()
+        if use_range:
+            if not (revenue_item.line_order < item.line_order < operating_item.line_order):
+                continue
 
-        # Check if we've reached revenue
-        if not revenue_found:
-            if any(term in name_lower for term in ["revenue", "sales", "net sales"]):
-                revenue_found = True
+        if candidate_names:
+            if _normalize_line_name(item.line_name) not in candidate_names:
+                continue
+        elif item.is_operating is not False:
             continue
 
-        # If we've passed revenue, check if we've reached operating income
-        if any(
-            term in name_lower
-            for term in ["operating income", "income from operations", "operating profit"]
-        ):
-            operating_income_found = True
-            break
+        non_operating_sum -= item.line_value
 
-        # If item is labeled as non-operating and we're between revenue and operating income
-        # Non-operating expenses (negative values) reduce operating income, so we add them back
-        # Non-operating income (positive values) increase operating income, so we subtract them
-        if item.is_operating is False:
-            # If it's an expense (negative), we add it back (subtract negative = add)
-            # If it's income (positive), we subtract it
-            non_operating_sum -= item.line_value
-
-    # Only return sum if we found both revenue and operating income
-    if revenue_found and operating_income_found:
+    if use_range or candidate_names:
         return non_operating_sum
-    else:
-        return Decimal("0")
+
+    return Decimal("0")
 
 
 def calculate_ebita(
-    income_statement: IncomeStatement, amortization: Decimal | None = None
+    income_statement: IncomeStatement,
+    amortization: Decimal | None = None,
+    llm_insights: dict[str, Any] | None = None,
 ) -> Decimal | None:
     """
     Calculate EBITA by taking Operating Income, subtracting non-operating items
     between Revenue and Operating Income, and subtracting Amortization if available.
     """
-    operating_income = get_operating_income(income_statement)
+    operating_income = get_operating_income(income_statement, llm_insights)
     if operating_income is None:
         return None
 
     # Subtract non-operating items between revenue and operating income
     non_operating_items = get_non_operating_items_between_revenue_and_operating_income(
-        income_statement
+        income_statement, llm_insights
     )
     ebita = operating_income - non_operating_items
 
@@ -254,25 +382,43 @@ def calculate_ebita_margin(ebita: Decimal | None, revenue: Decimal | None) -> De
     return margin.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
 
-def calculate_effective_tax_rate(income_statement: IncomeStatement) -> Decimal | None:
+def extract_tax_inputs(
+    income_statement: IncomeStatement, llm_insights: dict[str, Any] | None = None
+) -> dict[str, Decimal | None]:
     """
-    Calculate effective tax rate using multiple methods depending on what's available.
-    Returns as decimal (e.g., 0.25 for 25%).
+    Extract pretax income, tax expense, and net income with LLM assistance.
     """
     if not income_statement or not income_statement.line_items:
-        return None
+        return {"income_before_taxes": None, "income_tax_expense": None, "net_income": None}
 
-    # Try to find income before taxes and income tax expense
     income_before_taxes = None
     income_tax_expense = None
-    provision_for_income_taxes = None
     net_income = None
+    provision_for_income_taxes = None
+
+    if llm_insights:
+        pretax_item = _match_line_item(
+            income_statement.line_items, llm_insights.get("pretax_income_line")
+        )
+        if pretax_item:
+            income_before_taxes = pretax_item.line_value
+
+        tax_item = _match_line_item(
+            income_statement.line_items, llm_insights.get("tax_expense_line")
+        )
+        if tax_item:
+            income_tax_expense = abs(tax_item.line_value)
+
+        net_income_item = _match_line_item(
+            income_statement.line_items, llm_insights.get("net_income_line")
+        )
+        if net_income_item:
+            net_income = net_income_item.line_value
 
     for item in income_statement.line_items:
         name_lower = item.line_name.lower()
 
-        # Look for income before taxes
-        if any(
+        if income_before_taxes is None and any(
             term in name_lower
             for term in [
                 "income before tax",
@@ -284,43 +430,93 @@ def calculate_effective_tax_rate(income_statement: IncomeStatement) -> Decimal |
         ):
             income_before_taxes = item.line_value
 
-        # Look for income tax expense
-        elif any(
+        if income_tax_expense is None and any(
             term in name_lower
             for term in ["income tax expense", "income taxes", "provision for income taxes"]
         ):
             if "provision" in name_lower:
-                provision_for_income_taxes = abs(
-                    item.line_value
-                )  # Usually negative in income statement
+                provision_for_income_taxes = abs(item.line_value)
             else:
                 income_tax_expense = abs(item.line_value)
 
-        # Look for net income
-        elif any(
+        if net_income is None and any(
             term in name_lower
             for term in ["net income", "net earnings", "profit after tax", "after tax profit"]
         ):
             if "total" not in name_lower:
                 net_income = item.line_value
 
-    # Method 1: Income tax expense / Income before taxes
+    if income_tax_expense is None and provision_for_income_taxes is not None:
+        income_tax_expense = provision_for_income_taxes
+
+    return {
+        "income_before_taxes": income_before_taxes,
+        "income_tax_expense": income_tax_expense,
+        "net_income": net_income,
+    }
+
+
+def calculate_effective_tax_rate_from_inputs(
+    income_before_taxes: Decimal | None,
+    income_tax_expense: Decimal | None,
+    net_income: Decimal | None,
+) -> Decimal | None:
+    """
+    Calculate effective tax rate using provided inputs.
+    Returns as decimal (e.g., 0.25 for 25%).
+    """
     if income_before_taxes and income_before_taxes != 0:
         if income_tax_expense is not None:
             tax_rate = income_tax_expense / abs(income_before_taxes)
             return tax_rate.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
-        elif provision_for_income_taxes is not None:
-            tax_rate = provision_for_income_taxes / abs(income_before_taxes)
-            return tax_rate.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
-    # Method 2: (Income before taxes - Net income) / Income before taxes
-    if income_before_taxes and income_before_taxes != 0 and net_income is not None:
-        taxes_paid = abs(income_before_taxes) - abs(net_income)
-        if taxes_paid > 0:
-            tax_rate = taxes_paid / abs(income_before_taxes)
-            return tax_rate.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+        if net_income is not None:
+            taxes_paid = abs(income_before_taxes) - abs(net_income)
+            if taxes_paid > 0:
+                tax_rate = taxes_paid / abs(income_before_taxes)
+                return tax_rate.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
     return None
+
+
+def calculate_adjusted_tax_rate(
+    effective_tax_rate: Decimal | None,
+    income_before_taxes: Decimal | None,
+    income_tax_expense: Decimal | None,
+    non_operating_items: list[IncomeStatementLineItem],
+) -> Decimal | None:
+    """
+    Calculate an adjusted tax rate when effective tax rate is unusually high or low.
+    """
+    if (
+        effective_tax_rate is None
+        or income_before_taxes in (None, 0)
+        or income_tax_expense is None
+        or not non_operating_items
+    ):
+        return None
+
+    if Decimal("0.10") <= effective_tax_rate <= Decimal("0.35"):
+        return None
+
+    if effective_tax_rate > Decimal("0.35"):
+        adjustment = sum(
+            item.line_value for item in non_operating_items if item.line_value < 0
+        )
+    else:
+        adjustment = sum(
+            item.line_value for item in non_operating_items if item.line_value > 0
+        )
+
+    if adjustment == 0:
+        return None
+
+    adjusted_pretax_income = income_before_taxes - adjustment
+    if adjusted_pretax_income == 0:
+        return None
+
+    adjusted_rate = income_tax_expense / abs(adjusted_pretax_income)
+    return adjusted_rate.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
 
 def calculate_all_historical_metrics(
@@ -331,6 +527,9 @@ def calculate_all_historical_metrics(
     Returns a dictionary with all calculated values and any notes.
     """
     notes = []
+
+    llm_insights, llm_notes = get_income_statement_llm_insights(income_statement)
+    notes.extend(llm_notes)
 
     # Get basic values
     revenue = get_revenue(income_statement)
@@ -343,9 +542,22 @@ def calculate_all_historical_metrics(
     capital_turnover = calculate_capital_turnover(
         revenue, invested_capital, income_statement.time_period if income_statement else None
     )
-    ebita = calculate_ebita(income_statement, amortization)
+    ebita = calculate_ebita(income_statement, amortization, llm_insights)
     ebita_margin = calculate_ebita_margin(ebita, revenue)
-    effective_tax_rate = calculate_effective_tax_rate(income_statement)
+
+    tax_inputs = extract_tax_inputs(income_statement, llm_insights)
+    effective_tax_rate = calculate_effective_tax_rate_from_inputs(
+        tax_inputs.get("income_before_taxes"),
+        tax_inputs.get("income_tax_expense"),
+        tax_inputs.get("net_income"),
+    )
+
+    adjusted_tax_rate = calculate_adjusted_tax_rate(
+        effective_tax_rate,
+        tax_inputs.get("income_before_taxes"),
+        tax_inputs.get("income_tax_expense"),
+        get_non_operating_line_items(income_statement),
+    )
 
     # Add notes for missing data
     if revenue is None:
@@ -361,7 +573,7 @@ def calculate_all_historical_metrics(
     if effective_tax_rate is None:
         notes.append("Effective tax rate could not be calculated")
 
-    # Check for unusual tax rates (but don't adjust - that's a future enhancement)
+    # Check for unusual tax rates (and record when adjusted)
     if effective_tax_rate:
         if effective_tax_rate > Decimal("0.35"):
             notes.append(
@@ -369,6 +581,11 @@ def calculate_all_historical_metrics(
             )
         elif effective_tax_rate < Decimal("0.10"):
             notes.append(f"Effective tax rate ({effective_tax_rate * 100:.1f}%) appears low (<10%)")
+
+    if adjusted_tax_rate is not None:
+        notes.append(
+            f"Adjusted tax rate calculated using non-operating items: {(adjusted_tax_rate * 100):.1f}%"
+        )
 
     return {
         "net_working_capital": net_working_capital,
@@ -378,5 +595,6 @@ def calculate_all_historical_metrics(
         "ebita": ebita,
         "ebita_margin": ebita_margin,
         "effective_tax_rate": effective_tax_rate,
+        "adjusted_tax_rate": adjusted_tax_rate,
         "calculation_notes": notes,
     }

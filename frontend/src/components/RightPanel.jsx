@@ -716,6 +716,13 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                   <td>—</td>
                                 </tr>
                               )}
+                              {historicalCalculations.adjusted_tax_rate !== null && (
+                                <tr>
+                                  <td>Adjusted Tax Rate</td>
+                                  <td className="text-right">{(parseFloat(historicalCalculations.adjusted_tax_rate) * 100).toFixed(2)}%</td>
+                                  <td>—</td>
+                                </tr>
+                              )}
                             </tbody>
                           </table>
                         </div>

@@ -69,6 +69,7 @@ def calculate_and_save_historical_calculations(
         existing_calc.ebita = results["ebita"]
         existing_calc.ebita_margin = results["ebita_margin"]
         existing_calc.effective_tax_rate = results["effective_tax_rate"]
+        existing_calc.adjusted_tax_rate = results["adjusted_tax_rate"]
         existing_calc.calculation_notes = calculation_notes_json
         existing_calc.time_period = document.time_period
         existing_calc.currency = balance_sheet.currency or income_statement.currency
@@ -88,6 +89,7 @@ def calculate_and_save_historical_calculations(
             ebita=results["ebita"],
             ebita_margin=results["ebita_margin"],
             effective_tax_rate=results["effective_tax_rate"],
+            adjusted_tax_rate=results["adjusted_tax_rate"],
             calculation_notes=calculation_notes_json,
             time_period=document.time_period,
             currency=balance_sheet.currency or income_statement.currency,
