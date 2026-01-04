@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import LoginPage from './pages/LoginPage'
 import Dashboard from './pages/Dashboard'
@@ -47,7 +47,9 @@ function App() {
     <ThemeProvider>
       <AuthProvider>
         <Router>
-          <AppRoutes />
+          <div className="app">
+            <AppRoutes />
+          </div>
         </Router>
       </AuthProvider>
     </ThemeProvider>
@@ -55,5 +57,3 @@ function App() {
 }
 
 export default App
-
-

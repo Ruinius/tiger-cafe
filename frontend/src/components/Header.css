@@ -1,12 +1,18 @@
 .header {
-  height: 60px;
-  background-color: var(--bg-surface);
+  height: 68px;
+  background-color: rgba(255, 255, 255, 0.7);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 1.5rem;
+  padding: 0 2rem;
   flex-shrink: 0;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="dark"] .header {
+  background-color: rgba(18, 20, 24, 0.7);
 }
 
 .header-left {
@@ -18,6 +24,7 @@
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--text-primary);
+  letter-spacing: -0.01em;
 }
 
 .header-right {
@@ -27,17 +34,51 @@
 }
 
 .theme-toggle {
-  background: none;
-  border: none;
-  font-size: 1.5rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
   cursor: pointer;
-  padding: 0.5rem;
-  border-radius: 4px;
-  transition: background-color 0.2s;
+  padding: 0.35rem 0.75rem 0.35rem 0.5rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+  box-shadow: 0 6px 20px var(--shadow);
 }
 
 .theme-toggle:hover {
-  background-color: var(--bg-secondary);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.theme-toggle-indicator {
+  width: 24px;
+  height: 14px;
+  border-radius: 999px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border);
+  position: relative;
+  display: inline-block;
+}
+
+.theme-toggle-indicator::after {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: var(--primary);
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  transform: translateY(-50%);
+  transition: transform 0.2s ease;
+}
+
+[data-theme="dark"] .theme-toggle-indicator::after {
+  transform: translate(10px, -50%);
 }
 
 .user-info {
@@ -47,23 +88,25 @@
 }
 
 .user-name {
-  font-size: 0.875rem;
+  font-size: 0.85rem;
   color: var(--text-secondary);
 }
 
 .logout-button {
-  background-color: var(--error);
-  color: white;
+  background-color: var(--text-primary);
+  color: var(--bg-secondary);
   border: none;
-  padding: 0.5rem 1rem;
-  border-radius: 4px;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
   cursor: pointer;
-  font-size: 0.875rem;
-  transition: background-color 0.2s;
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transition: all 0.2s ease;
 }
 
 .logout-button:hover {
-  background-color: #D32F2F;
+  background-color: var(--secondary);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px var(--shadow);
 }
-
-
