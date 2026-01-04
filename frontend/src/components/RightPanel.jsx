@@ -393,9 +393,9 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                      status === 'not_found' ? 'var(--text-secondary)' : 'var(--text-secondary)'
                             }}>
                               {status === 'completed' ? '✓' : 
-                               status === 'in_progress' ? '⟳' : 
+                               status === 'in_progress' ? <span className="status-spinner" aria-hidden="true" /> : 
                                status === 'error' ? '✗' : 
-                               status === 'checking' ? '⟳' :
+                               status === 'checking' ? <span className="status-spinner" aria-hidden="true" /> :
                                status === 'not_found' ? '○' : '○'}
                             </span>
                             <span style={{ flex: 1, fontWeight: (status === 'in_progress' || status === 'checking') ? 'bold' : 'normal' }}>
