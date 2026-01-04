@@ -16,12 +16,12 @@
 }
 
 .split-panel-right {
-  /* Right panel styles */
+  background-color: var(--bg-primary);
 }
 
 .split-divider {
-  width: 4px;
-  background-color: var(--border);
+  width: 6px;
+  background-color: transparent;
   cursor: col-resize;
   position: relative;
   flex-shrink: 0;
@@ -29,7 +29,7 @@
 }
 
 .split-divider:hover {
-  background-color: var(--primary);
+  background-color: rgba(10, 132, 255, 0.15);
 }
 
 .divider-handle {
@@ -37,14 +37,12 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 2px;
-  height: 40px;
-  background-color: var(--text-secondary);
-  border-radius: 2px;
+  width: 3px;
+  height: 50px;
+  background-color: var(--border-strong);
+  border-radius: 999px;
 }
 
 .split-divider:hover .divider-handle {
   background-color: var(--primary);
 }
-
-

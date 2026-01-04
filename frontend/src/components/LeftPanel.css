@@ -2,18 +2,20 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background-color: var(--bg-surface);
+  background-color: var(--bg-secondary);
+  border-right: 1px solid var(--border);
 }
 
 .panel-content {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 1rem;
+  padding: 1.5rem;
+  gap: 1.25rem;
 }
 
 .panel-header {
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid var(--border);
   display: flex;
@@ -29,6 +31,7 @@
   font-size: 0.9rem;
   font-family: inherit;
   flex: 1;
+  color: var(--text-secondary);
 }
 
 .breadcrumb-link {
@@ -39,14 +42,13 @@
   padding: 0;
   font-size: 0.9rem;
   font-family: inherit;
-  font-weight: 400;
+  font-weight: 500;
   text-decoration: none;
   transition: color 0.2s;
 }
 
 .breadcrumb-link:hover {
   color: var(--primary-dark);
-  text-decoration: underline;
 }
 
 .breadcrumb-separator {
@@ -67,22 +69,24 @@
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--text-primary);
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
 }
 
 .search-input {
   width: 100%;
-  padding: 0.5rem;
+  padding: 0.6rem 0.8rem;
   border: 1px solid var(--border);
-  border-radius: 4px;
-  background-color: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-surface);
   color: var(--text-primary);
   font-size: 0.875rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .search-input:focus {
   outline: none;
-  border-color: var(--primary);
+  border-color: rgba(10, 132, 255, 0.5);
+  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.15);
 }
 
 .back-button {
@@ -91,8 +95,9 @@
   color: var(--primary);
   cursor: pointer;
   font-size: 0.875rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
   padding: 0.25rem 0;
+  font-weight: 500;
 }
 
 .back-button:hover {
@@ -103,32 +108,32 @@
 .document-list {
   flex: 1;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.company-item,
+.document-item {
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+  border: 1px solid var(--border);
+  background-color: var(--bg-surface);
 }
 
 .company-item {
-  padding: 0.75rem;
-  margin-bottom: 0.5rem;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  border: 1px solid var(--border);
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.document-item {
-  padding: 0.75rem;
-  margin-bottom: 0.5rem;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  border: 1px solid var(--border);
-}
-
 .company-item:hover,
 .document-item:hover {
-  background-color: var(--bg-secondary);
+  border-color: rgba(10, 132, 255, 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px var(--shadow);
 }
 
 .company-info {
@@ -136,31 +141,33 @@
 }
 
 .company-name {
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-primary);
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.35rem;
 }
 
 .company-ticker {
   font-size: 0.75rem;
   color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .document-count-badge {
-  background-color: var(--primary);
-  color: white;
-  border-radius: 12px;
-  padding: 0.25rem 0.5rem;
+  background-color: var(--text-primary);
+  color: var(--bg-secondary);
+  border-radius: 999px;
+  padding: 0.35rem 0.6rem;
   font-size: 0.75rem;
   font-weight: 600;
-  min-width: 24px;
+  min-width: 28px;
   text-align: center;
 }
 
 .document-name {
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-primary);
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.35rem;
   word-break: break-word;
   display: flex;
   align-items: center;
@@ -197,48 +204,49 @@
 }
 
 .document-type {
-  background-color: var(--bg-secondary);
-  padding: 0.125rem 0.5rem;
-  border-radius: 4px;
+  background-color: var(--bg-elevated);
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
   text-transform: capitalize;
 }
 
 .status-badge {
-  padding: 0.125rem 0.5rem;
-  border-radius: 4px;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
   font-size: 0.7rem;
-  font-weight: 500;
+  font-weight: 600;
   text-transform: capitalize;
+  letter-spacing: 0.02em;
 }
 
 .status-pending {
-  background-color: var(--bg-secondary);
+  background-color: var(--bg-elevated);
   color: var(--text-secondary);
 }
 
 .status-indexing {
-  background-color: var(--info);
-  color: white;
+  background-color: rgba(76, 139, 247, 0.2);
+  color: var(--info);
 }
 
 .status-indexed {
-  background-color: var(--success);
-  color: white;
+  background-color: rgba(36, 161, 72, 0.15);
+  color: var(--success);
 }
 
 .status-processing {
-  background-color: var(--warning);
-  color: white;
+  background-color: rgba(245, 166, 35, 0.15);
+  color: var(--warning);
 }
 
 .status-processed {
-  background-color: var(--success);
-  color: white;
+  background-color: rgba(36, 161, 72, 0.15);
+  color: var(--success);
 }
 
 .status-error {
-  background-color: var(--error);
-  color: white;
+  background-color: rgba(229, 72, 77, 0.15);
+  color: var(--error);
 }
 
 .empty-state {
@@ -256,23 +264,25 @@
 
 .add-document-button {
   margin-top: auto;
-  padding: 0.75rem;
-  background-color: var(--primary);
-  color: white;
+  padding: 0.85rem 1.25rem;
+  background-color: var(--text-primary);
+  color: var(--bg-secondary);
   border: none;
-  border-radius: 4px;
+  border-radius: 999px;
   cursor: pointer;
   font-size: 0.875rem;
-  font-weight: 500;
-  transition: background-color 0.2s;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .add-document-button:hover {
-  background-color: var(--primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px var(--shadow);
 }
 
 .document-detail {
-  padding: 1rem 0;
+  padding: 0.5rem 0;
 }
 
 .document-info {
@@ -298,10 +308,11 @@
 }
 
 .info-section {
-  background-color: var(--bg-primary);
+  background-color: var(--bg-surface);
   padding: 1rem;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
+  box-shadow: 0 8px 24px var(--shadow);
 }
 
 .info-section h3 {
@@ -327,18 +338,18 @@
 
 .metadata-item strong {
   color: var(--text-secondary);
-  font-weight: 500;
-  font-size: 0.75rem;
+  font-weight: 600;
+  font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.08em;
 }
 
 .metadata-item .status-badge {
   display: inline-block;
   padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 500;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
   text-transform: capitalize;
   width: fit-content;
 }
@@ -351,9 +362,9 @@
   width: 100%;
   height: 600px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   overflow: hidden;
-  background-color: var(--bg-secondary);
+  background-color: var(--bg-elevated);
   margin-top: 0.75rem;
 }
 
@@ -373,9 +384,10 @@
 
 .upload-progress-item {
   padding: 1rem;
-  background-color: var(--bg-secondary);
-  border-radius: 8px;
+  background-color: var(--bg-surface);
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
+  box-shadow: 0 8px 24px var(--shadow);
 }
 
 .upload-progress-header {
@@ -393,28 +405,28 @@
 }
 
 .duplicate-warning-badge {
-  background-color: var(--warning);
-  color: white;
+  background-color: rgba(245, 166, 35, 0.2);
+  color: var(--warning);
   padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 500;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
 }
 
 .progress-bar-container {
   width: 100%;
-  height: 8px;
-  background-color: var(--bg-primary);
-  border-radius: 4px;
+  height: 6px;
+  background-color: var(--bg-elevated);
+  border-radius: 999px;
   overflow: hidden;
   margin-bottom: 0.75rem;
 }
 
 .progress-bar {
   height: 100%;
-  background-color: var(--primary);
+  background: linear-gradient(90deg, var(--primary), var(--primary-light));
   transition: width 0.3s ease;
-  border-radius: 4px;
+  border-radius: 999px;
 }
 
 .milestones {
@@ -432,9 +444,9 @@
 }
 
 .milestone-icon {
-  font-size: 1.25rem;
-  width: 24px;
-  height: 24px;
+  font-size: 1rem;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -454,7 +466,7 @@
 }
 
 .milestone-label {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--text-secondary);
   text-align: center;
 }
@@ -482,10 +494,9 @@
 .duplicate-warning-text {
   margin-bottom: 0.75rem;
   padding: 0.75rem;
-  background-color: var(--warning);
-  background-color: rgba(255, 152, 0, 0.1);
-  border: 1px solid var(--warning);
-  border-radius: 4px;
+  background-color: rgba(245, 166, 35, 0.1);
+  border: 1px solid rgba(245, 166, 35, 0.4);
+  border-radius: var(--radius-sm);
 }
 
 .duplicate-warning-text strong {
@@ -503,15 +514,14 @@
 }
 
 .add-document-button.has-uploads {
-  background-color: var(--primary);
-  color: white;
+  background-color: var(--text-primary);
+  color: var(--bg-secondary);
 }
 
 .add-document-button.has-uploads .button-spinner {
   display: inline-block;
   animation: spin 1s linear infinite;
   margin-right: 0.5rem;
-  /* Ensure this is just the character, not a circular spinner */
   width: auto;
   height: auto;
   border: none;
@@ -530,10 +540,10 @@
 .summary-section strong {
   display: block;
   color: var(--text-secondary);
-  font-weight: 500;
-  font-size: 0.75rem;
+  font-weight: 600;
+  font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.08em;
   margin-bottom: 0.5rem;
 }
 
@@ -543,4 +553,3 @@
   line-height: 1.5;
   margin: 0;
 }
-
