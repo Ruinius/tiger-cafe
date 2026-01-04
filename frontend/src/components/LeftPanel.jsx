@@ -513,7 +513,9 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
       {!showUploadProgress && !selectedCompany && !selectedDocument && (
         <div className="panel-content">
           <div className="panel-header">
-            <h2>Companies</h2>
+            <span className="breadcrumb-current">Companies</span>
+          </div>
+          <div style={{ marginBottom: '1rem' }}>
             <input
               type="text"
               placeholder="Search companies..."

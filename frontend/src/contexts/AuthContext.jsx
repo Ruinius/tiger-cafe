@@ -12,15 +12,7 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => {
     return localStorage.getItem('tiger-cafe-token')
   })
-
-  useEffect(() => {
-    // Check if user is authenticated on mount
-    if (token) {
-      verifyToken(token)
-    } else {
-      setLoading(false)
-    }
-  }, [])
+  const isInitialLoad = React.useRef(true)
 
   const verifyToken = async (idToken) => {
     try {
@@ -41,6 +33,65 @@ export function AuthProvider({ children }) {
       setLoading(false)
     }
   }
+
+  // Set up axios response interceptor to handle authentication failures
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        // If we get a 401 Unauthorized, the token has expired
+        if (error.response && error.response.status === 401) {
+          // Skip if this is from the auth/me endpoint (initial verification)
+          // or if we're still in the initial load phase
+          const isAuthEndpoint = error.config?.url?.includes('/auth/me')
+          
+          if (!isAuthEndpoint && !isInitialLoad.current) {
+            // Only log out if we were previously authenticated (avoid loops)
+            const currentToken = localStorage.getItem('tiger-cafe-token')
+            if (currentToken && isAuthenticated) {
+              console.log('Authentication expired. Logging out...')
+              // Clear token and state
+              localStorage.removeItem('tiger-cafe-token')
+              delete axios.defaults.headers.common['Authorization']
+              setIsAuthenticated(false)
+              setUser(null)
+              setToken(null)
+              // Use window.location to ensure full redirect (prevents stale state)
+              setTimeout(() => {
+                window.location.href = '/login'
+              }, 100)
+            }
+          }
+        }
+        return Promise.reject(error)
+      }
+    )
+
+    // Cleanup interceptor on unmount
+    return () => {
+      axios.interceptors.response.eject(interceptor)
+    }
+  }, [isAuthenticated])
+
+  useEffect(() => {
+    // Check if user is authenticated on mount
+    if (token) {
+      verifyToken(token).catch((error) => {
+        // Error already handled in verifyToken, but ensure loading is set
+        console.error('Token verification error:', error)
+      })
+    } else {
+      setLoading(false)
+    }
+    
+    // Mark initial load as complete after a short delay
+    const timer = setTimeout(() => {
+      isInitialLoad.current = false
+    }, 3000) // Allow 3 seconds for initial token verification
+    
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const login = async (idToken) => {
     try {

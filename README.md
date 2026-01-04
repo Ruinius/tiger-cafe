@@ -43,7 +43,7 @@ cd frontend
 npm install
 
 # Configure environment variables
-# Create frontend/.env with VITE_GOOGLE_CLIENT_ID
+# Add VITE_GOOGLE_CLIENT_ID to root .env file (Vite automatically loads VITE_* variables from root)
 
 npm run dev
 ```
@@ -59,8 +59,9 @@ Tiger-Cafe loads configuration from `.env` and `config/config.py`.
 | Variable | Purpose |
 | --- | --- |
 | `GEMINI_API_KEY` | Gemini API access for LLM + embeddings |
-| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID (backend) |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret (backend) |
+| `VITE_GOOGLE_CLIENT_ID` | Google OAuth client ID (frontend - set in root `.env`) |
 
 **Optional environment variables:**
 
@@ -125,7 +126,7 @@ npm install
 ```
 
 3. Set up environment variables:
-Create a `.env` file in the `frontend` directory:
+Add `VITE_GOOGLE_CLIENT_ID` to the root `.env` file (Vite automatically loads variables prefixed with `VITE_` from the root directory):
 ```
 VITE_GOOGLE_CLIENT_ID=your-google-client-id-here
 ```

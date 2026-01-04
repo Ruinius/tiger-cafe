@@ -365,11 +365,6 @@ All calculations are performed for a specific document using the extracted balan
   - Try multiple methods depending on what is available in the income statement
   - Calculate using available tax information (income tax expense, provision for income taxes, etc.)
 
-- [ ] **Adjusted Tax Rate (Future Enhancement)**
-  - If effective tax rate appears too high (>35%): Attempt to calculate adjusted tax rate by assuming impairments and write-offs are not tax deductible
-  - If effective tax rate appears too low (<10%): Attempt to calculate adjusted tax rate (methodology to be determined)
-  - Note: These enhancements are not needed for the current phase
-
 - [x] **Display and Recalculation**
   - Display all calculated metrics as a table in the right panel in a new section called "Historical Calculations"
   - Display unit for each metric (monetary values use balance sheet/income statement unit, ratios/percentages show "—")
@@ -378,7 +373,50 @@ All calculations are performed for a specific document using the extracted balan
   - Historical calculations automatically trigger after income statement classification completes
   - Unit is persisted and displayed for all monetary metrics
 
-### Phase 6: Core Analysis Agents
+#### 5.4: Enhanced Historical Calculations with LLM Intelligence (Planned)
+- [ ] **LLM-Enhanced Operating Income Identification**
+  - Use LLM to intelligently identify operating income from balance sheet and income statement
+  - Handle various naming conventions (e.g., "income from operations", "operating income", "operating profit")
+  - Improve accuracy of operating income extraction for EBITA calculations
+
+- [ ] **LLM-Enhanced Tax-Related Item Identification**
+  - Use LLM to intelligently identify pretax income, tax expenses, and after-tax income
+  - Handle various naming conventions for tax-related line items
+  - Improve accuracy of effective tax rate calculations
+
+- [ ] **Adjusted Tax Rate Calculation**
+  - If effective tax rate appears too high (>35%): Attempt to calculate adjusted tax rate by assuming certain non-operating items are not tax deductible
+  - If effective tax rate appears too low (<10%): Attempt to calculate adjusted tax rate by assuming certain non-operating items are creating a tax shield
+  - Use LLM to identify non-operating items in income statement that should be backed out of pre-tax income
+  - Calculate adjusted tax rate using adjusted pre-tax income
+
+- [ ] **LLM-Enhanced Non-Operating Item Identification**
+  - Use LLM to intelligently identify non-operating items in income statement
+  - Improve classification of items that should be excluded from operating income calculations
+  - Better handling of one-time items, restructuring charges, and other non-operating expenses
+
+### Phase 6: Company Analysis and Financial Metrics Display
+
+#### 6.1: Historical Calculations Table for Company View (Planned)
+- [ ] **Company-Level Historical Calculations Display**
+  - Show collected table of historical calculations from all earnings announcements, quarterly filings, and annual reports for the selected company
+  - Columns: Time periods (de-duplicated and in ascending order, with most recent report on the right)
+  - Display Currency and Unit above the table (with note that units do not apply to percentages and ratios)
+  - Rows in order:
+    1. Revenue
+    2. YOY Revenue Growth
+    3. EBITA
+    4. EBITA Margin
+    5. Effective Tax Rate
+    6. Adjusted Tax Rate
+    7. Net Working Capital
+    8. Net Long Term Operating Assets
+    9. Invested Capital
+    10. Capital Turnover, Annualized
+  - Display in right panel when a company is selected (currently blank)
+  - Aggregate data from all eligible documents (earnings announcements, quarterly filings, annual reports) for the company
+
+#### 6.2: Core Analysis Agents (Planned)
 - [ ] Organic growth assessment agent
 - [ ] Operating margin analysis agent
 - [ ] Capital turnover evaluation agent
@@ -404,16 +442,21 @@ All calculations are performed for a specific document using the extracted balan
 
 ## Next Steps
 
-1. Phase 5.3 (Enhancements): Historical Calculations - Multi-Period Analysis
-   - Implement historical trend analysis
-   - Calculate period-over-period changes
-   - Multi-period financial statement comparison
-2. Phase 6: Core Analysis Agents
+1. Phase 5.4: Enhanced Historical Calculations with LLM Intelligence
+   - LLM-enhanced operating income identification
+   - LLM-enhanced tax-related item identification
+   - Adjusted tax rate calculation
+   - LLM-enhanced non-operating item identification
+2. Phase 6.1: Historical Calculations Table for Company View
+   - Company-level historical calculations display
+   - Aggregate data from all eligible documents
+   - Display in right panel when company is selected
+3. Phase 6.2: Core Analysis Agents
    - Organic growth assessment agent
    - Operating margin analysis agent
    - Capital turnover evaluation agent
    - Intrinsic value calculation agent (Koller's DCF methodology)
-3. Phase 7: Financial Metrics Display and Analysis
+4. Phase 7: Financial Metrics Display and Analysis
    - Trend analysis visualization
    - Interactive valuation model UI
    - Sensitivity analysis UI
