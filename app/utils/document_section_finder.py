@@ -53,8 +53,8 @@ def find_document_section(
     query_texts: list[str],
     chunk_size: int | None = None,
     score_threshold: float = 0.3,
-    pages_before: int = 2,
-    pages_after: int = 3,
+    pages_before: int = 1,
+    pages_after: int = 1,
 ) -> tuple[str | None, int | None]:
     """
     Use document embeddings to locate relevant sections for the provided queries.
@@ -65,8 +65,8 @@ def find_document_section(
         query_texts: Query phrases to search for
         chunk_size: Size of a chunk in pages; falls back to indexed metadata
         score_threshold: Minimum similarity score to consider a match
-        pages_before: Number of pages to include before the best matching chunk (default: 2)
-        pages_after: Number of pages to include after the best matching chunk (default: 3)
+        pages_before: Number of pages to include before the best matching chunk (default: 1)
+        pages_after: Number of pages to include after the best matching chunk (default: 1)
 
     Returns:
         Tuple of (extracted_text, start_page) or (None, None) if not found
@@ -130,6 +130,15 @@ def find_document_section(
             start_extract_page = max(0, chunk_start_page - pages_before)
             end_extract_page = min(total_pages, chunk_end_page + pages_after)
 
+            log_info = {
+                "best_chunk_index": best_chunk_index,
+                "chunk_start_page": chunk_start_page,
+                "chunk_end_page": chunk_end_page - 1,
+                "similarity": best_score,
+                "start_extract_page": start_extract_page,
+                "end_extract_page": end_extract_page - 1,
+            }
+
             print(
                 f"Best match: chunk {best_chunk_index} (pages {chunk_start_page}-{chunk_end_page - 1}), "
                 f"similarity={best_score:.3f}, extracting pages {start_extract_page}-{end_extract_page - 1}"
@@ -138,10 +147,10 @@ def find_document_section(
             extracted_text = _extract_page_range_text(
                 file_path, start_extract_page, end_extract_page
             )
-            return extracted_text, start_extract_page
+            return extracted_text, start_extract_page, log_info
 
         print(f"No match found above threshold {score_threshold}. Best score: {best_score:.3f}")
-        return None, None
+        return None, None, None
 
     except Exception as e:
         print(f"Error finding document section: {str(e)}")

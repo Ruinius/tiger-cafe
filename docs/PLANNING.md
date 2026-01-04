@@ -373,27 +373,40 @@ All calculations are performed for a specific document using the extracted balan
   - Historical calculations automatically trigger after income statement classification completes
   - Unit is persisted and displayed for all monetary metrics
 
-#### 5.4: Enhanced Historical Calculations with LLM Intelligence (Planned)
-- [ ] **LLM-Enhanced Operating Income Identification**
-  - Use LLM to intelligently identify operating income from balance sheet and income statement
-  - Handle various naming conventions (e.g., "income from operations", "operating income", "operating profit")
-  - Improve accuracy of operating income extraction for EBITA calculations
+#### 5.4: Enhanced Historical Calculations with LLM Intelligence (Complete, except Adjusted Tax Rate)
+- [x] **LLM-Enhanced Operating Income Identification** (Complete)
+  - Implemented via `get_income_statement_llm_insights` and `post_process_income_statement_line_items`
+  - LLM intelligently identifies operating income using various naming conventions (e.g., "income from operations", "operating income", "operating profit")
+  - Line items are renamed with standardized names (e.g., "Operating Income (Income from Operations)") for consistent processing
+  - Improves accuracy of operating income extraction for EBITA calculations
 
-- [ ] **LLM-Enhanced Tax-Related Item Identification**
-  - Use LLM to intelligently identify pretax income, tax expenses, and after-tax income
-  - Handle various naming conventions for tax-related line items
-  - Improve accuracy of effective tax rate calculations
+- [x] **LLM-Enhanced Tax-Related Item Identification** (Complete)
+  - Implemented via `get_income_statement_llm_insights` and `extract_tax_inputs`
+  - LLM identifies pretax income, tax expenses, and net income using standardized names
+  - Handles various naming conventions for tax-related line items
+  - Functions prioritize standardized names (e.g., "Pretax Income (Income Before Tax)", "Tax Expense (Provision for Income Taxes)")
+  - Improves accuracy of effective tax rate calculations
 
-- [ ] **Adjusted Tax Rate Calculation**
-  - If effective tax rate appears too high (>35%): Attempt to calculate adjusted tax rate by assuming certain non-operating items are not tax deductible
-  - If effective tax rate appears too low (<10%): Attempt to calculate adjusted tax rate by assuming certain non-operating items are creating a tax shield
-  - Use LLM to identify non-operating items in income statement that should be backed out of pre-tax income
-  - Calculate adjusted tax rate using adjusted pre-tax income
+- [x] **Cost Format Normalization** (Complete)
+  - Implemented via `post_process_income_statement_line_items`
+  - Automatically detects whether costs are stored as positive or negative in the document
+  - Normalizes all costs to negative format (standard accounting convention)
+  - Handles edge cases like missing gross profit or operating income
+  - Preserves benefits/credits as positive values
 
-- [ ] **LLM-Enhanced Non-Operating Item Identification**
-  - Use LLM to intelligently identify non-operating items in income statement
-  - Improve classification of items that should be excluded from operating income calculations
-  - Better handling of one-time items, restructuring charges, and other non-operating expenses
+- [ ] **Adjusted Tax Rate Calculation** (TODO: Needs revisit and fix)
+  - Current implementation exists (`calculate_adjusted_tax_rate`) and attempts to adjust tax rate when effective rate is unusually high (>35%) or low (<10%)
+  - Issues to address:
+    - Logic for identifying which non-operating items should be backed out may be incorrect
+    - Tax shield vs. tax deduction assumptions need review
+    - Calculation methodology needs validation against accounting principles
+    - Better handling of cases where non-operating items affect tax calculations
+    - May need to use LLM to intelligently determine which non-operating items affect taxes vs. which should be ignored
+
+- [x] **LLM-Enhanced Non-Operating Item Identification** (Complete)
+  - Line items are classified as operating or non-operating during the classification step
+  - Classification uses LLM-based categorization in `classify_line_items_llm`
+  - Non-operating items are used in EBITA and adjusted tax rate calculations
 
 ### Phase 6: Company Analysis and Financial Metrics Display
 
@@ -423,6 +436,16 @@ All calculations are performed for a specific document using the extracted balan
 - [ ] Intrinsic value calculation agent (Koller's DCF methodology)
 - [ ] Market belief analysis agent
 - [ ] Sensitivity analysis agent
+- [ ] **Additional Items Extraction Improvements** (TODO: Needs revisit and fix)
+  - Current implementation uses `find_document_section` with 0 pages before/after (only searches best matching chunk)
+  - May miss items that are spread across multiple chunks or pages, especially when there are more items to search for
+  - Should consider:
+    - Searching multiple chunks if initial search finds partial results
+    - Using broader page ranges when specific items are not found
+    - Handling cases where different items (shares outstanding, amortization) are in different sections of the document
+    - Improving query embeddings to better locate shares outstanding and amortization sections
+    - Potentially using multiple search passes with different query terms
+    - Better handling of cases where some items are found but others are missing
 
 ### Phase 7: Financial Metrics Display and Analysis (Epic 3)
 - [ ] Financial metrics persistence
@@ -442,11 +465,11 @@ All calculations are performed for a specific document using the extracted balan
 
 ## Next Steps
 
-1. Phase 5.4: Enhanced Historical Calculations with LLM Intelligence
-   - LLM-enhanced operating income identification
-   - LLM-enhanced tax-related item identification
-   - Adjusted tax rate calculation
-   - LLM-enhanced non-operating item identification
+1. **Phase 5.4: Adjusted Tax Rate Calculation Fix (TODO: Needs revisit and fix)**
+   - Review and fix logic for identifying tax-affecting non-operating items
+   - Validate tax shield vs. tax deduction assumptions
+   - Improve calculation methodology
+   - May need to use LLM to intelligently determine which non-operating items affect taxes
 2. Phase 6.1: Historical Calculations Table for Company View
    - Company-level historical calculations display
    - Aggregate data from all eligible documents
@@ -456,6 +479,7 @@ All calculations are performed for a specific document using the extracted balan
    - Operating margin analysis agent
    - Capital turnover evaluation agent
    - Intrinsic value calculation agent (Koller's DCF methodology)
+   - Additional items extraction improvements (TODO: needs revisit and fix)
 4. Phase 7: Financial Metrics Display and Analysis
    - Trend analysis visualization
    - Interactive valuation model UI

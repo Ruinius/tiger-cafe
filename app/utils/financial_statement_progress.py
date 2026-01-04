@@ -41,9 +41,69 @@ def update_milestone(
                 "last_updated": datetime.utcnow().isoformat(),
             }
 
+        milestone_data = _progress_store[document_id]["milestones"].get(milestone.value, {})
+
+        # Preserve existing logs if they exist, otherwise initialize empty list
+        logs = milestone_data.get("logs", [])
+
+        # If message is provided, add it to logs
+        if message:
+            logs.append(
+                {
+                    "message": message,
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
+            # Keep only last 20 logs to prevent unbounded growth
+            logs = logs[-20:]
+
         _progress_store[document_id]["milestones"][milestone.value] = {
             "status": status.value,
-            "message": message,
+            "message": message,  # Keep latest message for backward compatibility
+            "logs": logs,  # Store all log messages
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+        _progress_store[document_id]["last_updated"] = datetime.utcnow().isoformat()
+
+
+def add_log(
+    document_id: str,
+    milestone: FinancialStatementMilestone,
+    log_message: str,
+):
+    """Add a log message to a milestone without changing its status"""
+    with _progress_lock:
+        if document_id not in _progress_store:
+            _progress_store[document_id] = {
+                "milestones": {},
+                "last_updated": datetime.utcnow().isoformat(),
+            }
+
+        milestone_data = _progress_store[document_id]["milestones"].get(
+            milestone.value,
+            {
+                "status": MilestoneStatus.PENDING.value,
+                "message": None,
+                "logs": [],
+                "updated_at": datetime.utcnow().isoformat(),
+            },
+        )
+
+        logs = milestone_data.get("logs", [])
+        logs.append(
+            {
+                "message": log_message,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+        )
+        # Keep only last 20 logs to prevent unbounded growth
+        logs = logs[-20:]
+
+        # Update the milestone with new log, preserving status and latest message
+        _progress_store[document_id]["milestones"][milestone.value] = {
+            "status": milestone_data.get("status", MilestoneStatus.PENDING.value),
+            "message": log_message,  # Update latest message
+            "logs": logs,
             "updated_at": datetime.utcnow().isoformat(),
         }
         _progress_store[document_id]["last_updated"] = datetime.utcnow().isoformat()
@@ -70,26 +130,31 @@ def initialize_progress(document_id: str):
                 FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET.value: {
                     "status": MilestoneStatus.PENDING.value,
                     "message": None,
+                    "logs": [],
                     "updated_at": datetime.utcnow().isoformat(),
                 },
                 FinancialStatementMilestone.CLASSIFYING_BALANCE_SHEET.value: {
                     "status": MilestoneStatus.PENDING.value,
                     "message": None,
+                    "logs": [],
                     "updated_at": datetime.utcnow().isoformat(),
                 },
                 FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT.value: {
                     "status": MilestoneStatus.PENDING.value,
                     "message": None,
+                    "logs": [],
                     "updated_at": datetime.utcnow().isoformat(),
                 },
                 FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS.value: {
                     "status": MilestoneStatus.PENDING.value,
                     "message": None,
+                    "logs": [],
                     "updated_at": datetime.utcnow().isoformat(),
                 },
                 FinancialStatementMilestone.CLASSIFYING_INCOME_STATEMENT.value: {
                     "status": MilestoneStatus.PENDING.value,
                     "message": None,
+                    "logs": [],
                     "updated_at": datetime.utcnow().isoformat(),
                 },
             },
@@ -113,6 +178,7 @@ def reset_balance_sheet_milestones(document_id: str):
         ] = {
             "status": MilestoneStatus.PENDING.value,
             "message": None,
+            "logs": [],
             "updated_at": datetime.utcnow().isoformat(),
         }
         _progress_store[document_id]["milestones"][
@@ -120,6 +186,7 @@ def reset_balance_sheet_milestones(document_id: str):
         ] = {
             "status": MilestoneStatus.PENDING.value,
             "message": None,
+            "logs": [],
             "updated_at": datetime.utcnow().isoformat(),
         }
         _progress_store[document_id]["last_updated"] = datetime.utcnow().isoformat()
@@ -141,6 +208,7 @@ def reset_income_statement_milestones(document_id: str):
         ] = {
             "status": MilestoneStatus.PENDING.value,
             "message": None,
+            "logs": [],
             "updated_at": datetime.utcnow().isoformat(),
         }
         _progress_store[document_id]["milestones"][
@@ -148,6 +216,7 @@ def reset_income_statement_milestones(document_id: str):
         ] = {
             "status": MilestoneStatus.PENDING.value,
             "message": None,
+            "logs": [],
             "updated_at": datetime.utcnow().isoformat(),
         }
         _progress_store[document_id]["milestones"][
@@ -155,6 +224,7 @@ def reset_income_statement_milestones(document_id: str):
         ] = {
             "status": MilestoneStatus.PENDING.value,
             "message": None,
+            "logs": [],
             "updated_at": datetime.utcnow().isoformat(),
         }
         _progress_store[document_id]["last_updated"] = datetime.utcnow().isoformat()

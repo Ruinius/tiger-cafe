@@ -2,7 +2,6 @@
 Historical calculations utility for computing financial metrics
 """
 
-import json
 import re
 from decimal import ROUND_HALF_UP, Decimal
 from difflib import SequenceMatcher
@@ -10,7 +9,6 @@ from typing import Any
 
 from app.models.balance_sheet import BalanceSheet
 from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
-from app.utils.gemini_client import generate_content_safe
 
 
 def _normalize_line_name(line_name: str) -> str:
@@ -41,67 +39,6 @@ def _match_line_item(
         return best_item
 
     return None
-
-
-def _parse_llm_json_response(response_text: str) -> dict[str, Any]:
-    if response_text.startswith("```"):
-        response_text = response_text.split("```")[1]
-        if response_text.startswith("json"):
-            response_text = response_text[4:]
-        response_text = response_text.strip()
-
-    return json.loads(response_text)
-
-
-def get_income_statement_llm_insights(
-    income_statement: IncomeStatement,
-) -> tuple[dict[str, Any], list[str]]:
-    if not income_statement or not income_statement.line_items:
-        return {}, []
-
-    line_items_text = "\n".join(
-        [
-            f"{idx + 1}. {item.line_name} | {item.line_value}"
-            for idx, item in enumerate(income_statement.line_items)
-        ]
-    )
-
-    prompt = f"""You are analyzing an income statement. Identify key line items by name.
-Return ONLY valid JSON using the exact line names provided.
-
-Line items:
-{line_items_text}
-
-Return this JSON structure:
-{{
-    "operating_income_line": "exact line name for operating income or null",
-    "pretax_income_line": "exact line name for income before taxes or null",
-    "net_income_line": "exact line name for net income or null",
-    "tax_expense_line": "exact line name for tax expense or null"
-}}
-
-Guidance:
-- Operating income may be labeled as income from operations, operating profit, operating earnings.
-- Pretax income may be labeled as income before tax, earnings before income tax, profit before tax.
-    - Tax expense may include income tax expense, provision for income taxes, taxes.
-
-Return only JSON with no extra text."""
-
-    try:
-        response_text = generate_content_safe(prompt)
-        insights = _parse_llm_json_response(response_text)
-
-        return (
-            {
-                "operating_income_line": insights.get("operating_income_line"),
-                "pretax_income_line": insights.get("pretax_income_line"),
-                "net_income_line": insights.get("net_income_line"),
-                "tax_expense_line": insights.get("tax_expense_line"),
-            },
-            [],
-        )
-    except Exception as exc:
-        return {}, [f"LLM insights unavailable: {str(exc)}"]
 
 
 def calculate_net_working_capital(balance_sheet: BalanceSheet) -> Decimal | None:
@@ -215,10 +152,17 @@ def get_revenue_line_item(
 ) -> IncomeStatementLineItem | None:
     """
     Extract the revenue line item from the income statement.
+    Uses standardized name "Total Net Revenue" if available.
     """
     if not income_statement or not income_statement.line_items:
         return None
 
+    # First, try to find standardized "Total Net Revenue" name
+    for item in income_statement.line_items:
+        if "Total Net Revenue" in item.line_name and item.line_value > 0:
+            return item
+
+    # Fallback to original logic
     for item in income_statement.line_items:
         name_lower = item.line_name.lower()
         category_lower = item.line_category.lower() if item.line_category else ""
@@ -248,17 +192,24 @@ def get_operating_income(
 ) -> Decimal | None:
     """
     Extract operating income from income statement line items.
-    Operating income might be called: Operating Income, Income from Operations, etc.
+    Uses standardized name "Operating Income" if available.
     """
     if not income_statement or not income_statement.line_items:
         return None
 
+    # First, try to find standardized "Operating Income" name
+    for item in income_statement.line_items:
+        if "Operating Income (" in item.line_name:
+            return item.line_value
+
+    # Fallback to LLM insights if available
     if llm_insights:
         llm_line = llm_insights.get("operating_income_line")
         matched_item = _match_line_item(income_statement.line_items, llm_line)
         if matched_item:
             return matched_item.line_value
 
+    # Fallback to original logic
     for item in income_statement.line_items:
         name_lower = item.line_name.lower()
 
@@ -296,19 +247,25 @@ def get_non_operating_items_between_revenue_and_operating_income(
     """
     Get sum of all non-operating items between Revenue and Operating Income.
     These need to be subtracted from Operating Income to get EBITA.
+    Uses standardized names if available.
+    Note: llm_insights parameter is kept for backward compatibility but no longer used.
     """
     if not income_statement or not income_statement.line_items:
         return Decimal("0")
 
     sorted_items = sorted(income_statement.line_items, key=lambda x: x.line_order)
+
+    # Find revenue item (prefer standardized name)
     revenue_item = get_revenue_line_item(income_statement)
+
+    # Find operating income item (prefer standardized name)
     operating_item = None
+    for item in sorted_items:
+        if "Operating Income (" in item.line_name:
+            operating_item = item
+            break
 
-    if llm_insights:
-        operating_item = _match_line_item(
-            income_statement.line_items, llm_insights.get("operating_income_line")
-        )
-
+    # Fallback to search
     if not operating_item:
         for item in sorted_items:
             name_lower = item.line_name.lower()
@@ -357,15 +314,15 @@ def calculate_ebita(
     if operating_income is None:
         return None
 
-    # Subtract non-operating items between revenue and operating income
+    # Add non-operating items between revenue and operating income
     non_operating_items = get_non_operating_items_between_revenue_and_operating_income(
         income_statement, llm_insights
     )
-    ebita = operating_income - non_operating_items
+    ebita = operating_income + non_operating_items
 
-    # Subtract amortization if available and not already subtracted
+    # Add amortization if available
     if amortization is not None:
-        ebita = ebita - amortization
+        ebita = ebita + amortization
 
     return ebita.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
@@ -386,7 +343,9 @@ def extract_tax_inputs(
     income_statement: IncomeStatement, llm_insights: dict[str, Any] | None = None
 ) -> dict[str, Decimal | None]:
     """
-    Extract pretax income, tax expense, and net income with LLM assistance.
+    Extract pretax income, tax expense, and net income.
+    Uses standardized names if available.
+    Note: llm_insights parameter is kept for backward compatibility but no longer used.
     """
     if not income_statement or not income_statement.line_items:
         return {"income_before_taxes": None, "income_tax_expense": None, "net_income": None}
@@ -396,25 +355,17 @@ def extract_tax_inputs(
     net_income = None
     provision_for_income_taxes = None
 
-    if llm_insights:
-        pretax_item = _match_line_item(
-            income_statement.line_items, llm_insights.get("pretax_income_line")
-        )
-        if pretax_item:
-            income_before_taxes = pretax_item.line_value
+    # First, try to find standardized names
+    for item in income_statement.line_items:
+        item_name = item.line_name
+        if "Pretax Income (" in item_name:
+            income_before_taxes = item.line_value
+        elif "Tax Expense (" in item_name:
+            income_tax_expense = abs(item.line_value)
+        elif "Net Income (" in item_name:
+            net_income = item.line_value
 
-        tax_item = _match_line_item(
-            income_statement.line_items, llm_insights.get("tax_expense_line")
-        )
-        if tax_item:
-            income_tax_expense = abs(tax_item.line_value)
-
-        net_income_item = _match_line_item(
-            income_statement.line_items, llm_insights.get("net_income_line")
-        )
-        if net_income_item:
-            net_income = net_income_item.line_value
-
+    # Fallback to original logic
     for item in income_statement.line_items:
         name_lower = item.line_name.lower()
 
@@ -500,13 +451,9 @@ def calculate_adjusted_tax_rate(
         return None
 
     if effective_tax_rate > Decimal("0.35"):
-        adjustment = sum(
-            item.line_value for item in non_operating_items if item.line_value < 0
-        )
+        adjustment = sum(item.line_value for item in non_operating_items if item.line_value < 0)
     else:
-        adjustment = sum(
-            item.line_value for item in non_operating_items if item.line_value > 0
-        )
+        adjustment = sum(item.line_value for item in non_operating_items if item.line_value > 0)
 
     if adjustment == 0:
         return None
@@ -525,11 +472,9 @@ def calculate_all_historical_metrics(
     """
     Calculate all historical financial metrics for a document.
     Returns a dictionary with all calculated values and any notes.
+    Note: Line items should already be standardized during extraction, so no LLM calls are needed here.
     """
     notes = []
-
-    llm_insights, llm_notes = get_income_statement_llm_insights(income_statement)
-    notes.extend(llm_notes)
 
     # Get basic values
     revenue = get_revenue(income_statement)
@@ -542,10 +487,10 @@ def calculate_all_historical_metrics(
     capital_turnover = calculate_capital_turnover(
         revenue, invested_capital, income_statement.time_period if income_statement else None
     )
-    ebita = calculate_ebita(income_statement, amortization, llm_insights)
+    ebita = calculate_ebita(income_statement, amortization, None)
     ebita_margin = calculate_ebita_margin(ebita, revenue)
 
-    tax_inputs = extract_tax_inputs(income_statement, llm_insights)
+    tax_inputs = extract_tax_inputs(income_statement, None)
     effective_tax_rate = calculate_effective_tax_rate_from_inputs(
         tax_inputs.get("income_before_taxes"),
         tax_inputs.get("income_tax_expense"),

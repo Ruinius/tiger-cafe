@@ -30,6 +30,7 @@ def process_income_statement_async(document_id: str, db: Session):
     from app.utils.financial_statement_progress import (
         FinancialStatementMilestone,
         MilestoneStatus,
+        add_log,
         get_progress,
         update_milestone,
     )
@@ -123,15 +124,31 @@ def process_income_statement_async(document_id: str, db: Session):
 
         # Update milestone: extracting income statement completed
         # Note: Even if validation fails, extraction is considered completed
-        extraction_message = "Income statement extraction completed"
         if not extracted_data.get("is_valid", False):
-            extraction_message += " (validation failed)"
-        update_milestone(
-            document_id,
-            FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
-            MilestoneStatus.COMPLETED,
-            extraction_message,
-        )
+            # Include validation errors in the message
+            validation_errors = extracted_data.get("validation_errors", [])
+            if validation_errors:
+                # Show first 2-3 validation errors
+                error_summary = "; ".join(validation_errors[:3])
+                if len(validation_errors) > 3:
+                    error_summary += f" (+{len(validation_errors) - 3} more)"
+                extraction_message = f"Validation failed: {error_summary}"
+            else:
+                extraction_message = "Validation failed"
+            # Set status to ERROR instead of COMPLETED when validation fails
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                MilestoneStatus.ERROR,
+                extraction_message,
+            )
+        else:
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                MilestoneStatus.COMPLETED,
+                "Income statement extraction completed",
+            )
 
         # Update milestone: extracting additional items (happens as part of extract_income_statement)
         update_milestone(
@@ -236,6 +253,14 @@ def process_income_statement_async(document_id: str, db: Session):
 
             db_session.commit()
 
+            # Add log for classification completion
+            classified_count = len(line_items)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.CLASSIFYING_INCOME_STATEMENT,
+                f"Classified {classified_count} line items as operating/non-operating",
+            )
+
             # Update milestone: classifying income statement completed
             classification_message = "Income statement classification completed"
             if not extracted_data.get("is_valid", False):
@@ -287,12 +312,6 @@ def process_income_statement_async(document_id: str, db: Session):
 
     except Exception as e:
         print(f"Error processing income statement for document {document_id}: {str(e)}")
-        from app.utils.financial_statement_progress import (
-            FinancialStatementMilestone,
-            MilestoneStatus,
-            update_milestone,
-        )
-
         # Update milestone to error
         current_progress = get_progress(document_id)
         if current_progress:

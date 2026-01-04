@@ -2,6 +2,7 @@
 Document routes
 """
 
+import json
 import os
 import shutil
 import uuid
@@ -25,8 +26,8 @@ from app.schemas.document import (
     DuplicateInfo,
 )
 from app.schemas.document import Document as DocumentSchema
-from app.utils.document_hash import generate_document_hash
 from app.services.document_processing import DocumentProcessingMode, process_document
+from app.utils.document_hash import generate_document_hash
 from app.utils.document_indexer import delete_chunk_embeddings
 from app.utils.pdf_extractor import extract_text_from_pdf
 from config.config import DEBUG, UPLOAD_DIR
@@ -433,8 +434,6 @@ async def upload_document_internal(file: UploadFile, db: Session, current_user: 
             detail="Could not identify company from document. Please ensure the document contains company information.",
         )
 
-    company = processing_result.company
-
     # Check for duplicates
     duplicate_info = None
     document_type = classification_data.get("document_type")
@@ -610,7 +609,6 @@ if DEBUG:
         return await confirm_upload_internal(
             document_id, db, test_user, background_tasks, existing_document_id
         )
-
 
 
 async def confirm_upload_internal(
@@ -1047,9 +1045,21 @@ async def get_financial_statement_progress(
             else None,
         }
     elif balance_sheet:
+        # Include actual validation errors if available
+        error_message = "Balance sheet extraction failed or validation errors"
+        if balance_sheet.validation_errors:
+            try:
+                validation_errors = json.loads(balance_sheet.validation_errors)
+                if validation_errors:
+                    error_summary = "; ".join(validation_errors[:3])
+                    if len(validation_errors) > 3:
+                        error_summary += f" (+{len(validation_errors) - 3} more)"
+                    error_message = f"Validation failed: {error_summary}"
+            except (json.JSONDecodeError, TypeError):
+                pass  # Use default message if parsing fails
         milestones["extracting_balance_sheet"] = {
             "status": "error",
-            "message": "Balance sheet extraction failed or validation errors",
+            "message": error_message,
             "updated_at": balance_sheet.extraction_date.isoformat()
             if balance_sheet.extraction_date
             else None,
@@ -1124,9 +1134,21 @@ async def get_financial_statement_progress(
             else None,
         }
     elif income_statement:
+        # Include actual validation errors if available
+        error_message = "Income statement extraction failed or validation errors"
+        if income_statement.validation_errors:
+            try:
+                validation_errors = json.loads(income_statement.validation_errors)
+                if validation_errors:
+                    error_summary = "; ".join(validation_errors[:3])
+                    if len(validation_errors) > 3:
+                        error_summary += f" (+{len(validation_errors) - 3} more)"
+                    error_message = f"Validation failed: {error_summary}"
+            except (json.JSONDecodeError, TypeError):
+                pass  # Use default message if parsing fails
         milestones["extracting_income_statement"] = {
             "status": "error",
-            "message": "Income statement extraction failed or validation errors",
+            "message": error_message,
             "updated_at": income_statement.extraction_date.isoformat()
             if income_statement.extraction_date
             else None,

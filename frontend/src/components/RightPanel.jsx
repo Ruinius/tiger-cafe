@@ -413,7 +413,8 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                status === 'not_found' ? 'Not Found' : 'Pending'}
                             </span>
                           </div>
-                          {message && status !== 'pending' && (
+                          {/* Only show message for errors or in-progress, not for completed status */}
+                          {message && (status === 'error' || status === 'in_progress' || status === 'checking') && (
                             <div style={{ 
                               marginTop: '0.25rem',
                               fontSize: '0.875rem',
@@ -421,6 +422,29 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                               marginLeft: '1.75rem'
                             }}>
                               {message}
+                            </div>
+                          )}
+                          {/* Display log messages if available */}
+                          {milestoneData?.logs && milestoneData.logs.length > 0 && (
+                            <div style={{ 
+                              marginTop: '0.5rem',
+                              marginLeft: '1.75rem',
+                              fontSize: '0.8rem',
+                              color: 'var(--text-secondary)'
+                            }}>
+                              {milestoneData.logs.map((log, idx) => (
+                                <div 
+                                  key={idx}
+                                  style={{
+                                    marginBottom: '0.25rem',
+                                    padding: '0.25rem 0',
+                                    borderLeft: '2px solid var(--border)',
+                                    paddingLeft: '0.5rem'
+                                  }}
+                                >
+                                  {log.message}
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>
@@ -561,8 +585,10 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                               {incomeStatement.line_items && incomeStatement.line_items.length > 0 ? (
                                 incomeStatement.line_items.map((item) => {
                                   const lineNameLower = item.line_name.toLowerCase()
-                                  const isKeyTotal = lineNameLower.includes('gross profit') || 
+                                  const isKeyTotal = lineNameLower.includes('total net revenue') || 
+                                                    lineNameLower.includes('gross profit') || 
                                                     lineNameLower.includes('operating income') || 
+                                                    lineNameLower.includes('pretax income') || 
                                                     lineNameLower.includes('net income')
                                   
                                   return (
@@ -571,7 +597,15 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                       className={isKeyTotal ? 'key-total-row' : ''}
                                     >
                                       <td className={isKeyTotal ? 'bold-text' : ''}>{item.line_name}</td>
-                                      <td className={isKeyTotal ? 'bold-text' : ''}>{item.line_category || 'N/A'}</td>
+                                      <td>
+                                        {item.line_category ? (
+                                          <span className={`type-badge ${item.line_category.toLowerCase() === 'one-time' ? 'non-operating' : 'operating'}`}>
+                                            {item.line_category}
+                                          </span>
+                                        ) : (
+                                          'N/A'
+                                        )}
+                                      </td>
                                       <td className={`text-right ${isKeyTotal ? 'bold-text' : ''}`}>{formatNumber(item.line_value, incomeStatement.unit)}</td>
                                       <td>
                                         <span className={`type-badge ${item.is_operating ? 'operating' : 'non-operating'}`}>

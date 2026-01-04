@@ -6,13 +6,17 @@ import json
 import re
 
 from app.utils.document_section_finder import find_document_section
+from app.utils.financial_statement_progress import (
+    FinancialStatementMilestone,
+    add_log,
+)
 from app.utils.gemini_client import generate_content_safe
 from app.utils.pdf_extractor import extract_text_from_pdf
 
 
 def find_balance_sheet_section(
     document_id: str, file_path: str, time_period: str
-) -> tuple[str | None, int | None]:
+) -> tuple[str | None, int | None, dict | None]:
     """
     Use document embedding to locate the consolidated balance sheet section.
 
@@ -22,7 +26,7 @@ def find_balance_sheet_section(
         time_period: Time period to search for (e.g., "Q3 2023")
 
     Returns:
-        Tuple of (extracted_text, start_page) or (None, None) if not found
+        Tuple of (extracted_text, start_page, log_info) or (None, None, None) if not found
     """
     try:
         # Generate query embeddings for various balance sheet names
@@ -32,19 +36,23 @@ def find_balance_sheet_section(
             "total assets",
             "total liabilities",
         ]
-        return find_document_section(
+        result = find_document_section(
             document_id=document_id,
             file_path=file_path,
             query_texts=query_texts,
             chunk_size=None,
             score_threshold=0.3,
-            pages_before=2,
-            pages_after=3,
+            pages_before=1,  # Include 1 page before the best chunk
+            pages_after=1,  # Include 1 page after the best chunk
         )
+        # Handle both old (2-tuple) and new (3-tuple) return formats for backward compatibility
+        if len(result) == 2:
+            return result[0], result[1], None
+        return result
 
     except Exception as e:
         print(f"Error finding balance sheet section: {str(e)}")
-        return None, None
+        return None, None, None
 
 
 def extract_balance_sheet_llm(text: str, time_period: str, currency: str | None = None) -> dict:
@@ -571,26 +579,46 @@ def extract_balance_sheet(
     """
     for attempt in range(max_retries):
         try:
-            print(
-                f"Balance sheet extraction attempt {attempt + 1}/{max_retries} for document {document_id}"
-            )
+            attempt_msg = f"Balance sheet extraction attempt {attempt + 1}/{max_retries}"
+            print(attempt_msg)
+            add_log(document_id, FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET, attempt_msg)
 
             # Step 1: Find balance sheet section using embeddings
-            balance_sheet_text, start_page = find_balance_sheet_section(
+            balance_sheet_text, start_page, log_info = find_balance_sheet_section(
                 document_id, file_path, time_period
             )
 
             if not balance_sheet_text:
                 # Fallback: extract full document if embedding search fails
-                print(
-                    f"Embedding search failed for document {document_id}, extracting full document for attempt {attempt + 1}"
+                fallback_msg = "Embedding search failed, extracting full document..."
+                print(fallback_msg)
+                add_log(
+                    document_id, FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET, fallback_msg
                 )
                 balance_sheet_text, _, _ = extract_text_from_pdf(file_path, max_pages=None)
                 balance_sheet_text = balance_sheet_text[:50000]  # Limit to 50k chars
-                print(f"Extracted {len(balance_sheet_text)} characters from full document")
+                extracted_msg = f"Extracted {len(balance_sheet_text)} characters from full document"
+                print(extracted_msg)
+                add_log(
+                    document_id, FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET, extracted_msg
+                )
             else:
-                print(
-                    f"Found balance sheet section starting at page {start_page}, extracted {len(balance_sheet_text)} characters"
+                # Log chunk/page information if available
+                if log_info:
+                    chunk_msg = f"Best match: chunk {log_info['best_chunk_index']} (pages {log_info['chunk_start_page']}-{log_info['chunk_end_page']})"
+                    print(chunk_msg)
+                    add_log(
+                        document_id, FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET, chunk_msg
+                    )
+                    pages_msg = f"Found balance sheet section (pages {log_info['start_extract_page']}-{log_info['end_extract_page']})"
+                    print(pages_msg)
+                    add_log(
+                        document_id, FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET, pages_msg
+                    )
+                found_msg = f"Found balance sheet section starting at page {start_page}, extracted {len(balance_sheet_text)} characters"
+                print(found_msg)
+                add_log(
+                    document_id, FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET, found_msg
                 )
 
             # Step 2: Extract balance sheet using LLM
@@ -605,14 +633,27 @@ def extract_balance_sheet(
                 )
                 extracted_data["line_items"] = []
 
-            print(
-                f"Extracted {len(extracted_data.get('line_items', []))} line items on attempt {attempt + 1}"
+            extracted_count_msg = (
+                f"Extracted {len(extracted_data.get('line_items', []))} line items"
+            )
+            print(extracted_count_msg)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+                extracted_count_msg,
             )
 
             # Step 3: Validate
             is_valid, errors = validate_balance_sheet(extracted_data["line_items"])
 
             if is_valid:
+                validation_msg = "Validation passed"
+                print(validation_msg)
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+                    validation_msg,
+                )
                 # Step 4: Classify line items
                 classified_items = classify_line_items_llm(extracted_data["line_items"])
                 extracted_data["line_items"] = classified_items
@@ -620,7 +661,15 @@ def extract_balance_sheet(
                 extracted_data["validation_errors"] = []
                 return extracted_data
             else:
-                print(f"Validation failed on attempt {attempt + 1}: {errors}")
+                validation_failed_msg = (
+                    f"Validation failed: {', '.join(errors[:3])}"  # Show first 3 errors
+                )
+                print(validation_failed_msg)
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+                    validation_failed_msg,
+                )
                 if attempt < max_retries - 1:
                     continue  # Retry
                 else:

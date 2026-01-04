@@ -28,6 +28,7 @@ def process_balance_sheet_async(document_id: str, db: Session):
     from app.utils.financial_statement_progress import (
         FinancialStatementMilestone,
         MilestoneStatus,
+        add_log,
         get_progress,
         initialize_progress,
         update_milestone,
@@ -128,15 +129,31 @@ def process_balance_sheet_async(document_id: str, db: Session):
 
         # Update milestone: extracting balance sheet completed
         # Note: Even if validation fails, extraction is considered completed
-        extraction_message = "Balance sheet extraction completed"
         if not extracted_data.get("is_valid", False):
-            extraction_message += " (validation failed)"
-        update_milestone(
-            document_id,
-            FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
-            MilestoneStatus.COMPLETED,
-            extraction_message,
-        )
+            # Include validation errors in the message
+            validation_errors = extracted_data.get("validation_errors", [])
+            if validation_errors:
+                # Show first 2-3 validation errors
+                error_summary = "; ".join(validation_errors[:3])
+                if len(validation_errors) > 3:
+                    error_summary += f" (+{len(validation_errors) - 3} more)"
+                extraction_message = f"Validation failed: {error_summary}"
+            else:
+                extraction_message = "Validation failed"
+            # Set status to ERROR instead of COMPLETED when validation fails
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+                MilestoneStatus.ERROR,
+                extraction_message,
+            )
+        else:
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+                MilestoneStatus.COMPLETED,
+                "Balance sheet extraction completed",
+            )
 
         # Update milestone: classifying balance sheet
         update_milestone(
@@ -189,6 +206,14 @@ def process_balance_sheet_async(document_id: str, db: Session):
 
             db_session.commit()
 
+            # Add log for classification completion
+            classified_count = len(line_items)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.CLASSIFYING_BALANCE_SHEET,
+                f"Classified {classified_count} line items as operating/non-operating",
+            )
+
             # Update milestone: classifying balance sheet completed
             classification_message = "Balance sheet classification completed"
             if not extracted_data.get("is_valid", False):
@@ -217,12 +242,6 @@ def process_balance_sheet_async(document_id: str, db: Session):
 
     except Exception as e:
         print(f"Error processing balance sheet for document {document_id}: {str(e)}")
-        from app.utils.financial_statement_progress import (
-            FinancialStatementMilestone,
-            MilestoneStatus,
-            update_milestone,
-        )
-
         # Update milestone to error
         current_progress = get_progress(document_id)
         if current_progress:
