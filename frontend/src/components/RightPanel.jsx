@@ -358,8 +358,8 @@ function RightPanel({ selectedCompany, selectedDocument }) {
             <>
               {/* Financial Statement Progress Tracker - Always show if progress exists */}
               {financialStatementProgress && (
-                <div className="info-section" style={{ marginBottom: '2rem', padding: '1rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '8px' }}>
-                  <h4 style={{ marginTop: 0, marginBottom: '1rem' }}>Processing Progress</h4>
+                <div className="info-section progress-tracker">
+                  <h4 className="progress-title">Processing Progress</h4>
                   <div className="progress-milestones">
                     {[
                       { key: 'extracting_balance_sheet', label: 'Extracting Balance Sheet' },
@@ -370,42 +370,22 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                     ].map((milestone) => {
                       const milestoneData = financialStatementProgress.milestones?.[milestone.key]
                       const status = milestoneData?.status || 'checking'
+                      const statusClass = status.replace('_', '-')
                       const message = milestoneData?.message
                       
                       return (
-                        <div key={milestone.key} className="progress-milestone-item" style={{ 
-                          marginBottom: '0.75rem',
-                          padding: '0.5rem',
-                          borderRadius: '4px',
-                          backgroundColor: status === 'in_progress' ? 'var(--accent-light)' : 
-                                         status === 'completed' ? 'var(--success-light)' :
-                                         status === 'error' ? 'var(--error-light)' :
-                                         status === 'checking' ? 'var(--bg-primary)' :
-                                         status === 'not_found' ? 'var(--bg-secondary)' : 'transparent'
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <span style={{ 
-                              fontSize: '1.2rem',
-                              color: status === 'completed' ? 'var(--success)' :
-                                     status === 'error' ? 'var(--error)' :
-                                     status === 'in_progress' ? 'var(--accent)' :
-                                     status === 'checking' ? 'var(--text-secondary)' :
-                                     status === 'not_found' ? 'var(--text-secondary)' : 'var(--text-secondary)'
-                            }}>
+                        <div key={milestone.key} className={`progress-milestone-item ${statusClass}`}>
+                          <div className="progress-milestone-row">
+                            <span className={`progress-status-icon ${statusClass}`}>
                               {status === 'completed' ? '✓' : 
-                               status === 'in_progress' ? '⟳' : 
-                               status === 'error' ? '✗' : 
-                               status === 'checking' ? '⟳' :
+                               status === 'error' ? '✕' : 
+                               status === 'in_progress' || status === 'checking' ? <span className="spinner" aria-hidden="true" /> :
                                status === 'not_found' ? '○' : '○'}
                             </span>
-                            <span style={{ flex: 1, fontWeight: (status === 'in_progress' || status === 'checking') ? 'bold' : 'normal' }}>
+                            <span className={`progress-milestone-label ${(status === 'in_progress' || status === 'checking') ? 'is-active' : ''}`}>
                               {milestone.label}
                             </span>
-                            <span style={{ 
-                              fontSize: '0.875rem',
-                              color: 'var(--text-secondary)',
-                              textTransform: 'capitalize'
-                            }}>
+                            <span className="progress-status-text">
                               {status === 'in_progress' ? 'In Progress' :
                                status === 'completed' ? 'Completed' :
                                status === 'error' ? 'Error' :
@@ -415,33 +395,15 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                           </div>
                           {/* Only show message for errors or in-progress, not for completed status */}
                           {message && (status === 'error' || status === 'in_progress' || status === 'checking') && (
-                            <div style={{ 
-                              marginTop: '0.25rem',
-                              fontSize: '0.875rem',
-                              color: 'var(--text-secondary)',
-                              marginLeft: '1.75rem'
-                            }}>
+                            <div className="progress-message">
                               {message}
                             </div>
                           )}
                           {/* Display log messages if available */}
                           {milestoneData?.logs && milestoneData.logs.length > 0 && (
-                            <div style={{ 
-                              marginTop: '0.5rem',
-                              marginLeft: '1.75rem',
-                              fontSize: '0.8rem',
-                              color: 'var(--text-secondary)'
-                            }}>
+                            <div className="progress-message">
                               {milestoneData.logs.map((log, idx) => (
-                                <div 
-                                  key={idx}
-                                  style={{
-                                    marginBottom: '0.25rem',
-                                    padding: '0.25rem 0',
-                                    borderLeft: '2px solid var(--border)',
-                                    paddingLeft: '0.5rem'
-                                  }}
-                                >
+                                <div key={idx} className="progress-log-line">
                                   {log.message}
                                 </div>
                               ))}

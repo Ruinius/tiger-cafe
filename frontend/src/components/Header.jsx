@@ -12,14 +12,16 @@ function Header({ user, onLogout, theme, onThemeToggle }) {
           className="theme-toggle"
           onClick={onThemeToggle}
           aria-label="Toggle theme"
+          aria-pressed={theme === 'dark'}
         >
-          {theme === 'light' ? '🌙' : '☀️'}
+          <span className="theme-toggle-indicator" />
+          <span className="theme-toggle-label">{theme === 'light' ? 'Light' : 'Dark'}</span>
         </button>
         {user && (
           <div className="user-info">
             <span className="user-name">{user.name || user.email}</span>
             <button className="logout-button" onClick={onLogout}>
-              Logout
+              Sign out
             </button>
           </div>
         )}
@@ -29,5 +31,3 @@ function Header({ user, onLogout, theme, onThemeToggle }) {
 }
 
 export default Header
-
-

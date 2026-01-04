@@ -4,7 +4,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: rgba(8, 10, 14, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -12,6 +12,7 @@
   animation: fadeIn 0.2s;
   overflow-y: auto;
   padding: 2rem;
+  backdrop-filter: blur(8px);
 }
 
 @keyframes fadeIn {
@@ -26,38 +27,20 @@
 .modal-content {
   background-color: var(--bg-surface);
   color: var(--text-primary);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   width: 100%;
-  max-width: 600px;
+  max-width: 640px;
   max-height: calc(90vh - 4rem);
   display: flex;
   flex-direction: column;
-  box-shadow: 0 4px 16px var(--shadow);
+  box-shadow: 0 30px 80px var(--shadow-strong);
   animation: slideUp 0.3s;
   position: relative;
   z-index: 1001;
   overflow: hidden;
   margin: auto;
-  min-height: 300px;
-}
-
-/* Ensure modal content is visible in both themes with explicit colors */
-[data-theme="dark"] .modal-content {
-  background-color: #2C2C2C !important;
-  color: #E0E0E0 !important;
-}
-
-[data-theme="light"] .modal-content,
-:not([data-theme]) .modal-content {
-  background-color: #FFFFFF !important;
-  color: #212121 !important;
-}
-
-/* Additional specificity for dark theme */
-html[data-theme="dark"] .modal-content,
-body[data-theme="dark"] .modal-content {
-  background-color: #2C2C2C !important;
-  color: #E0E0E0 !important;
+  min-height: 320px;
+  border: 1px solid var(--border);
 }
 
 @keyframes slideUp {
@@ -75,7 +58,7 @@ body[data-theme="dark"] .modal-content {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1.5rem;
+  padding: 1.5rem 1.75rem;
   border-bottom: 1px solid var(--border);
 }
 
@@ -87,35 +70,35 @@ body[data-theme="dark"] .modal-content {
 }
 
 .modal-close {
-  background: none;
-  border: none;
-  font-size: 1.75rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  font-size: 1.25rem;
   color: var(--text-secondary);
   cursor: pointer;
-  padding: 0;
   width: 36px;
   height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: 50%;
   transition: all 0.2s;
   line-height: 1;
-  font-weight: 300;
+  font-weight: 500;
 }
 
 .modal-close:hover {
-  background-color: var(--bg-secondary);
+  background-color: var(--bg-surface);
   color: var(--text-primary);
-  transform: scale(1.1);
+  transform: scale(1.05);
+  box-shadow: 0 10px 20px var(--shadow);
 }
 
 .modal-close:active {
-  transform: scale(0.95);
+  transform: scale(0.98);
 }
 
 .modal-body {
-  padding: 1.5rem;
+  padding: 1.5rem 1.75rem 1.75rem;
   overflow-y: auto;
   flex: 1;
 }
@@ -140,22 +123,23 @@ body[data-theme="dark"] .modal-content {
 .file-input-label {
   display: block;
   padding: 2rem;
-  border: 2px dashed var(--border);
-  border-radius: 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
   text-align: center;
   cursor: pointer;
   transition: border-color 0.2s, background-color 0.2s;
   color: var(--text-secondary);
+  background-color: var(--bg-elevated);
 }
 
 .file-input-label:hover {
   border-color: var(--primary);
-  background-color: var(--bg-secondary);
+  background-color: rgba(10, 132, 255, 0.08);
 }
 
 .file-input:focus + .file-input-label {
   border-color: var(--primary);
-  outline: 2px solid var(--primary);
+  outline: 2px solid rgba(10, 132, 255, 0.3);
   outline-offset: 2px;
 }
 
@@ -176,14 +160,9 @@ body[data-theme="dark"] .modal-content {
   display: flex;
   gap: 1rem;
   padding: 1rem;
-  background-color: #FFF3CD;
-  border: 1px solid #FFC107;
-  border-radius: 8px;
-}
-
-[data-theme="dark"] .duplicate-warning {
-  background-color: #3E2723;
-  border-color: #FF9800;
+  background-color: rgba(245, 166, 35, 0.15);
+  border: 1px solid rgba(245, 166, 35, 0.45);
+  border-radius: var(--radius-md);
 }
 
 .warning-icon {
@@ -216,8 +195,9 @@ body[data-theme="dark"] .modal-content {
   flex-direction: column;
   gap: 0.75rem;
   padding: 1rem;
-  background-color: var(--bg-secondary);
-  border-radius: 8px;
+  background-color: var(--bg-elevated);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
 }
 
 .detail-row {
@@ -252,8 +232,8 @@ body[data-theme="dark"] .modal-content {
 
 .summary-section {
   padding: 1rem;
-  background-color: var(--bg-secondary);
-  border-radius: 8px;
+  background-color: var(--bg-elevated);
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   margin-bottom: 1rem;
 }
@@ -275,8 +255,8 @@ body[data-theme="dark"] .modal-content {
 
 .text-preview {
   padding: 1rem;
-  background-color: var(--bg-secondary);
-  border-radius: 8px;
+  background-color: var(--bg-elevated);
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
 }
 
@@ -298,10 +278,11 @@ body[data-theme="dark"] .modal-content {
 
 .error-message {
   padding: 0.75rem 1rem;
-  background-color: var(--error);
-  color: white;
-  border-radius: 4px;
+  background-color: rgba(229, 72, 77, 0.15);
+  color: var(--error);
+  border-radius: var(--radius-sm);
   font-size: 0.875rem;
+  border: 1px solid rgba(229, 72, 77, 0.4);
 }
 
 .modal-actions {
@@ -316,22 +297,23 @@ body[data-theme="dark"] .modal-content {
 .button-primary,
 .button-secondary,
 .button-warning {
-  padding: 0.5rem 1rem;
+  padding: 0.6rem 1.2rem;
   border: none;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  font-weight: 500;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .button-primary {
-  background-color: var(--primary);
-  color: white;
+  background-color: var(--text-primary);
+  color: var(--bg-secondary);
 }
 
 .button-primary:hover:not(:disabled) {
-  background-color: var(--primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px var(--shadow);
 }
 
 .button-primary:disabled {
@@ -340,22 +322,24 @@ body[data-theme="dark"] .modal-content {
 }
 
 .button-secondary {
-  background-color: var(--bg-secondary);
+  background-color: var(--bg-elevated);
   color: var(--text-primary);
   border: 1px solid var(--border);
 }
 
 .button-secondary:hover:not(:disabled) {
-  background-color: var(--border);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px var(--shadow);
 }
 
 .button-warning {
   background-color: var(--warning);
-  color: white;
+  color: #1C1E22;
 }
 
 .button-warning:hover:not(:disabled) {
-  background-color: #F57C00;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px var(--shadow);
 }
 
 /* New Multi-File Upload Styles */
@@ -367,24 +351,24 @@ body[data-theme="dark"] .modal-content {
 }
 
 .drop-zone {
-  border: 2px dashed var(--border);
-  border-radius: 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
   padding: 3rem 2rem;
   text-align: center;
   cursor: pointer;
   transition: all 0.2s;
-  background-color: var(--bg-secondary);
+  background-color: var(--bg-elevated);
   margin-bottom: 1rem;
 }
 
 .drop-zone:hover {
   border-color: var(--primary);
-  background-color: var(--bg-primary);
+  background-color: rgba(10, 132, 255, 0.08);
 }
 
 .drop-zone.drag-over {
   border-color: var(--primary);
-  background-color: var(--bg-primary);
+  background-color: rgba(10, 132, 255, 0.12);
   border-style: solid;
 }
 
@@ -396,13 +380,13 @@ body[data-theme="dark"] .modal-content {
 }
 
 .drop-zone-icon {
-  font-size: 3rem;
+  font-size: 2.5rem;
   margin-bottom: 0.5rem;
 }
 
 .drop-zone-text {
   font-size: 1rem;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-primary);
   margin: 0;
 }
@@ -440,9 +424,9 @@ body[data-theme="dark"] .modal-content {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.5rem 0.75rem;
-  background-color: var(--bg-secondary);
-  border-radius: 4px;
+  padding: 0.65rem 0.85rem;
+  background-color: var(--bg-elevated);
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
 }
 
@@ -454,24 +438,22 @@ body[data-theme="dark"] .modal-content {
 }
 
 .file-remove {
-  background: none;
-  border: none;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 1.25rem;
-  padding: 0;
+  font-size: 1rem;
   width: 24px;
   height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
-  transition: background-color 0.2s;
+  border-radius: 50%;
+  transition: background-color 0.2s, color 0.2s;
   margin-left: 0.5rem;
 }
 
 .file-remove:hover {
-  background-color: var(--bg-primary);
+  background-color: rgba(229, 72, 77, 0.12);
   color: var(--error);
 }
-

@@ -460,21 +460,21 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                   <div className={`milestone ${getMilestoneStatus(document.indexing_status, 'uploading')}`}>
                     <span className="milestone-icon">
                       {getMilestoneStatus(document.indexing_status, 'uploading') === 'completed' ? '✓' : 
-                       getMilestoneStatus(document.indexing_status, 'uploading') === 'active' ? '⟳' : '○'}
+                       getMilestoneStatus(document.indexing_status, 'uploading') === 'active' ? <span className="spinner" aria-hidden="true" /> : '○'}
                     </span>
                     <span className="milestone-label">Uploading</span>
                   </div>
                   <div className={`milestone ${getMilestoneStatus(document.indexing_status, 'classification')}`}>
                     <span className="milestone-icon">
                       {getMilestoneStatus(document.indexing_status, 'classification') === 'completed' ? '✓' : 
-                       getMilestoneStatus(document.indexing_status, 'classification') === 'active' ? '⟳' : '○'}
+                       getMilestoneStatus(document.indexing_status, 'classification') === 'active' ? <span className="spinner" aria-hidden="true" /> : '○'}
                     </span>
                     <span className="milestone-label">Classification</span>
                   </div>
                   <div className={`milestone ${getMilestoneStatus(document.indexing_status, 'indexing')}`}>
                     <span className="milestone-icon">
                       {getMilestoneStatus(document.indexing_status, 'indexing') === 'completed' ? '✓' : 
-                       getMilestoneStatus(document.indexing_status, 'indexing') === 'active' ? '⟳' : '○'}
+                       getMilestoneStatus(document.indexing_status, 'indexing') === 'active' ? <span className="spinner" aria-hidden="true" /> : '○'}
                     </span>
                     <span className="milestone-label">Indexing</span>
                   </div>
@@ -556,7 +556,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
           >
             {hasActiveUploads ? (
               <>
-                <span className="button-spinner">⟳</span>
+                <span className="button-spinner spinner" aria-hidden="true" />
                 Check Uploads ({uploadingDocuments.length})
               </>
             ) : (
@@ -627,7 +627,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
           >
             {hasActiveUploads ? (
               <>
-                <span className="button-spinner">⟳</span>
+                <span className="button-spinner spinner" aria-hidden="true" />
                 Check Uploads ({uploadingDocuments.length})
               </>
             ) : (
@@ -883,4 +883,3 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
 }
 
 export default LeftPanel
-
