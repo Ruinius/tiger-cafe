@@ -106,6 +106,21 @@ def process_balance_sheet_async(document_id: str, db: Session):
             document_type=document.document_type,
         )
 
+        # Store successful balance sheet chunk index in progress for income statement extraction
+        balance_sheet_chunk_index = extracted_data.get("balance_sheet_chunk_index")
+        if balance_sheet_chunk_index is not None:
+            # Store in progress with thread safety
+            from app.utils.financial_statement_progress import _progress_lock, _progress_store
+
+            with _progress_lock:
+                if document_id not in _progress_store:
+                    from app.utils.financial_statement_progress import initialize_progress
+
+                    initialize_progress(document_id)
+                _progress_store[document_id]["balance_sheet_chunk_index"] = (
+                    balance_sheet_chunk_index
+                )
+
         # Check if extraction returned valid data with line items
         line_items = extracted_data.get("line_items", [])
         if not line_items or len(line_items) == 0:

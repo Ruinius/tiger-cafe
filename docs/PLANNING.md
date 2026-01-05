@@ -59,7 +59,7 @@ Build AI agents that can analyze equity investments using principles from Tim Ko
    - If duplicate detected: stops at Classification milestone, shows warning with "Replace & Index" button
    - If no duplicate: automatically proceeds to indexing
 6. Index document using Google's embedding model (gemini-embedding-001)
-   - Documents are split into 1-page chunks for indexing
+   - Documents are split into 2-page chunks for indexing
    - Chunk embeddings are generated and persisted to disk
    - Classification and indexing happen sequentially via priority queue (high priority)
    - Upload step is parallel, but classification/indexing are sequential
@@ -115,7 +115,7 @@ Build AI agents that can analyze equity investments using principles from Tim Ko
   - Google Gemini Embedding (gemini-embedding-001) for document indexing
   - Using `google.genai` API (migrated from deprecated `google.generativeai`)
   - Centralized API client with throttling, retry logic, and processing queues
-  - Chunk-based indexing (1-page chunks) with persisted embeddings
+  - Chunk-based indexing (2-page chunks) with persisted embeddings
   - Priority-based processing queue (classification/indexing prioritized over financial statements)
 - **Web Framework**: FastAPI (with Uvicorn)
 - **Frontend**: React with Vite
@@ -159,7 +159,7 @@ Build AI agents that can analyze equity investments using principles from Tim Ko
   - High-priority tasks (classification/indexing) are always processed before lower-priority tasks (financial statements)
   - Prevents overwhelming Gemini API during batch uploads
 - [x] Chunk-based document indexing
-  - Documents split into 1-page chunks for embedding generation
+  - Documents split into 2-page chunks for embedding generation
   - Chunk embeddings are persisted to disk and reused
   - Eliminates duplicate embedding generation during extraction
   - More efficient than document-level embeddings
@@ -255,22 +255,19 @@ Based on UI/UX Design specifications, build the frontend interface:
     - Earnings announcement: ignore first 30% and last 10% of document
     - Annual filing: ignore first 50% and last 20% of document
     - Quarterly filing: ignore last 50% of document (no front ignore)
-  - Retry strategy: 1st try uses best chunk, 2nd try uses 2nd best chunk, 3rd try uses 3rd best chunk
+  - Two-stage validation with retry strategy (see section 5.5 for details):
+    - Stage 1: Try rank 1, 2, 3 chunks to find correct section (validates line count + key lines)
+    - Stage 2: Retry extraction up to 3 times with LLM feedback if sum validation fails
 - [x] LLM-based extraction of balance sheet line items:
   - Extract balance sheet exactly line by line for the specified time period
   - Extract local currency when applicable
   - Extract unit of measurement (ones, thousands, millions, billions, or ten_thousands for foreign stocks)
-- [x] Validation and error handling:
-  - Verify that current assets sum correctly
-  - Verify that total assets sum correctly
-  - Verify that current liabilities sum correctly
-  - Verify that total liabilities sum correctly
-  - Verify that total assets equal total liabilities and total equity
-  - Minimum line requirement: at least 10 valid line items
-  - If sums are incorrect, retry extraction up to 3 times before failing (1st try = best chunk, 2nd try = 2nd best chunk, 3rd try = 3rd best chunk)
+- [x] Validation and error handling (see section 5.5 for two-stage validation details):
+  - Stage 1 validation: Verify minimum line count (10 lines) and presence of key totals
+  - Stage 2 validation: Verify that current assets sum correctly, total assets sum correctly, current liabilities sum correctly, total liabilities sum correctly, and total assets equal total liabilities and total equity
   - Precise total identification using regex to handle long line item names with notes
+  - LLM feedback loop: If sum validation fails, retry extraction with validation errors and calculated differences included in prompt
   - Validation runs in frontend (not persisted) to avoid blocking on validation errors
-  - Check for empty line items and key items before validation
 - [x] Line item classification:
   - Use authoritative lookup table with normalization for binding decisions
   - Fallback heuristics when no lookup match
@@ -292,7 +289,9 @@ Based on UI/UX Design specifications, build the frontend interface:
 - [x] Sequential processing: Runs after balance sheet processing to avoid overwhelming Gemini API
 - [x] Use balance sheet location to locate income statement:
   - First finds balance sheet location using chunk embeddings
-  - Then uses adjacent chunks: 1st try uses chunk immediately before balance sheet, 2nd try uses chunk immediately after balance sheet
+  - Two-stage validation with retry strategy (see section 5.5 for details):
+    - Stage 1: Try chunks before, after, and 2 after balance sheet to find correct section (validates line count + required items)
+    - Stage 2: Retry extraction up to 3 times with LLM feedback if post-processing validation fails
   - More reliable than independent search since income statements are typically near balance sheets
   - Document type-based search range restrictions (same as balance sheet):
     - Earnings announcement: ignore first 30% and last 10% of document
@@ -308,13 +307,10 @@ Based on UI/UX Design specifications, build the frontend interface:
   - Extract diluted shares outstanding for the specific time period
   - Extract amortization for the specific time period
   - Extract unit of measurement for each additional item (revenue_prior_year, shares outstanding, amortization)
-- [x] Validation and error handling:
-  - Minimum line requirement: at least 5 valid line items
-  - Required line items: Total Net Revenue and Net Income must be present
-  - Verify gross profit calculation (validated during normalization)
-  - Verify operating income calculation (validated during normalization)
-  - If sums are incorrect or errors occur, retry extraction up to 2 times before failing
-  - Check for empty line items and key items before validation
+- [x] Validation and error handling (see section 5.5 for two-stage validation details):
+  - Stage 1 validation: Verify minimum line count (5 lines) and presence of required items (Total Net Revenue, Net Income)
+  - Stage 2 validation: Post-process and validate using final_diff logic (checks gross profit, operating income, and other calculations during normalization)
+  - LLM feedback loop: If post-processing validation fails, retry extraction with validation errors, calculated differences, and cost normalization explanation included in prompt
 - [x] Line item classification:
   - Use LLM to categorize each income statement line item as operating or non-operating
   - LLM should use best judgment for classification
@@ -404,21 +400,56 @@ All calculations are performed for a specific document using the extracted balan
   - Handles edge cases like missing gross profit or operating income
   - Preserves benefits/credits as positive values
 
-- [ ] **Adjusted Tax Rate Calculation** (TODO: Needs revisit and fix)
-  - Current implementation exists (`calculate_adjusted_tax_rate`) and attempts to adjust tax rate when effective rate is unusually high (>35%) or low (<10%)
-  - Issues to address:
-    - Logic for identifying which non-operating items should be backed out may be incorrect
-    - Tax shield vs. tax deduction assumptions need review
-    - Calculation methodology needs validation against accounting principles
-    - Better handling of cases where non-operating items affect tax calculations
-    - May need to use LLM to intelligently determine which non-operating items affect taxes vs. which should be ignored
-
 - [x] **LLM-Enhanced Non-Operating Item Identification** (Complete)
   - Line items are classified as operating or non-operating during the classification step
   - Classification uses LLM-based categorization in `classify_line_items_llm`
   - Non-operating items are used in EBITA and adjusted tax rate calculations
 
-### Phase 6: Company Analysis and Financial Metrics Display
+#### 5.5: Updated Balance Sheet and Income Statement Validation (Complete)
+- [x] Refactored validation logic to separate section finding from extraction/validation with a two-stage retry mechanism
+- [x] **Balance Sheet Processing:**
+  - Stage 1: Find Balance Sheet Section
+    - Use rank 1 chunk (best match) to locate balance sheet section
+    - Attempt extraction using LLM
+    - Validate by checking minimum line count (10 lines) and presence of key lines
+    - If validation fails, retry with rank 2 chunk, then rank 3 chunk (3 tries total for finding)
+    - Once section validation succeeds, proceed to Stage 2
+  - Stage 2: Validate Extraction Calculations
+    - Validate sums (current assets, total assets, current liabilities, total liabilities, balance sheet equation)
+    - If validation fails:
+      - Calculate and report differences in error messages
+      - Pass section text, extracted table, and validation errors to LLM for correction
+      - Retry extraction up to 3 times total (including initial attempt)
+      - Each retry includes full error context to help LLM correct mistakes
+- [x] **Income Statement Processing:**
+  - Stage 1: Find Income Statement Section
+    - Use chunk immediately before balance sheet chunk to locate income statement
+    - Attempt extraction using LLM
+    - Validate by checking minimum line count (5 lines) and presence of required items (Total Net Revenue, Net Income)
+    - If validation fails, retry with chunk after balance sheet, then 2 chunks after balance sheet (3 tries total for finding)
+    - Once section validation succeeds, proceed to Stage 2
+  - Stage 2: Post-Process and Validate Extraction
+    - Post-process line items (normalize cost format, identify key items)
+    - Validate using final_diff logic (checks calculations during normalization)
+    - If validation fails:
+      - Calculate and report differences in error messages
+      - Pass section text, extracted table, explanation about cost normalization, and validation errors to LLM for correction
+      - Retry extraction up to 3 times total (including initial attempt)
+      - Each retry includes full error context and normalization explanation
+- [x] **Key Improvements:**
+  - Clear separation between section finding and extraction validation
+  - Two-stage retry mechanism reduces false positives from wrong sections
+  - LLM feedback loop includes calculation differences for better correction
+  - More robust handling of edge cases and extraction errors
+
+#### 5.6: Further Updates to Balance Sheet and Income Statement Validation
+- [ ] Instead of the complex validation logic after extraction, which wastes output tokens. Ask the LLM do I have a complete consolidated balance sheet starting from cash to total shareholder's equity
+- [ ] Simiarly, for the income statement, ask the LLM do I have a complete consolidated income statement starting from revenue to net income. In particular, we need to avoid smaller informational tables that do not have the complete information
+- [ ] Keep the old validation logic as a potential future back-up, but do not use it in the main flow for now
+- [ ] Similar to how the income statement creates standard names for key line items, the balance sheet should also have standard names for a few key items: cash & equivalents, other current assets, total current assets, other non-current assets, other current liabilities, total current liabilities, other non-current liabilities, total liabilities, total shareholder's equity
+- [ ] For balance sheet, income statement, and future additional extractions for additional items, persist the final chunk number used for traceability and observability. The same chunk may also be used repeatedly in the future
+
+### Phase 6: Company Analysis and Adjustments
 
 #### 6.1: Historical Calculations Table for Company View (Complete)
 - [x] **Company-Level Historical Calculations Display**
@@ -439,62 +470,82 @@ All calculations are performed for a specific document using the extracted balan
   - Display in right panel when a company is selected (currently blank)
   - Aggregate data from all eligible documents (earnings announcements, quarterly filings, annual reports) for the company
 
-#### 6.2: Core Analysis Agents (Planned)
-- [ ] Organic growth assessment agent
-- [ ] Operating margin analysis agent
-- [ ] Capital turnover evaluation agent
-- [ ] Intrinsic value calculation agent (Koller's DCF methodology)
-- [ ] Market belief analysis agent
-- [ ] Sensitivity analysis agent
-- [ ] **Additional Items Extraction Improvements** (TODO: Needs revisit and fix)
-  - Current implementation uses `find_document_section` with 0 pages before/after (only searches best matching chunk)
-  - May miss items that are spread across multiple chunks or pages, especially when there are more items to search for
-  - Should consider:
-    - Searching multiple chunks if initial search finds partial results
-    - Using broader page ranges when specific items are not found
-    - Handling cases where different items (shares outstanding, amortization) are in different sections of the document
-    - Improving query embeddings to better locate shares outstanding and amortization sections
-    - Potentially using multiple search passes with different query terms
-    - Better handling of cases where some items are found but others are missing
+#### 6.2: Major Refactor for placeholders for new Additional Items and Historical Calculations
+- [ ] Separate out Additional Items from the income_statement_extractor, validation logic, logging, and progress tracking
+- [ ] Create placeholders in the frontend and scaffolds in the backend for additional items: organic growth (prior period revenue and YOY revenue growth should go here), amortization, other assets, other liabilities, total shares outstanding, non-operating assets
+- [ ] Keep the current Historical Calculation table as is with two changes: Add Organic Growth to above EBITA and Effective Tax Rate changes to Adjusted Tax Rate. However, this is now the summary table at the end.
+- [ ] Create new Historical Calculation section above the summary table with sections called: Invested Capital, Adjusted Tax Rate, EBITA, and NOPAT & ROIC
 
-### Phase 7: Financial Metrics Display and Analysis (Epic 3)
-- [ ] Financial metrics persistence
-- [ ] Trend analysis visualization
-- [ ] Interactive valuation model UI
-- [ ] Sensitivity analysis UI with adjustable assumptions
-- [ ] LLM-driven summary generation from analyst reports
-- [ ] Company analysis results page
+#### 6.3: Organic Growth
+- [ ] Search the document with query: "merge", "acquire", "acquisition", "m&a" and concatenate the top 3 chunks with 0 pages before and after
+- [ ] Ask the LLM whether the company made an acquisition within the year and what was the revenue impact on this time period. ZERO toleration for hallucination
+- [ ] Show the prior period revenue, the current period revenue, simple revenue growth, the revenue impact from acquisition (show zero if none), current period adjusted revenue, and organic revenue growth (should be same as simple revenue growth if no adjustments)
 
-### Phase 8: Integration and Enhancement
-- [ ] Agent coordination and workflow management
-- [ ] End-to-end analysis pipeline
-- [ ] Online search integration for growth/margin/turnover insights (future)
-- [ ] Error handling and validation
-- [ ] Performance optimization
-- [ ] Documentation and testing improvements
+#### 6.4: Amortization
+- [ ] Search the document with query: "amortize", "amortization" and concatenate the top 3 chunks with 0 pages before and after
+- [ ] Ask the LLM to identify all the line items for amortization this time period and the value then categorize whether the line item is non-operating (amortization of acquired intangibles, amortization of financing costs) or operating (amortization of capitalized sales costs, amortization of capitalized software). ZERO toleration for hallucination
+- [ ] Double check for duplicates and show all the line items with type
+
+#### 6.5: Other Assets
+- [ ] Search the document with query: the raw names of the standardized "other current assets", "other non-current assets" (they should have been saved in parentheses) and concatenate the top 3 chunks with 0 pages before and after
+- [ ] Ask the LLM to identify all the line items within other current assets and other non-current assets this time period and then categorize whether the line item is non-operating (financial derivatives, currency hedges, investments) or operating. ZERO toleration for hallucination
+- [ ] Double check for duplicates and then double check the summation of the line items with the total other current asset and total other non-current assets. If validation fails here, then ask the LLM to double check if the time period is correct
+- [ ] Show all the line items with type
+
+#### 6.6: Other Liabilities
+- [ ] Search the document with query: the raw names of the standardized "other current liabilities", "other non-current liabilities" (they should have been saved in parentheses) and concatenate the top 3 chunks with 0 pages before and after
+- Do similar thing as Other Assets
+
+#### 6.7: Total shares outstanding
+- [ ] Search the document with query: "weighted average", "shares", "basic", "diluted" and concatenate the top 3 chunks with 0 pages before and after
+- [ ] Ask the LLM to identify the standardized name: basic shares outstanding and diluted shares outstanding
+- [ ] Show all the line items
+
+#### 6.8: Non-operating asset
+- [ ] Pass the balance sheet line items, other assets (from above), and other liabilities (from above) labeled as non-operating (de-duplicated) to the LLM
+- [ ] Ask the LLM to classify each item as: cash (includes items such as restricted cash), short term investments (includes items such as marketable securities), operating lease-related, other financial or physical assets (includes items such as assets held for sale), debt (includes loans, notes), other financial liabilities, deferred tax assets, deferred tax liabilities, preferred equity, minority interest, goodwill/intangibles, UNKNOWN
+- [ ] Show all the line items with type
+
+#### 6.9: Invested Capital
+- [ ] TBD
+
+#### 6.10: Adjusted Tax Rate
+- [ ] TBD
+
+#### 6.11: EBITA
+- [ ] TBD
+
+#### 6.12: NOPAT and ROIC
+- [ ] TBD
+
+### Phase 7: Financial Modeling
+- [ ] TBD
+
+### Phase 8: App-wide Analysis and Dashboard (right panel of the Top-level page)
+- [ ] TBD
 
 ## Next Steps
 
-1. **Phase 5.4: Adjusted Tax Rate Calculation Fix (TODO: Needs revisit and fix)**
-   - Review and fix logic for identifying tax-affecting non-operating items
-   - Validate tax shield vs. tax deduction assumptions
-   - Improve calculation methodology
-   - May need to use LLM to intelligently determine which non-operating items affect taxes
-2. Phase 6.1: Historical Calculations Table for Company View
-   - Company-level historical calculations display
-   - Aggregate data from all eligible documents
-   - Display in right panel when company is selected
-3. Phase 6.2: Core Analysis Agents
-   - Organic growth assessment agent
-   - Operating margin analysis agent
-   - Capital turnover evaluation agent
-   - Intrinsic value calculation agent (Koller's DCF methodology)
-   - Additional items extraction improvements (TODO: needs revisit and fix)
-4. Phase 7: Financial Metrics Display and Analysis
-   - Trend analysis visualization
-   - Interactive valuation model UI
-   - Sensitivity analysis UI
-   - Company analysis results page
+- [ ] **Phase 5.4: Adjusted Tax Rate Calculation Fix** (TODO: Needs revisit and fix)
+  - Review and fix logic for identifying tax-affecting non-operating items
+  - Validate tax shield vs. tax deduction assumptions
+  - Improve calculation methodology
+  - May need to use LLM to intelligently determine which non-operating items affect taxes
+- [ ] **Phase 6.1: Historical Calculations Table for Company View**
+  - Company-level historical calculations display
+  - Aggregate data from all eligible documents
+  - Display in right panel when company is selected
+- [ ] **Phase 6.2: Core Analysis Agents**
+  - Organic growth assessment agent
+  - Operating margin analysis agent
+  - Capital turnover evaluation agent
+  - Intrinsic value calculation agent (Koller's DCF methodology)
+  - Additional items extraction improvements (TODO: needs revisit and fix)
+- [ ] **Phase 7: Financial Metrics Display and Analysis**
+  - Trend analysis visualization
+  - Interactive valuation model UI
+  - Sensitivity analysis UI
+  - Company analysis results page
 
 ## UI/UX Design
 
@@ -505,14 +556,15 @@ For detailed UI/UX specifications and design guidance, see [UI_UX_DESIGN.md](UI_
 ### Chunk-Based Document Indexing
 
 **Current Implementation:**
-- Documents are split into 1-page chunks for embedding generation
+- Documents are split into 2-page chunks for embedding generation during indexing
 - Each chunk embedding is persisted to disk (`{document_id}_chunk_{index}_embedding.json`)
 - Chunk metadata is stored (`{document_id}_chunks_metadata.json`)
 - Extractors reuse persisted chunk embeddings instead of regenerating them
+- When extracting sections, extractors search chunks and include 1 page before/after the best match for context
 - Eliminates duplicate API calls and improves extraction performance
 
 **Benefits:**
-- More granular search: 1-page chunks provide better precision than document-level embeddings
+- More granular search: 2-page chunks provide better precision than document-level embeddings while maintaining context
 - Performance: Chunk embeddings generated once during indexing, reused during extraction
 - Efficiency: No duplicate embedding generation when re-running extractions
 - Scalability: Large documents are fully indexed across all chunks
@@ -559,19 +611,24 @@ For detailed UI/UX specifications and design guidance, see [UI_UX_DESIGN.md](UI_
 - Navigates user back to company document list after deletion
 
 **Balance Sheet Validation:**
+- Two-stage validation approach (see section 5.5 for complete details)
+- Stage 1: Section validation (line count + key lines) with retry across chunk ranks 1, 2, 3
+- Stage 2: Calculation validation (sum verification) with LLM feedback retry loop
 - Validation logic uses precise regex-based matching to identify totals
 - Handles long line item names with notes in parentheses (e.g., "Accounts receivable, net (including consumer financing receivables...)")
 - Validation runs in frontend (not persisted) to avoid blocking on validation errors
 - Precise total identification using whole-word matching
 - Handles descriptive line items with long notes without false positives
 - Comprehensive sum verification for assets, liabilities, and equity
-- Retry logic for failed extractions (up to 3 attempts)
-- Checks for empty line items and key items before validation
+- LLM feedback includes calculated differences for better error correction
 
 **Income Statement Validation:**
-- Validates gross profit, operating income, and net income calculations
+- Two-stage validation approach (see section 5.5 for complete details)
+- Stage 1: Section validation (line count + required items) with retry across chunks before/after/2 after balance sheet
+- Stage 2: Post-processing validation (final_diff logic) with LLM feedback retry loop
+- Validates gross profit, operating income, and net income calculations during normalization
 - Checks for empty line items and key items before validation
-- Retry logic for failed extractions (up to 3 attempts)
+- LLM feedback includes calculated differences and cost normalization explanation for better error correction
 
 **API Rate Limiting and Throttling:**
 - Centralized Gemini API client with throttling (500ms-2s delays between calls)

@@ -135,15 +135,25 @@ def extract_balance_sheet_llm(text: str, time_period: str, currency: str | None 
 Extract the balance sheet exactly line by line, including all line items and their values.
 If the company is foreign, extract the values in the local currency.
 
+CRITICAL ANTI-HALLUCINATION RULES:
+- ONLY extract values that are EXPLICITLY shown in the document text below
+- DO NOT invent, infer, calculate, estimate, or approximate any values
+- DO NOT create line items that do not appear in the document
+- If a value is not visible in the document text, use null or omit that field
+- Extract line items ONLY from the balance sheet table/section in the document text
+- DO NOT use any external knowledge or assumptions
+- Every line_value must correspond to an actual number shown in the document text
+- If currency or unit is not explicitly stated in the document, use null
+
 Return a JSON object with the following structure:
 {{
-    "currency": currency code (extract from document),
-    "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract from document, e.g., if values are in millions, use "millions"),
+    "currency": currency code (extract ONLY if explicitly stated in document, otherwise null),
+    "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract ONLY if explicitly stated like "in millions", "in thousands", etc., otherwise null),
     "time_period": "{time_period}",
     "line_items": [
         {{
             "line_name": "exact name as it appears in the document but do not include long notes in parentheses",
-            "line_value": numeric value (as number, not string),
+            "line_value": numeric value (as number, not string) - MUST match exactly what is shown in the document,
             "line_category": one of ["Current Assets", "Non-Current Assets", "Total Assets", "Current Liabilities", "Non-Current Liabilities", "Total Liabilities", "Equity", "Total Liabilities and Equity"]
         }},
         ...
@@ -151,13 +161,15 @@ Return a JSON object with the following structure:
 }}
 
 IMPORTANT:
-- Extract values exactly as they appear (including negative values if present)
-- Include all subtotals (Current Assets, Total Assets, Current Liabilities, Total Liabilities, Total Equity, Total Liabilities and Equity)
+- Extract values exactly as they appear in the document (including negative values if present)
+- DO NOT round, estimate, or modify values - use them exactly as written
+- Include all subtotals (Current Assets, Total Assets, Current Liabilities, Total Liabilities, Total Equity, Total Liabilities and Equity) ONLY if they appear in the document
 - Maintain the exact order of line items as they appear in the document
-- Extract the currency code from the document if available
-- Extract the unit from the document (look for notes like "in millions", "in thousands", "in billions", or "in ten thousands" for foreign stocks)
+- Extract the currency code ONLY if explicitly stated in the document text
+- Extract the unit ONLY if the document explicitly states it (look for phrases like "in millions", "in thousands", "in billions", or "in ten thousands")
 - Values should be numeric (not strings with commas or currency symbols)
-- Use "ten_thousands" only if the stock is foreign and the document explicitly states values are in ten thousands
+- Use "ten_thousands" ONLY if the document explicitly states values are in ten thousands
+- If you cannot find a specific value in the document text, DO NOT make it up - use null or omit it
 
 Document text:
 {text[:30000]}  # Limit to 30k characters
@@ -165,7 +177,8 @@ Document text:
 Return only valid JSON, no additional text."""
 
     try:
-        response_text = generate_content_safe(prompt)
+        # Use temperature 0.0 for extraction to prevent hallucination
+        response_text = generate_content_safe(prompt, temperature=0.0)
 
         # Remove markdown code blocks if present
         if response_text.startswith("```"):
@@ -190,9 +203,115 @@ Return only valid JSON, no additional text."""
         raise Exception(f"Error extracting balance sheet: {str(e)}")
 
 
-def validate_balance_sheet(line_items: list[dict]) -> tuple[bool, list[str]]:
+def extract_balance_sheet_llm_with_feedback(
+    text: str,
+    time_period: str,
+    previous_extraction: dict,
+    validation_errors: list[str],
+    currency: str | None = None,
+) -> dict:
     """
-    Validate balance sheet calculations.
+    Use LLM to extract balance sheet with validation error feedback for retry.
+
+    Args:
+        text: Text containing balance sheet
+        time_period: Time period (e.g., "Q3 2023")
+        previous_extraction: Previous extraction attempt (to show what was extracted)
+        validation_errors: List of validation errors with calculated differences
+        currency: Currency code if known
+
+    Returns:
+        Dictionary with balance sheet data
+    """
+    errors_text = "\n".join(f"- {error}" for error in validation_errors)
+    previous_items_text = json.dumps(previous_extraction.get("line_items", []), indent=2)
+
+    prompt = f"""Extract the balance sheet from the following document text for the time period: {time_period}.
+Extract the balance sheet exactly line by line, including all line items and their values.
+If the company is foreign, extract the values in the local currency.
+
+PREVIOUS EXTRACTION ATTEMPT:
+{previous_items_text}
+
+VALIDATION ERRORS (with calculated differences):
+{errors_text}
+
+Please review the previous extraction and fix the issues. Pay special attention to:
+- Ensuring all line items are extracted correctly
+- Checking that line item values match what's in the document
+- Verifying that totals match the sum of their components
+- Making sure line categories are correct
+
+Return a JSON object with the following structure:
+{{
+    "currency": currency code (extract from document),
+    "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract from document, e.g., if values are in millions, use "millions"),
+    "time_period": "{time_period}",
+    "line_items": [
+        {{
+            "line_name": "exact name as it appears in the document but do not include long notes in parentheses",
+            "line_value": numeric value (as number, not string),
+            "line_category": one of ["Current Assets", "Non-Current Assets", "Total Assets", "Current Liabilities", "Non-Current Liabilities", "Total Liabilities", "Equity", "Total Liabilities and Equity"]
+        }},
+        ...
+    ]
+}}
+
+CRITICAL ANTI-HALLUCINATION RULES:
+- ONLY extract values that are EXPLICITLY shown in the document text below
+- DO NOT invent, infer, calculate, estimate, or approximate any values
+- DO NOT create line items that do not appear in the document
+- Every line_value must correspond to an actual number shown in the document text
+- If a value is not visible in the document text, use null or omit that field
+- DO NOT use any external knowledge or assumptions
+
+IMPORTANT:
+- Extract values exactly as they appear in the document (including negative values if present)
+- DO NOT round, estimate, or modify values - use them exactly as written
+- Include all subtotals (Current Assets, Total Assets, Current Liabilities, Total Liabilities, Total Equity, Total Liabilities and Equity) ONLY if they appear in the document
+- Maintain the exact order of line items as they appear in the document
+- Extract the currency code ONLY if explicitly stated in the document text
+- Extract the unit ONLY if the document explicitly states it (look for phrases like "in millions", "in thousands", "in billions", or "in ten thousands")
+- Values should be numeric (not strings with commas or currency symbols)
+- Use "ten_thousands" ONLY if the document explicitly states values are in ten thousands
+- Carefully review the validation errors and fix the issues in your extraction, but ONLY by correcting values that actually appear in the document text - do not invent new values
+
+Document text:
+{text[:30000]}  # Limit to 30k characters
+
+Return only valid JSON, no additional text."""
+
+    try:
+        # Use temperature 0.0 for extraction to prevent hallucination
+        response_text = generate_content_safe(prompt, temperature=0.0)
+
+        # Remove markdown code blocks if present
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+            response_text = response_text.strip()
+
+        result = json.loads(response_text)
+
+        # Ensure line_items exists and is a list
+        if "line_items" not in result:
+            result["line_items"] = []
+        elif not isinstance(result["line_items"], list):
+            result["line_items"] = []
+
+        return result
+
+    except json.JSONDecodeError as e:
+        raise Exception(f"Failed to parse LLM response as JSON: {str(e)}")
+    except Exception as e:
+        raise Exception(f"Error extracting balance sheet: {str(e)}")
+
+
+def validate_balance_sheet_section(line_items: list[dict]) -> tuple[bool, list[str]]:
+    """
+    Validate balance sheet section (Stage 1): Check minimum line count and presence of key lines.
+    This is used to validate that the correct section was found before proceeding to extraction validation.
 
     Args:
         line_items: List of balance sheet line items
@@ -222,6 +341,87 @@ def validate_balance_sheet(line_items: list[dict]) -> tuple[bool, list[str]]:
             f"Balance sheet must have at least {MIN_LINES_REQUIRED} line items, found {len(valid_items)}"
         )
         return False, errors
+
+    # Check for key totals (at least one should be present)
+    items_dict = {item["line_name"].lower(): item["line_value"] for item in line_items}
+
+    def is_total_line_name(name_lower):
+        """Check if line name represents a total (more precise matching)"""
+        total_phrases = [
+            "total current assets",
+            "total assets",
+            "total current liabilities",
+            "total liabilities",
+            "total equity",
+            "total liabilities and equity",
+            "total liabilities and shareholders",
+            "total stockholder",
+            "total shareholder",
+        ]
+        for phrase in total_phrases:
+            if name_lower.startswith(phrase) or name_lower.startswith(phrase + " "):
+                return True
+        if re.search(r"\btotal\b", name_lower):
+            if (
+                name_lower.startswith("total ")
+                or "total current" in name_lower
+                or "total assets" in name_lower
+                or "total liabilities" in name_lower
+                or "total equity" in name_lower
+            ):
+                return True
+        return False
+
+    has_key_total = False
+    has_cash = False
+    for key, _value in items_dict.items():
+        if is_total_line_name(key):
+            if (
+                "total assets" in key
+                and "non-current" not in key
+                and "current" not in key
+                and "liabilities" not in key
+            ):
+                has_key_total = True
+            elif (
+                "total liabilities" in key
+                and "non-current" not in key
+                and "current" not in key
+                and "equity" not in key
+            ):
+                has_key_total = True
+            elif "total equity" in key and "liabilities" not in key:
+                has_key_total = True
+
+        # Check for cash line item (case-insensitive)
+        if "cash" in key.lower():
+            has_cash = True
+
+    if not has_key_total:
+        errors.append(
+            "Balance sheet is missing key totals (Total Assets, Total Liabilities, or Total Equity)"
+        )
+        return False, errors
+
+    if not has_cash:
+        errors.append("Balance sheet is missing a cash line item")
+        return False, errors
+
+    return True, []
+
+
+def validate_balance_sheet_calculations(line_items: list[dict]) -> tuple[bool, list[str]]:
+    """
+    Validate balance sheet calculations (Stage 2): Check that sums match reported totals.
+    This is used after section validation passes to verify extraction accuracy.
+
+    Args:
+        line_items: List of balance sheet line items
+
+    Returns:
+        Tuple of (is_valid, list_of_errors_with_differences)
+    """
+    errors = []
 
     # Convert to dictionary for easier lookup
     items_dict = {item["line_name"].lower(): item["line_value"] for item in line_items}
@@ -435,6 +635,27 @@ def validate_balance_sheet(line_items: list[dict]) -> tuple[bool, list[str]]:
     return len(errors) == 0, errors
 
 
+def validate_balance_sheet(line_items: list[dict]) -> tuple[bool, list[str]]:
+    """
+    Combined validation function for backward compatibility.
+    Validates both section and calculations.
+
+    Args:
+        line_items: List of balance sheet line items
+
+    Returns:
+        Tuple of (is_valid, list_of_errors)
+    """
+    # First validate section
+    section_valid, section_errors = validate_balance_sheet_section(line_items)
+    if not section_valid:
+        return False, section_errors
+
+    # Then validate calculations
+    calc_valid, calc_errors = validate_balance_sheet_calculations(line_items)
+    return calc_valid, calc_errors
+
+
 def normalize_line_name(name: str) -> str:
     """
     Normalize a line item name for matching: trim, case-insensitive,
@@ -542,7 +763,8 @@ Return a JSON array with the same order as the input, where each item has:
 Return only valid JSON array, no additional text."""
 
     try:
-        response_text = generate_content_safe(prompt)
+        # Use temperature 0.0 for extraction to prevent hallucination
+        response_text = generate_content_safe(prompt, temperature=0.0)
 
         # Remove markdown code blocks if present
         if response_text.startswith("```"):
@@ -642,28 +864,36 @@ def extract_balance_sheet(
     document_type: str | None = None,
 ) -> dict:
     """
-    Main function to extract balance sheet with validation and retries.
+    Main function to extract balance sheet with two-stage validation and retries.
+
+    Stage 1: Find correct section (retry with rank 1, 2, 3 chunks)
+    Stage 2: Validate extraction calculations (retry extraction with LLM feedback)
 
     Args:
         document_id: Document ID
         file_path: Path to PDF file
         time_period: Time period (e.g., "Q3 2023")
-        max_retries: Maximum number of retry attempts
+        max_retries: Maximum number of retry attempts for section finding (3 total: rank 1, 2, 3)
         document_type: Document type (e.g., "earnings_announcement", "annual_filing", "quarterly_filing")
 
     Returns:
         Dictionary with balance sheet data and validation status
     """
-    for attempt in range(max_retries):
-        try:
-            attempt_msg = f"Balance sheet extraction attempt {attempt + 1}/{max_retries}"
-            print(attempt_msg)
-            add_log(document_id, FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET, attempt_msg)
+    # Stage 1: Find correct section (retry with different chunk ranks)
+    balance_sheet_text = None
+    start_page = None
+    log_info = None
+    successful_chunk_index = None  # Track successful chunk index for income statement extraction
 
-            # Step 1: Find balance sheet section using embeddings
-            # Use attempt number as chunk_rank: 0 = best, 1 = 2nd best, 2 = 3rd best
+    for section_attempt in range(max_retries):  # 3 tries: rank 0, 1, 2
+        try:
+            section_msg = f"Stage 1: Finding balance sheet section (rank {section_attempt + 1})"
+            print(section_msg)
+            add_log(document_id, FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET, section_msg)
+
+            # Find balance sheet section using embeddings
             balance_sheet_text, start_page, log_info = find_balance_sheet_section(
-                document_id, file_path, time_period, document_type, chunk_rank=attempt
+                document_id, file_path, time_period, document_type, chunk_rank=section_attempt
             )
 
             if not balance_sheet_text:
@@ -683,7 +913,7 @@ def extract_balance_sheet(
             else:
                 # Log chunk/page information if available
                 if log_info:
-                    rank_text = f" (rank {attempt + 1})" if attempt > 0 else ""
+                    rank_text = f" (rank {section_attempt + 1})" if section_attempt > 0 else ""
                     chunk_msg = f"Best match{rank_text}: chunk {log_info['best_chunk_index']} (pages {log_info['chunk_start_page']}-{log_info['chunk_end_page']})"
                     print(chunk_msg)
                     add_log(
@@ -700,7 +930,7 @@ def extract_balance_sheet(
                     document_id, FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET, found_msg
                 )
 
-            # Step 2: Extract balance sheet using LLM
+            # Extract balance sheet using LLM
             extracted_data = extract_balance_sheet_llm(balance_sheet_text, time_period)
 
             # Ensure line_items exists and is a list
@@ -722,46 +952,42 @@ def extract_balance_sheet(
                 extracted_count_msg,
             )
 
-            # Step 3: Validate
-            is_valid, errors = validate_balance_sheet(extracted_data["line_items"])
+            # Stage 1 validation: Check section (line count + key lines)
+            section_valid, section_errors = validate_balance_sheet_section(
+                extracted_data["line_items"]
+            )
 
-            if is_valid:
-                validation_msg = "Validation passed"
-                print(validation_msg)
+            if section_valid:
+                section_valid_msg = "Stage 1 validation passed (section is correct)"
+                print(section_valid_msg)
                 add_log(
                     document_id,
                     FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
-                    validation_msg,
+                    section_valid_msg,
                 )
-                # Step 4: Classify line items
-                classified_items = classify_line_items_llm(extracted_data["line_items"])
-                extracted_data["line_items"] = classified_items
-                extracted_data["is_valid"] = True
-                extracted_data["validation_errors"] = []
-                return extracted_data
+                # Store successful chunk index for income statement extraction
+                successful_chunk_index = log_info.get("best_chunk_index") if log_info else None
+                break  # Section found and validated, proceed to Stage 2
             else:
-                validation_failed_msg = (
-                    f"Validation failed: {', '.join(errors[:3])}"  # Show first 3 errors
-                )
-                print(validation_failed_msg)
+                section_failed_msg = f"Stage 1 validation failed: {', '.join(section_errors[:2])}"
+                print(section_failed_msg)
                 add_log(
                     document_id,
                     FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
-                    validation_failed_msg,
+                    section_failed_msg,
                 )
-                if attempt < max_retries - 1:
-                    continue  # Retry
+                if section_attempt < max_retries - 1:
+                    continue  # Try next chunk rank
                 else:
-                    # Return with errors on final attempt
+                    # All section attempts failed, return with errors
                     classified_items = classify_line_items_llm(extracted_data["line_items"])
                     extracted_data["line_items"] = classified_items
                     extracted_data["is_valid"] = False
-                    extracted_data["validation_errors"] = errors
+                    extracted_data["validation_errors"] = section_errors
                     return extracted_data
 
         except Exception as e:
             error_str = str(e).lower()
-            # Check if it's an API error that was already retried at the API level
             is_api_error = any(
                 keyword in error_str
                 for keyword in [
@@ -774,16 +1000,108 @@ def extract_balance_sheet(
                     "too many requests",
                 ]
             )
-
-            # If it's an API error that failed after 3 retries, don't retry at agent level
-            # (it's likely a persistent issue, not transient)
             if is_api_error:
-                print(f"API error after retries on attempt {attempt + 1}: {str(e)}")
-                raise  # Don't retry - API-level already tried 3 times
-
-            # For other errors (validation, extraction issues), retry makes sense
-            print(f"Error on attempt {attempt + 1}: {str(e)}")
-            if attempt == max_retries - 1:
+                print(f"API error on section attempt {section_attempt + 1}: {str(e)}")
+                raise
+            print(f"Error on section attempt {section_attempt + 1}: {str(e)}")
+            if section_attempt == max_retries - 1:
                 raise
 
-    raise Exception(f"Failed to extract balance sheet after {max_retries} attempts")
+    if not balance_sheet_text:
+        raise Exception("Failed to find balance sheet section after all attempts")
+
+    # Stage 2: Validate extraction calculations (retry extraction with LLM feedback)
+    EXTRACTION_MAX_RETRIES = 3
+    # extracted_data was already set in Stage 1 and validated for section
+    calc_errors = []  # Will be set by validation
+
+    # Store successful chunk index in extracted_data for income statement extraction
+    if successful_chunk_index is not None:
+        extracted_data["balance_sheet_chunk_index"] = successful_chunk_index
+
+    for extraction_attempt in range(EXTRACTION_MAX_RETRIES):
+        try:
+            if extraction_attempt == 0:
+                # First attempt: use initial extraction from Stage 1
+                extraction_msg = "Stage 2: Validating extraction calculations"
+                print(extraction_msg)
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+                    extraction_msg,
+                )
+                # extracted_data is already set from Stage 1
+            else:
+                # Retry with feedback from previous attempt
+                retry_msg = f"Stage 2: Retry extraction {extraction_attempt + 1}/{EXTRACTION_MAX_RETRIES} with LLM feedback"
+                print(retry_msg)
+                add_log(
+                    document_id, FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET, retry_msg
+                )
+                # Re-extract with validation error feedback from previous attempt
+                extracted_data = extract_balance_sheet_llm_with_feedback(
+                    balance_sheet_text,
+                    time_period,
+                    extracted_data,  # Previous extraction
+                    calc_errors,  # Validation errors with differences from previous attempt
+                )
+
+            # Stage 2 validation: Check calculations (sums)
+            calc_valid, calc_errors = validate_balance_sheet_calculations(
+                extracted_data["line_items"]
+            )
+
+            if calc_valid:
+                calc_valid_msg = "Stage 2 validation passed (calculations are correct)"
+                print(calc_valid_msg)
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+                    calc_valid_msg,
+                )
+                # Both stages passed, classify and return
+                classified_items = classify_line_items_llm(extracted_data["line_items"])
+                extracted_data["line_items"] = classified_items
+                extracted_data["is_valid"] = True
+                extracted_data["validation_errors"] = []
+                return extracted_data
+            else:
+                calc_failed_msg = f"Stage 2 validation failed: {', '.join(calc_errors[:2])}"
+                print(calc_failed_msg)
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+                    calc_failed_msg,
+                )
+                if extraction_attempt < EXTRACTION_MAX_RETRIES - 1:
+                    continue  # Retry with feedback
+                else:
+                    # All extraction attempts failed, return with errors
+                    classified_items = classify_line_items_llm(extracted_data["line_items"])
+                    extracted_data["line_items"] = classified_items
+                    extracted_data["is_valid"] = False
+                    extracted_data["validation_errors"] = calc_errors
+                    return extracted_data
+
+        except Exception as e:
+            error_str = str(e).lower()
+            is_api_error = any(
+                keyword in error_str
+                for keyword in [
+                    "rate limit",
+                    "quota",
+                    "429",
+                    "503",
+                    "resource exhausted",
+                    "service unavailable",
+                    "too many requests",
+                ]
+            )
+            if is_api_error:
+                print(f"API error on extraction attempt {extraction_attempt + 1}: {str(e)}")
+                raise
+            print(f"Error on extraction attempt {extraction_attempt + 1}: {str(e)}")
+            if extraction_attempt == EXTRACTION_MAX_RETRIES - 1:
+                raise
+
+    raise Exception("Failed to extract balance sheet after all attempts")

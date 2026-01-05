@@ -29,26 +29,28 @@ MAX_CONCURRENT_EMBEDDING_CALLS = 3  # Maximum concurrent embedding calls
 _llm_semaphore = threading.Semaphore(MAX_CONCURRENT_LLM_CALLS)
 _embedding_semaphore = threading.Semaphore(MAX_CONCURRENT_EMBEDDING_CALLS)
 
-# Track last API call time for throttling
+# Track last API call time for throttling (thread-safe)
 _last_call_time = 0
+_throttle_lock = threading.Lock()
 
 
 def _throttle():
     """Add delay between API calls to prevent overwhelming the API"""
     global _last_call_time
-    current_time = time.time()
-    time_since_last_call = current_time - _last_call_time
+    with _throttle_lock:
+        current_time = time.time()
+        time_since_last_call = current_time - _last_call_time
 
-    # Calculate delay with jitter to avoid thundering herd
-    delay = MIN_DELAY_BETWEEN_CALLS + random.uniform(
-        0, MAX_DELAY_BETWEEN_CALLS - MIN_DELAY_BETWEEN_CALLS
-    )
+        # Calculate delay with jitter to avoid thundering herd
+        delay = MIN_DELAY_BETWEEN_CALLS + random.uniform(
+            0, MAX_DELAY_BETWEEN_CALLS - MIN_DELAY_BETWEEN_CALLS
+        )
 
-    if time_since_last_call < delay:
-        sleep_time = delay - time_since_last_call
-        time.sleep(sleep_time)
+        if time_since_last_call < delay:
+            sleep_time = delay - time_since_last_call
+            time.sleep(sleep_time)
 
-    _last_call_time = time.time()
+        _last_call_time = time.time()
 
 
 def _retry_with_backoff(func):

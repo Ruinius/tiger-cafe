@@ -160,13 +160,14 @@ Tiger-Cafe provides three main user journey epics:
 
 ### Financial Statement Processing (Phase 5.1 & 5.2 - Complete)
 - Automatic balance sheet and income statement extraction from earnings announcements, quarterly filings, and annual reports
-- Chunk-based embedding search using persisted 1-page chunk embeddings
+- Chunk-based embedding search using persisted 1-page chunk embeddings (2-page chunks for indexing)
 - LLM-based line-by-line extraction with currency and unit detection
 - Unit support: Extracts and displays units (ones, thousands, millions, billions, or ten_thousands) for balance sheets, income statements, and additional items
-- Comprehensive validation:
+- Two-stage validation with retry mechanism:
+  - **Stage 1 (Section Finding)**: Validates correct section found (line count + key items) with retry across different chunk ranks/positions
+  - **Stage 2 (Extraction Validation)**: Validates extraction accuracy (sum calculations) with LLM feedback loop for error correction
   - Balance sheet: Current assets, total assets, current liabilities, total liabilities sum verification, balance sheet equation validation
-  - Income statement: Gross profit, operating income, and net income calculation verification
-  - Retry logic (up to 3 attempts) for failed extractions
+  - Income statement: Gross profit, operating income, and net income calculation verification via post-processing validation
 - Operating/non-operating classification for each line item (authoritative lookup table with LLM fallback)
 - Additional items extraction: Prior period revenue, YOY revenue growth, amortization, basic shares outstanding, diluted shares outstanding (each with unit fields)
 - Historical calculations: Automatic calculation and display of Net Working Capital, Invested Capital, EBITA, and other key metrics with unit support

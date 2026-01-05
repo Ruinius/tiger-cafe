@@ -19,6 +19,7 @@ def find_income_statement_near_balance_sheet(
     time_period: str,
     document_type: str | None = None,
     attempt: int = 0,
+    balance_sheet_chunk_index: int | None = None,
 ) -> tuple[str | None, int | None, dict | None]:
     """
     Find income statement section by locating balance sheet first, then using adjacent chunks.
@@ -28,7 +29,8 @@ def find_income_statement_near_balance_sheet(
         file_path: Path to PDF file
         time_period: Time period to search for (e.g., "Q3 2023")
         document_type: Document type (e.g., "earnings_announcement", "annual_filing", "quarterly_filing")
-        attempt: 0 = chunk before balance sheet, 1 = chunk after balance sheet
+        attempt: 0 = chunk before balance sheet, 1 = chunk after balance sheet, 2 = 2 chunks after
+        balance_sheet_chunk_index: Optional balance sheet chunk index to use directly (if known from successful extraction)
 
     Returns:
         Tuple of (extracted_text, start_page, log_info) or (None, None, None) if not found
@@ -39,20 +41,44 @@ def find_income_statement_near_balance_sheet(
         from agents.balance_sheet_extractor import find_balance_sheet_section
         from app.utils.document_indexer import get_chunk_metadata, get_chunk_text
 
-        # First, find the balance sheet location
-        balance_sheet_text, balance_start_page, balance_log_info = find_balance_sheet_section(
-            document_id, file_path, time_period, document_type, chunk_rank=0
-        )
-
-        if not balance_log_info or "best_chunk_index" not in balance_log_info:
-            print("Could not find balance sheet location")
-            return None, None, None
-
-        balance_chunk_index = balance_log_info["best_chunk_index"]
+        # Get chunk metadata (needed for all paths)
         chunk_metadata = get_chunk_metadata(document_id)
         if not chunk_metadata:
             print("Could not get chunk metadata")
             return None, None, None
+        chunk_size = chunk_metadata.get("chunk_size", 2)
+        num_chunks = chunk_metadata.get("num_chunks", 0)
+
+        # If balance_sheet_chunk_index is provided, use it directly (from successful balance sheet extraction)
+        # Otherwise, find the balance sheet location by searching (will use rank 0 chunk)
+        if balance_sheet_chunk_index is not None:
+            # Use the provided chunk index (from successful balance sheet extraction)
+            balance_chunk_index = balance_sheet_chunk_index
+            if balance_chunk_index < 0 or balance_chunk_index >= num_chunks:
+                print(
+                    f"Balance sheet chunk index {balance_chunk_index} is out of bounds (0-{num_chunks - 1})"
+                )
+                return None, None, None
+            # Get chunk text to determine page range
+            balance_chunk_text, balance_chunk_start_page, balance_chunk_end_page = get_chunk_text(
+                file_path, balance_chunk_index, chunk_size
+            )
+            balance_log_info = {
+                "best_chunk_index": balance_chunk_index,
+                "chunk_start_page": balance_chunk_start_page,
+                "chunk_end_page": balance_chunk_end_page - 1,
+            }
+        else:
+            # Fallback: find balance sheet location (uses rank 0 chunk)
+            balance_sheet_text, balance_start_page, balance_log_info = find_balance_sheet_section(
+                document_id, file_path, time_period, document_type, chunk_rank=0
+            )
+
+            if not balance_log_info or "best_chunk_index" not in balance_log_info:
+                print("Could not find balance sheet location")
+                return None, None, None
+
+            balance_chunk_index = balance_log_info["best_chunk_index"]
 
         chunk_size = chunk_metadata.get("chunk_size", 2)
         num_chunks = chunk_metadata.get("num_chunks", 0)
@@ -60,14 +86,18 @@ def find_income_statement_near_balance_sheet(
         # Determine which chunk to use based on attempt
         # attempt 0 = chunk before balance sheet
         # attempt 1 = chunk after balance sheet
+        # attempt 2 = 2 chunks after balance sheet
         if attempt == 0:
             target_chunk_index = balance_chunk_index - 1
             direction = "before"
         elif attempt == 1:
             target_chunk_index = balance_chunk_index + 1
             direction = "after"
+        elif attempt == 2:
+            target_chunk_index = balance_chunk_index + 2
+            direction = "2 after"
         else:
-            print(f"Invalid attempt number: {attempt}, must be 0 or 1")
+            print(f"Invalid attempt number: {attempt}, must be 0, 1, or 2")
             return None, None, None
 
         # Validate chunk index
@@ -243,6 +273,123 @@ If the company is foreign, extract the values in the local currency.
 
 Also extract the revenue for the same period in the prior year (for year-over-year growth calculation).
 
+CRITICAL ANTI-HALLUCINATION RULES:
+- ONLY extract values that are EXPLICITLY shown in the document text below
+- DO NOT invent, infer, calculate, estimate, or approximate any values
+- DO NOT create line items that do not appear in the document
+- If a value is not visible in the document text, use null or omit that field
+- Extract line items ONLY from the income statement table/section in the document text
+- DO NOT use any external knowledge or assumptions
+- Every line_value must correspond to an actual number shown in the document text
+- If currency or unit is not explicitly stated in the document, use null
+- For revenue_prior_year, ONLY extract if you can find the same period in the prior year explicitly stated in the document text - do not calculate or infer it
+
+Return a JSON object with the following structure:
+{{
+    "currency": currency code (extract ONLY if explicitly stated in document, otherwise null),
+    "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract ONLY if explicitly stated like "in millions", "in thousands", etc., otherwise null),
+    "time_period": "{time_period}",
+    "revenue_prior_year": revenue for the same period in the prior year (as number, null if not EXPLICITLY found in document),
+    "revenue_prior_year_unit": unit for revenue_prior_year - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (usually same as "unit", null if revenue_prior_year is null),
+    "line_items": [
+        {{
+            "line_name": "exact name as it appears in the document but do not include long notes in parentheses",
+            "line_value": numeric value (as number, not string) - MUST match exactly what is shown in the document,
+            "line_category": one of ["Recurring", "One-Time"] - categorize each line item based on whether it represents recurring business operations or one-time events
+        }},
+        ...
+    ]
+}}
+
+IMPORTANT:
+- Stop after the net income line item is extracted
+- Extract values exactly as they appear in the document (no rounding, include negative values if present)
+- DO NOT round, estimate, or modify values - use them exactly as written
+- Include all line items that appear in the document, including but not limited to: Revenue, Cost of Revenue/Cost of Goods Sold, Gross Profit, Operating Expenses, Operating Income, Net Income, etc.
+- DO NOT add line items that are not in the document
+- Maintain the exact order of line items as they appear in the document
+- Extract the currency code ONLY if explicitly stated in the document text
+- Extract the unit ONLY if the document explicitly states it (look for phrases like "in millions", "in thousands", "in billions", or "in ten thousands")
+- Values should be numeric (not strings with commas or currency symbols)
+- For revenue_prior_year, look for the same period in the prior year (e.g., if time_period is "Q3 2023", look for "Q3 2022" revenue) - ONLY if explicitly shown in the document text, otherwise use null
+- Use "ten_thousands" ONLY if the document explicitly states values are in ten thousands
+- Categorize each line item as "Recurring" or "One-Time":
+  - "Recurring": Normal business operations that occur regularly (e.g., Revenue, Cost of Revenue, Operating Expenses, Depreciation, Interest Expense, Taxes)
+  - "One-Time": Unusual or infrequent items (e.g., Restructuring Charges, Impairment Charges, Gain/Loss on Sale of Assets, Legal Settlements, Acquisition Costs, Discontinued Operations)
+- If you cannot find a specific value in the document text, DO NOT make it up - use null or omit it
+
+Document text:
+{text[:30000]}  # Limit to 30k characters
+
+Return only valid JSON, no additional text."""
+
+    try:
+        # Use temperature 0.0 for extraction to prevent hallucination
+        response_text = generate_content_safe(prompt, temperature=0.0)
+
+        # Remove markdown code blocks if present
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+            response_text = response_text.strip()
+
+        result = json.loads(response_text)
+
+        # Ensure line_items exists and is a list
+        if "line_items" not in result:
+            result["line_items"] = []
+        elif not isinstance(result["line_items"], list):
+            result["line_items"] = []
+
+        return result
+
+    except json.JSONDecodeError as e:
+        raise Exception(f"Failed to parse LLM response as JSON: {str(e)}")
+    except Exception as e:
+        raise Exception(f"Error extracting income statement: {str(e)}")
+
+
+def extract_income_statement_llm_with_feedback(
+    text: str,
+    time_period: str,
+    previous_extraction: dict,
+    validation_errors: list[str],
+    currency: str | None = None,
+) -> dict:
+    """
+    Use LLM to extract income statement with validation error feedback for retry.
+
+    Args:
+        text: Text containing income statement
+        time_period: Time period (e.g., "Q3 2023")
+        previous_extraction: Previous extraction attempt (to show what was extracted)
+        validation_errors: List of validation errors with calculated differences
+        currency: Currency code if known
+
+    Returns:
+        Dictionary with income statement data
+    """
+    errors_text = "\n".join(f"- {error}" for error in validation_errors)
+    previous_items_text = json.dumps(previous_extraction.get("line_items", []), indent=2)
+
+    prompt = f"""Extract the income statement (also called "consolidated statement of operations" or "statement of earnings") from the following document text for the time period: {time_period}.
+Extract the income statement exactly line by line, including all line items and their values starting with revenue.
+If the company is foreign, extract the values in the local currency.
+
+PREVIOUS EXTRACTION ATTEMPT:
+{previous_items_text}
+
+VALIDATION ERRORS (with calculated differences):
+{errors_text}
+
+Please review the previous extraction and fix the issues. Pay special attention to:
+- Ensuring all line items are extracted correctly
+- Checking that line item values match what's in the document
+- Verifying that calculations are correct (e.g., Revenue - Costs = Gross Profit, etc.)
+- Making sure line categories are correct
+- Note: Line items should be normalized so that costs are shown as negative values
+
 Return a JSON object with the following structure:
 {{
     "currency": currency code (extract from document),
@@ -254,25 +401,36 @@ Return a JSON object with the following structure:
         {{
             "line_name": "exact name as it appears in the document but do not include long notes in parentheses",
             "line_value": numeric value (as number, not string),
-            "line_category": one of ["Recurring", "One-Time"] - categorize each line item based on whether it represents recurring business operations or one-time events
+            "line_category": one of ["Recurring", "One-Time"]
         }},
         ...
     ]
 }}
 
+CRITICAL ANTI-HALLUCINATION RULES:
+- ONLY extract values that are EXPLICITLY shown in the document text below
+- DO NOT invent, infer, calculate, estimate, or approximate any values
+- DO NOT create line items that do not appear in the document
+- Every line_value must correspond to an actual number shown in the document text
+- If a value is not visible in the document text, use null or omit that field
+- DO NOT use any external knowledge or assumptions
+- When fixing validation errors, ONLY correct values that actually appear in the document text - do not invent new values
+
 IMPORTANT:
 - Stop after the net income line item is extracted
-- Extract values exactly as they appear (no rounding, include negative values if present)
-- Include all line items, including but not limited to: Revenue, Cost of Revenue/Cost of Goods Sold, Gross Profit, Operating Expenses, Operating Income, Net Income, etc.
+- Extract values exactly as they appear in the document (no rounding, include negative values if present)
+- DO NOT round, estimate, or modify values - use them exactly as written
+- Include all line items that appear in the document, including but not limited to: Revenue, Cost of Revenue/Cost of Goods Sold, Gross Profit, Operating Expenses, Operating Income, Net Income, etc.
+- DO NOT add line items that are not in the document
 - Maintain the exact order of line items as they appear in the document
-- Extract the currency code from the document if available
-- Extract the unit from the document (look for notes like "in millions", "in thousands", "in billions", or "in ten thousands" for foreign stocks)
+- Extract the currency code ONLY if explicitly stated in the document text
+- Extract the unit ONLY if the document explicitly states it (look for phrases like "in millions", "in thousands", "in billions", or "in ten thousands")
 - Values should be numeric (not strings with commas or currency symbols)
-- For revenue_prior_year, look for the same period in the prior year (e.g., if time_period is "Q3 2023", look for "Q3 2022" revenue)
-- Use "ten_thousands" only if the stock is foreign and the document explicitly states values are in ten thousands
-- Categorize each line item as "Recurring" or "One-Time":
-  - "Recurring": Normal business operations that occur regularly (e.g., Revenue, Cost of Revenue, Operating Expenses, Depreciation, Interest Expense, Taxes)
-  - "One-Time": Unusual or infrequent items (e.g., Restructuring Charges, Impairment Charges, Gain/Loss on Sale of Assets, Legal Settlements, Acquisition Costs, Discontinued Operations)
+- For revenue_prior_year, look for the same period in the prior year (e.g., if time_period is "Q3 2023", look for "Q3 2022" revenue) - ONLY if explicitly shown in the document text, otherwise use null
+- Use "ten_thousands" ONLY if the document explicitly states values are in ten thousands
+- Categorize each line item as "Recurring" or "One-Time"
+- IMPORTANT: Line items are normalized for costs to show as negative (e.g., Cost of Revenue should be negative). If the document shows costs as positive, you may need to convert them to negative to match the expected format.
+- Carefully review the validation errors and fix the issues in your extraction by referencing the actual document text - do not invent values to fix calculation errors
 
 Document text:
 {text[:30000]}  # Limit to 30k characters
@@ -280,7 +438,8 @@ Document text:
 Return only valid JSON, no additional text."""
 
     try:
-        response_text = generate_content_safe(prompt)
+        # Use temperature 0.0 for extraction to prevent hallucination
+        response_text = generate_content_safe(prompt, temperature=0.0)
 
         # Remove markdown code blocks if present
         if response_text.startswith("```"):
@@ -368,23 +527,29 @@ def extract_additional_data_llm(text: str, time_period: str) -> dict:
 2. Diluted shares outstanding (diluted weighted average shares)
 3. Amortization (amortization expense)
 
+CRITICAL ANTI-HALLUCINATION RULES:
+- ONLY extract values that are EXPLICITLY shown in the document text below
+- DO NOT invent, infer, calculate, estimate, or approximate any values
+- If a value is not visible in the document text, use null
+- DO NOT use any external knowledge or assumptions
+
 Return a JSON object with the following structure:
 {{
-    "basic_shares_outstanding": number (as number, not string, null if not found),
-    "basic_shares_outstanding_unit": unit for basic_shares_outstanding - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (usually "ones", null if basic_shares_outstanding is null),
-    "diluted_shares_outstanding": number (as number, not string, null if not found),
-    "diluted_shares_outstanding_unit": unit for diluted_shares_outstanding - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (usually "ones", null if diluted_shares_outstanding is null),
-    "amortization": number (as number, not string, null if not found),
-    "amortization_unit": unit for amortization - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (usually same as income statement unit, null if amortization is null)
+    "basic_shares_outstanding": number (as number, not string, null if not EXPLICITLY found in document),
+    "basic_shares_outstanding_unit": unit for basic_shares_outstanding - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract ONLY if explicitly stated, usually "ones", null if basic_shares_outstanding is null),
+    "diluted_shares_outstanding": number (as number, not string, null if not EXPLICITLY found in document),
+    "diluted_shares_outstanding_unit": unit for diluted_shares_outstanding - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract ONLY if explicitly stated, usually "ones", null if diluted_shares_outstanding is null),
+    "amortization": number (as number, not string, null if not EXPLICITLY found in document),
+    "amortization_unit": unit for amortization - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract ONLY if explicitly stated, usually same as income statement unit, null if amortization is null)
 }}
 
 IMPORTANT:
-- Extract values exactly as they appear
+- Extract values exactly as they appear in the document (no rounding, no estimation)
 - Values should be numeric (not strings with commas)
-- If a value is not found, use null
-- Look for these values in the income statement, notes, or financial highlights sections
-- Extract units from the document (shares are usually in "ones", amortization usually matches the income statement unit)
-- Use "ten_thousands" only if the stock is foreign and the document explicitly states values are in ten thousands
+- If a value is not found in the document text, use null - do not make it up
+- Look for these values ONLY in the income statement, notes, or financial highlights sections of the document text
+- Extract units ONLY if explicitly stated in the document (shares are usually in "ones", amortization usually matches the income statement unit)
+- Use "ten_thousands" ONLY if the document explicitly states values are in ten thousands
 
 Document text:
 {text[:30000]}  # Limit to 30k characters
@@ -392,7 +557,8 @@ Document text:
 Return only valid JSON, no additional text."""
 
     try:
-        response_text = generate_content_safe(prompt)
+        # Use temperature 0.0 for extraction to prevent hallucination
+        response_text = generate_content_safe(prompt, temperature=0.0)
 
         # Remove markdown code blocks if present
         if response_text.startswith("```"):
@@ -443,20 +609,25 @@ def get_income_statement_llm_insights(
     prompt = f"""You are analyzing an income statement. Identify key line items by name.
 Return ONLY valid JSON using the exact line names provided.
 
+CRITICAL ANTI-HALLUCINATION RULES:
+- ONLY match line items that ACTUALLY appear in the provided line items list below
+- DO NOT invent line names - use null if a line item is not found in the list
+- Match line names exactly as they appear in the list (case-sensitive matching is preferred)
+
 Line items:
 {line_items_text}
 
 Return this JSON structure:
 {{
-    "total_net_revenue_line": "exact line name for total net revenue (or null if not found)",
-    "gross_profit_line": "exact line name for gross profit (or null if not found)",
-    "operating_income_line": "exact line name for operating income (or null if not found)",
-    "pretax_income_line": "exact line name for income before taxes (or null if not found)",
-    "tax_expense_line": "exact line name for tax expense (or null if not found)",
-    "net_income_line": "exact line name for net income (or null if not found)"
+    "total_net_revenue_line": "exact line name for total net revenue (must match a name from the list above, or null if not found)",
+    "gross_profit_line": "exact line name for gross profit (must match a name from the list above, or null if not found)",
+    "operating_income_line": "exact line name for operating income (must match a name from the list above, or null if not found)",
+    "pretax_income_line": "exact line name for income before taxes (must match a name from the list above, or null if not found)",
+    "tax_expense_line": "exact line name for tax expense (must match a name from the list above, or null if not found)",
+    "net_income_line": "exact line name for net income (must match a name from the list above, or null if not found)"
 }}
 
-Guidance:
+Guidance for matching (but only use names that actually appear in the list above):
 - Total net revenue may be labeled as: Revenue, Total Revenue, Net Sales, Net Revenue, Total Net Revenue
 - Gross profit may be labeled as: Gross Profit, Gross Margin, Gross Income
 - Operating income may be labeled as: Operating Income, Income from Operations, Operating Profit, Operating Earnings
@@ -467,7 +638,8 @@ Guidance:
 Return only JSON with no extra text."""
 
     try:
-        response_text = generate_content_safe(prompt)
+        # Use temperature 0.0 for extraction to prevent hallucination
+        response_text = generate_content_safe(prompt, temperature=0.0)
         insights = _parse_llm_json_response(response_text)
 
         return (
@@ -779,15 +951,13 @@ def post_process_income_statement_line_items(
     return processed_items, validation_errors
 
 
-def validate_income_statement(
-    line_items: list[dict], revenue: float | None = None
-) -> tuple[bool, list[str]]:
+def validate_income_statement_section(line_items: list[dict]) -> tuple[bool, list[str]]:
     """
-    Validate income statement calculations.
+    Validate income statement section (Stage 1): Check minimum line count and presence of required items.
+    This is used to validate that the correct section was found before proceeding to extraction validation.
 
     Args:
         line_items: List of income statement line items
-        revenue: Revenue value (if available)
 
     Returns:
         Tuple of (is_valid, list_of_errors)
@@ -847,15 +1017,10 @@ def validate_income_statement(
 
         if "total net revenue (" in item_name_lower:
             revenue_value = item_value
-        elif "gross profit (" in item_name_lower:
-            pass
-        elif "operating income (" in item_name_lower:
-            pass
         elif "net income (" in item_name_lower and "per share" not in item_name_lower:
             net_income = item_value
 
-    # Second pass: Look for revenue if not found with standardized name
-    # Also build items_dict for net income lookup
+    # Second pass: Look for revenue and net income if not found with standardized name
     items_dict = {}
     for item in line_items:
         item_value = normalize_value(item.get("line_value"))
@@ -872,32 +1037,11 @@ def validate_income_statement(
                 if revenue_value is None:
                     revenue_value = value
 
-    # Use provided revenue if available (override any found value)
-    if revenue is not None:
-        revenue_value = normalize_value(revenue)
-
-    # Note: Gross profit and operating income calculations are validated during normalization
-    # (in normalize_items_between), so we don't duplicate those checks here.
-
-    # Check for net income existence (validation of net income calculation is complex and not done)
-    # Net Income = Operating Income - Other Expenses + Other Income - Taxes
-    # This is more complex, so we'll just check if net income exists
     if net_income is None:
-        # Try to find it with standardized name first
-        for item in line_items:
-            item_name_lower = item["line_name"].lower()
-            if "net income (" in item_name_lower and "per share" not in item_name_lower:
-                net_income = normalize_value(item.get("line_value"))
-                if net_income is None:
-                    continue
+        for key, value in items_dict.items():
+            if ("net income" in key or "net earnings" in key) and "per share" not in key:
+                net_income = value
                 break
-
-        # Fallback to alternative names
-        if net_income is None:
-            for key, value in items_dict.items():
-                if ("net income" in key or "net earnings" in key) and "per share" not in key:
-                    net_income = value
-                    break
 
     # Check that required key items are present
     # Total Net Revenue is required
@@ -909,6 +1053,23 @@ def validate_income_statement(
         errors.append("Income statement is missing Net Income")
 
     return len(errors) == 0, errors
+
+
+def validate_income_statement(
+    line_items: list[dict], revenue: float | None = None
+) -> tuple[bool, list[str]]:
+    """
+    Combined validation function for backward compatibility.
+    Validates section (line count + required items).
+
+    Args:
+        line_items: List of income statement line items
+        revenue: Revenue value (if available) - not used in section validation
+
+    Returns:
+        Tuple of (is_valid, list_of_errors)
+    """
+    return validate_income_statement_section(line_items)
 
 
 def classify_line_items_llm(line_items: list[dict]) -> list[dict]:
@@ -970,7 +1131,8 @@ Return a JSON object with the following structure:
 Return only valid JSON, no additional text."""
 
     try:
-        response_text = generate_content_safe(prompt)
+        # Use temperature 0.0 for extraction to prevent hallucination
+        response_text = generate_content_safe(prompt, temperature=0.0)
 
         # Remove markdown code blocks if present
         if response_text.startswith("```"):
@@ -1013,34 +1175,48 @@ def extract_income_statement(
     document_id: str,
     file_path: str,
     time_period: str,
-    max_retries: int = 2,
+    max_retries: int = 3,
     document_type: str | None = None,
+    balance_sheet_chunk_index: int | None = None,
 ) -> dict:
     """
-    Main function to extract income statement with validation and retries.
+    Main function to extract income statement with two-stage validation and retries.
+
+    Stage 1: Find correct section (retry with chunk before, after, 2 after balance sheet)
+    Stage 2: Post-process and validate extraction (retry extraction with LLM feedback)
 
     Args:
         document_id: Document ID
         file_path: Path to PDF file
         time_period: Time period (e.g., "Q3 2023")
-        max_retries: Maximum number of retry attempts
+        max_retries: Maximum number of retry attempts for section finding (3 total: before, after, 2 after)
         document_type: Document type (e.g., "earnings_announcement", "annual_filing", "quarterly_filing")
 
     Returns:
         Dictionary with income statement data and validation status
     """
-    for attempt in range(max_retries):
+    # Stage 1: Find correct section (retry with different chunk positions relative to balance sheet)
+    income_statement_text = None
+    start_page = None
+    log_info = None
+    extracted_data = None
+
+    for section_attempt in range(max_retries):  # 3 tries: before, after, 2 after
         try:
-            attempt_msg = f"Income statement extraction attempt {attempt + 1}/{max_retries}"
-            print(attempt_msg)
+            section_msg = f"Stage 1: Finding income statement section (attempt {section_attempt + 1}: {'before' if section_attempt == 0 else 'after' if section_attempt == 1 else '2 after'} balance sheet)"
+            print(section_msg)
             add_log(
-                document_id, FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT, attempt_msg
+                document_id, FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT, section_msg
             )
 
-            # Step 1: Find income statement section near balance sheet
-            # attempt 0 = chunk before balance sheet, attempt 1 = chunk after balance sheet
+            # Find income statement section near balance sheet
             income_statement_text, start_page, log_info = find_income_statement_near_balance_sheet(
-                document_id, file_path, time_period, document_type, attempt=attempt
+                document_id,
+                file_path,
+                time_period,
+                document_type,
+                attempt=section_attempt,
+                balance_sheet_chunk_index=balance_sheet_chunk_index,
             )
 
             if not income_statement_text:
@@ -1090,7 +1266,7 @@ def extract_income_statement(
                     document_id, FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT, found_msg
                 )
 
-            # Step 2: Extract income statement using LLM
+            # Extract income statement using LLM
             extracted_data = extract_income_statement_llm(income_statement_text, time_period)
             extracted_count_msg = (
                 f"Extracted {len(extracted_data.get('line_items', []))} line items"
@@ -1102,131 +1278,183 @@ def extract_income_statement(
                 extracted_count_msg,
             )
 
-            # Step 3: Find and extract additional data (shares outstanding, amortization) using embedding search
-            additional_data_msg = (
-                "Searching for additional data (shares outstanding, amortization)..."
-            )
-            print(additional_data_msg)
-            add_log(
-                document_id,
-                FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                additional_data_msg,
+            # Stage 1 validation: Check section (line count + required items)
+            section_valid, section_errors = validate_income_statement_section(
+                extracted_data["line_items"]
             )
 
-            additional_data_text = find_additional_data_section(document_id, file_path, time_period)
-            if additional_data_text:
-                found_additional_msg = f"Found additional data section, extracted {len(additional_data_text)} characters"
-                print(found_additional_msg)
+            if section_valid:
+                section_valid_msg = "Stage 1 validation passed (section is correct)"
+                print(section_valid_msg)
                 add_log(
                     document_id,
-                    FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                    found_additional_msg,
+                    FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                    section_valid_msg,
                 )
-                additional_data = extract_additional_data_llm(additional_data_text, time_period)
+                break  # Section found and validated, proceed to Stage 2
             else:
-                # Fallback: try with income statement text if embedding search fails
-                fallback_additional_msg = (
-                    "Embedding search for additional data failed, trying with income statement text"
-                )
-                print(fallback_additional_msg)
+                section_failed_msg = f"Stage 1 validation failed: {', '.join(section_errors[:2])}"
+                print(section_failed_msg)
                 add_log(
                     document_id,
-                    FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                    fallback_additional_msg,
+                    FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                    section_failed_msg,
                 )
-                additional_data = extract_additional_data_llm(income_statement_text, time_period)
-            extracted_data.update(additional_data)
-            additional_complete_msg = "Additional data extraction completed"
-            print(additional_complete_msg)
-            add_log(
-                document_id,
-                FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                additional_complete_msg,
-            )
+                if section_attempt < max_retries - 1:
+                    continue  # Try next chunk position
+                else:
+                    # All section attempts failed, return with errors (but still extract additional data)
+                    # Extract additional data before returning
+                    additional_data_text = find_additional_data_section(
+                        document_id, file_path, time_period
+                    )
+                    if additional_data_text:
+                        additional_data = extract_additional_data_llm(
+                            additional_data_text, time_period
+                        )
+                    else:
+                        additional_data = extract_additional_data_llm(
+                            income_statement_text, time_period
+                        )
+                    extracted_data.update(additional_data)
+                    classified_items = classify_line_items_llm(extracted_data["line_items"])
+                    extracted_data["line_items"] = classified_items
+                    extracted_data["is_valid"] = False
+                    extracted_data["validation_errors"] = section_errors
+                    return extracted_data
 
-            # Step 4.5: Post-process line items (rename key items, normalize cost format)
-            # Do this BEFORE validation so validation can use standardized names
-            # Post-processing now also performs validation during normalization
+        except Exception as e:
+            error_str = str(e).lower()
+            is_api_error = any(
+                keyword in error_str
+                for keyword in [
+                    "rate limit",
+                    "quota",
+                    "429",
+                    "503",
+                    "resource exhausted",
+                    "service unavailable",
+                    "too many requests",
+                ]
+            )
+            if is_api_error:
+                print(f"API error on section attempt {section_attempt + 1}: {str(e)}")
+                raise
+            print(f"Error on section attempt {section_attempt + 1}: {str(e)}")
+            if section_attempt == max_retries - 1:
+                raise
+
+    if not income_statement_text or extracted_data is None:
+        raise Exception("Failed to find income statement section after all attempts")
+
+    # Extract additional data (shares outstanding, amortization)
+    additional_data_msg = "Searching for additional data (shares outstanding, amortization)..."
+    print(additional_data_msg)
+    add_log(
+        document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, additional_data_msg
+    )
+    additional_data_text = find_additional_data_section(document_id, file_path, time_period)
+    if additional_data_text:
+        additional_data = extract_additional_data_llm(additional_data_text, time_period)
+    else:
+        additional_data = extract_additional_data_llm(income_statement_text, time_period)
+    extracted_data.update(additional_data)
+    additional_complete_msg = "Additional data extraction completed"
+    print(additional_complete_msg)
+    add_log(
+        document_id,
+        FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
+        additional_complete_msg,
+    )
+
+    # Stage 2: Post-process and validate extraction (retry extraction with LLM feedback)
+    EXTRACTION_MAX_RETRIES = 3
+    normalization_errors = []
+
+    for extraction_attempt in range(EXTRACTION_MAX_RETRIES):
+        try:
+            if extraction_attempt == 0:
+                # First attempt: post-process initial extraction from Stage 1
+                extraction_msg = "Stage 2: Post-processing and validating extraction"
+                print(extraction_msg)
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                    extraction_msg,
+                )
+                # extracted_data is already set from Stage 1
+            else:
+                # Retry with feedback from previous attempt
+                retry_msg = f"Stage 2: Retry extraction {extraction_attempt + 1}/{EXTRACTION_MAX_RETRIES} with LLM feedback"
+                print(retry_msg)
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                    retry_msg,
+                )
+                # Re-extract with validation error feedback
+                extracted_data = extract_income_statement_llm_with_feedback(
+                    income_statement_text,
+                    time_period,
+                    extracted_data,  # Previous extraction
+                    normalization_errors,  # Validation errors with differences from previous attempt
+                )
+                # Re-extract additional data for retry
+                additional_data = extract_additional_data_llm(income_statement_text, time_period)
+                extracted_data.update(additional_data)
+
+            # Post-process line items (rename key items, normalize cost format)
+            # This performs validation during normalization using final_diff logic
             processed_line_items, normalization_errors = post_process_income_statement_line_items(
                 extracted_data.get("line_items", [])
             )
             extracted_data["line_items"] = processed_line_items
 
-            # Step 4: Validate (after post-processing)
-            # Collect validation errors from both normalization and traditional validation
-            extracted_data.get("revenue_prior_year")  # Use revenue from extraction
-
-            def normalize_value(value: object) -> float | None:
-                if value is None:
-                    return None
-                if isinstance(value, (int, float)):
-                    return float(value)
-                if isinstance(value, str):
-                    stripped = value.strip().replace(",", "")
-                    if not stripped:
-                        return None
-                    is_negative = stripped.startswith("(") and stripped.endswith(")")
-                    if is_negative:
-                        stripped = stripped[1:-1]
-                    try:
-                        parsed = float(stripped)
-                    except ValueError:
-                        return None
-                    return -parsed if is_negative else parsed
-                return None
-
-            # Find current revenue from line items (use standardized name if available)
-            current_revenue = None
-            for item in extracted_data.get("line_items", []):
-                item_name_lower = item.get("line_name", "").lower()
-                if "total net revenue" in item_name_lower:
-                    current_revenue = normalize_value(item.get("line_value"))
-                    if current_revenue is not None:
-                        break
-
-            # Fallback to common revenue labels
-            if current_revenue is None:
-                for item in extracted_data.get("line_items", []):
-                    item_name_lower = item.get("line_name", "").lower()
-                    if "revenue" in item_name_lower and (
-                        "total" in item_name_lower or "net" in item_name_lower
-                    ):
-                        current_revenue = normalize_value(item.get("line_value"))
-                        if current_revenue is not None:
-                            break
-
-            # Final fallback to non-standardized name
-            if current_revenue is None:
-                for item in extracted_data.get("line_items", []):
-                    item_name_lower = item.get("line_name", "").lower()
-                    if "revenue" in item_name_lower:
-                        current_revenue = normalize_value(item.get("line_value"))
-                        if current_revenue is not None:
-                            break
-
-            is_valid, validation_errors = validate_income_statement(
-                extracted_data.get("line_items", []), current_revenue
-            )
-
-            # Combine normalization errors with validation errors
-            errors = normalization_errors + validation_errors
-            is_valid = is_valid and len(normalization_errors) == 0
-
-            if is_valid:
-                validation_msg = "Validation passed"
-                print(validation_msg)
+            # Stage 2 validation: Check if post-processing validation passed
+            if len(normalization_errors) == 0:
+                calc_valid_msg = (
+                    "Stage 2 validation passed (post-processing calculations are correct)"
+                )
+                print(calc_valid_msg)
                 add_log(
                     document_id,
                     FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
-                    validation_msg,
+                    calc_valid_msg,
                 )
-                # Step 5: Classify line items
+                # Both stages passed, classify and return
                 classified_items = classify_line_items_llm(extracted_data["line_items"])
                 extracted_data["line_items"] = classified_items
                 extracted_data["is_valid"] = True
                 extracted_data["validation_errors"] = []
 
                 # Calculate revenue growth YoY
+                def normalize_value(value: object) -> float | None:
+                    if value is None:
+                        return None
+                    if isinstance(value, (int, float)):
+                        return float(value)
+                    if isinstance(value, str):
+                        stripped = value.strip().replace(",", "")
+                        if not stripped:
+                            return None
+                        is_negative = stripped.startswith("(") and stripped.endswith(")")
+                        if is_negative:
+                            stripped = stripped[1:-1]
+                        try:
+                            parsed = float(stripped)
+                        except ValueError:
+                            return None
+                        return -parsed if is_negative else parsed
+                    return None
+
+                current_revenue = None
+                for item in extracted_data.get("line_items", []):
+                    item_name_lower = item.get("line_name", "").lower()
+                    if "total net revenue" in item_name_lower:
+                        current_revenue = normalize_value(item.get("line_value"))
+                        if current_revenue is not None:
+                            break
+
                 if (
                     current_revenue is not None
                     and extracted_data.get("revenue_prior_year") is not None
@@ -1238,34 +1466,52 @@ def extract_income_statement(
 
                 return extracted_data
             else:
-                validation_failed_msg = (
-                    f"Validation failed: {', '.join(errors[:3])}"  # Show first 3 errors
+                calc_failed_msg = (
+                    f"Stage 2 validation failed: {', '.join(normalization_errors[:2])}"
                 )
-                print(validation_failed_msg)
+                print(calc_failed_msg)
                 add_log(
                     document_id,
                     FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
-                    validation_failed_msg,
+                    calc_failed_msg,
                 )
-                if attempt < max_retries - 1:
-                    continue  # Retry
+                if extraction_attempt < EXTRACTION_MAX_RETRIES - 1:
+                    continue  # Retry with feedback
                 else:
-                    # Post-process line items even if validation failed
-                    processed_line_items, normalization_errors = (
-                        post_process_income_statement_line_items(
-                            extracted_data.get("line_items", [])
-                        )
-                    )
-                    extracted_data["line_items"] = processed_line_items
-                    # Combine normalization errors with existing validation errors
-                    all_errors = normalization_errors + errors
-                    # Return with errors on final attempt
+                    # All extraction attempts failed, return with errors
                     classified_items = classify_line_items_llm(extracted_data["line_items"])
                     extracted_data["line_items"] = classified_items
                     extracted_data["is_valid"] = False
-                    extracted_data["validation_errors"] = all_errors
+                    extracted_data["validation_errors"] = normalization_errors
 
                     # Still calculate revenue growth if possible
+                    def normalize_value(value: object) -> float | None:
+                        if value is None:
+                            return None
+                        if isinstance(value, (int, float)):
+                            return float(value)
+                        if isinstance(value, str):
+                            stripped = value.strip().replace(",", "")
+                            if not stripped:
+                                return None
+                            is_negative = stripped.startswith("(") and stripped.endswith(")")
+                            if is_negative:
+                                stripped = stripped[1:-1]
+                            try:
+                                parsed = float(stripped)
+                            except ValueError:
+                                return None
+                            return -parsed if is_negative else parsed
+                        return None
+
+                    current_revenue = None
+                    for item in extracted_data.get("line_items", []):
+                        item_name_lower = item.get("line_name", "").lower()
+                        if "total net revenue" in item_name_lower:
+                            current_revenue = normalize_value(item.get("line_value"))
+                            if current_revenue is not None:
+                                break
+
                     if (
                         current_revenue is not None
                         and extracted_data.get("revenue_prior_year") is not None
@@ -1281,7 +1527,6 @@ def extract_income_statement(
 
         except Exception as e:
             error_str = str(e).lower()
-            # Check if it's an API error that was already retried at the API level
             is_api_error = any(
                 keyword in error_str
                 for keyword in [
@@ -1294,16 +1539,11 @@ def extract_income_statement(
                     "too many requests",
                 ]
             )
-
-            # If it's an API error that failed after 3 retries, don't retry at agent level
-            # (it's likely a persistent issue, not transient)
             if is_api_error:
-                print(f"API error after retries on attempt {attempt + 1}: {str(e)}")
-                raise  # Don't retry - API-level already tried 3 times
-
-            # For other errors (validation, extraction issues), retry makes sense
-            print(f"Error on attempt {attempt + 1}: {str(e)}")
-            if attempt == max_retries - 1:
+                print(f"API error on extraction attempt {extraction_attempt + 1}: {str(e)}")
+                raise
+            print(f"Error on extraction attempt {extraction_attempt + 1}: {str(e)}")
+            if extraction_attempt == EXTRACTION_MAX_RETRIES - 1:
                 raise
 
-    raise Exception(f"Failed to extract income statement after {max_retries} attempts")
+    raise Exception("Failed to extract income statement after all attempts")

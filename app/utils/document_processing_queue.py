@@ -10,7 +10,6 @@ This queue handles:
 
 import queue
 import threading
-import time
 from dataclasses import dataclass
 
 from app.database import SessionLocal
@@ -41,6 +40,7 @@ class ProcessingTask:
 _processing_queue = queue.PriorityQueue()
 _processing_thread: threading.Thread | None = None
 _queue_lock = threading.Lock()
+_shutdown_event = threading.Event()
 
 
 def _process_document_with_service(document_id: str, mode: DocumentProcessingMode, db_session):
@@ -57,6 +57,7 @@ def _process_document_with_service(document_id: str, mode: DocumentProcessingMod
 def _process_financial_statements(document_id: str, db_session: SessionLocal):
     """
     Process financial statements for an indexed document.
+    Balance sheet is processed first, then income statement (which uses balance sheet location).
     """
     document = db_session.query(Document).filter(Document.id == document_id).first()
     if not document:
@@ -70,14 +71,15 @@ def _process_financial_statements(document_id: str, db_session: SessionLocal):
     ]
 
     if document.document_type in eligible_types:
-        # Process balance sheet first
+        # Process balance sheet first (blocking call - completes before income statement starts)
         print(f"Starting balance sheet processing for document {document_id}")
         process_balance_sheet_async(document_id, db_session)
 
-        # Small delay between balance sheet and income statement
-        time.sleep(2)
+        # Refresh document to get updated balance sheet status
+        db_session.refresh(document)
 
-        # Process income statement
+        # Process income statement (uses balance sheet location for finding income statement)
+        # No sleep needed - balance sheet processing is synchronous and completes before this
         print(f"Starting income statement processing for document {document_id}")
         db_is = SessionLocal()
         try:
@@ -90,11 +92,15 @@ def _process_financial_statements(document_id: str, db_session: SessionLocal):
 
 def _process_document_worker():
     """Worker thread that processes documents from the priority queue"""
-    while True:
+    while not _shutdown_event.is_set():
         try:
-            # Get next task from priority queue (blocks until available)
+            # Get next task from priority queue (blocks until available or timeout)
             # PriorityQueue returns items in priority order (lowest priority number first)
-            task: ProcessingTask = _processing_queue.get(timeout=1)
+            try:
+                task: ProcessingTask = _processing_queue.get(timeout=1)
+            except queue.Empty:
+                # Timeout - check for shutdown and continue
+                continue
 
             if task is None:  # Shutdown signal
                 break
@@ -188,15 +194,19 @@ def _process_document_worker():
                 # Mark task as done
                 _processing_queue.task_done()
 
-        except queue.Empty:
-            # Timeout - continue loop to check for shutdown
-            continue
         except Exception as e:
             print(f"Error in document processing worker: {str(e)}")
             import traceback
 
             traceback.print_exc()
-            time.sleep(5)  # Wait before retrying
+            # Wait before retrying, but respect shutdown event
+            # wait() returns True if event is set (shutdown), False if timeout
+            if _shutdown_event.wait(timeout=5):
+                # Shutdown requested during wait
+                break
+            # Otherwise continue (loop will check shutdown condition again)
+
+    print("Document processing worker thread stopped")
 
 
 def _ensure_worker_thread():
@@ -204,9 +214,31 @@ def _ensure_worker_thread():
     global _processing_thread
     with _queue_lock:
         if _processing_thread is None or not _processing_thread.is_alive():
+            # Reset shutdown event if thread was stopped
+            _shutdown_event.clear()
             _processing_thread = threading.Thread(target=_process_document_worker, daemon=True)
             _processing_thread.start()
             print("Started document processing worker thread")
+
+
+def stop_processing_worker():
+    """
+    Gracefully shut down the document processing worker thread.
+    This will stop processing new tasks but will complete the current task.
+    Useful for testing or application shutdown.
+    """
+    global _processing_thread
+    with _queue_lock:
+        if _processing_thread is not None and _processing_thread.is_alive():
+            print("Stopping document processing worker thread...")
+            _shutdown_event.set()
+            # Wait for thread to finish (with timeout)
+            _processing_thread.join(timeout=10)
+            if _processing_thread.is_alive():
+                print("Warning: Worker thread did not stop within timeout")
+            else:
+                print("Document processing worker thread stopped")
+            _processing_thread = None
 
 
 def queue_document_for_processing(document_id: str):

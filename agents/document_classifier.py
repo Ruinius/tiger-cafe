@@ -31,11 +31,17 @@ def classify_document(text: str) -> dict[str, str | None]:
 Return a JSON object with the following structure:
 {{
     "document_type": one of ["earnings_announcement", "quarterly_filing", "annual_filing", "press_release", "analyst_report", "news_article", "other"],
-    "time_period": the time period in format like "Q3 2024", "FY 2023", "2024-Q1", or null if not found,
-    "company_name": the company name or null if not found,
-    "ticker": the stock ticker symbol or null if not found,
+    "time_period": the time period in format like "Q3 2024", "FY 2023", "2024-Q1", or null if not EXPLICITLY found in the document text,
+    "company_name": the company name or null if not EXPLICITLY found in the document text,
+    "ticker": the stock ticker symbol or null if not EXPLICITLY found in the document text,
     "confidence": one of ["high", "medium", "low"] based on how confident you are in the classification
 }}
+
+CRITICAL ANTI-HALLUCINATION RULES:
+- ONLY extract information that is EXPLICITLY shown in the document text below
+- DO NOT invent, infer, or assume company names, tickers, or time periods
+- If information is not visible in the document text, use null
+- DO NOT use external knowledge to fill in missing information
 
 IMPORTANT: Document type classification rules:
 - "earnings_announcement": Use ONLY for press releases or announcements that specifically report quarterly or annual earnings results, financial performance metrics (revenue, profit, EPS), and earnings guidance. These typically include phrases like "earnings", "revenue", "net income", "EPS", "quarterly results", "annual results", or financial performance data.
@@ -54,7 +60,8 @@ Document text (first few pages):
 Return only valid JSON, no additional text."""
 
     try:
-        response_text = generate_content_safe(prompt)
+        # Use temperature 0.0 for classification to prevent hallucination
+        response_text = generate_content_safe(prompt, temperature=0.0)
 
         # Remove markdown code blocks if present
         if response_text.startswith("```"):

@@ -2,9 +2,28 @@
 PDF text extraction utilities
 """
 
+import logging
 import os
 
 import pdfplumber
+
+logger = logging.getLogger(__name__)
+
+
+class PDFExtractionError(Exception):
+    """Custom exception for PDF extraction errors"""
+
+    def __init__(self, message: str, original_error: Exception | None = None):
+        super().__init__(message)
+        self.original_error = original_error
+
+
+class PDFMetadataError(Exception):
+    """Custom exception for PDF metadata errors"""
+
+    def __init__(self, message: str, original_error: Exception | None = None):
+        super().__init__(message)
+        self.original_error = original_error
 
 
 def extract_text_from_pdf(file_path: str, max_pages: int | None = 5) -> tuple[str, int, int]:
@@ -42,8 +61,14 @@ def extract_text_from_pdf(file_path: str, max_pages: int | None = 5) -> tuple[st
             extracted_text = "\n\n".join(text_parts)
             return extracted_text, total_pages, character_count
 
+    except PDFExtractionError:
+        # Re-raise our custom exceptions as-is
+        raise
     except Exception as e:
-        raise Exception(f"Error extracting text from PDF: {str(e)}")
+        # Wrap other exceptions to preserve context
+        raise PDFExtractionError(
+            f"Error extracting text from PDF '{file_path}': {str(e)}", original_error=e
+        ) from e
 
 
 def get_pdf_metadata(file_path: str) -> dict:
@@ -61,7 +86,12 @@ def get_pdf_metadata(file_path: str) -> dict:
     try:
         with pdfplumber.open(file_path) as pdf:
             metadata["pages"] = len(pdf.pages)
-    except Exception:
-        pass
+    except Exception as e:
+        # Log metadata errors but don't fail the operation
+        logger.warning(
+            f"Error extracting PDF metadata from '{file_path}': {str(e)}",
+            exc_info=True,
+        )
+        # Pages will remain 0 if extraction fails
 
     return metadata

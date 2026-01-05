@@ -87,12 +87,20 @@ def process_income_statement_async(document_id: str, db: Session):
 
         # Extract income statement
         time_period = document.time_period or "Unknown"
+
+        # Try to get balance sheet chunk index from progress logs (stored when balance sheet extraction succeeded)
+        balance_sheet_chunk_index = None
+        progress = get_progress(document_id)
+        if progress and "balance_sheet_chunk_index" in progress:
+            balance_sheet_chunk_index = progress["balance_sheet_chunk_index"]
+
         extracted_data = extract_income_statement(
             document_id=document_id,
             file_path=document.file_path,
             time_period=time_period,
-            max_retries=2,
+            max_retries=3,  # 3 attempts: before, after, 2 after balance sheet
             document_type=document.document_type,
+            balance_sheet_chunk_index=balance_sheet_chunk_index,
         )
 
         # Check if extraction returned valid data with line items

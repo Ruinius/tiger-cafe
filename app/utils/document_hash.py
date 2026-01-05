@@ -43,4 +43,5 @@ def generate_document_hash_from_file(file_path: str, max_pages: int | None = 10)
         extracted_text, _, _ = extract_text_from_pdf(file_path, max_pages=max_pages)
         return generate_document_hash(extracted_text)
     except Exception as e:
-        raise Exception(f"Error generating hash from file: {str(e)}")
+        # Preserve original exception context
+        raise Exception(f"Error generating hash from file '{file_path}': {str(e)}") from e

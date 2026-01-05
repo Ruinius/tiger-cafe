@@ -56,9 +56,11 @@ Tiger-Cafe is a full-stack application that combines:
 
 ### 2) Financial Statement Extraction
 
-1. Extract balance sheet + income statement from indexed content.
-2. Validate line items and apply operating/non-operating classification.
-3. Persist structured tables for downstream analysis.
+1. Extract balance sheet + income statement from indexed content using chunk embeddings.
+2. Two-stage validation:
+   - Stage 1: Validate correct section found (retry with different chunks if needed)
+   - Stage 2: Validate extraction accuracy with LLM feedback loop for error correction
+3. Apply operating/non-operating classification and persist structured tables for downstream analysis.
 
 ### 3) Analysis & Reporting
 
