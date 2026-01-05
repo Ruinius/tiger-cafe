@@ -52,7 +52,7 @@ Stores uploaded document metadata and processing status.
 - `company_id` (String, Foreign Key → `companies.id`, Indexed): Associated company
 - `filename` (String): Original filename
 - `file_path` (String): Path to stored PDF file
-- `document_type` (Enum): `earnings_announcement`, `quarterly_filing`, `annual_filing`, `press_release`, `analyst_report`, `news_article`, `other`
+- `document_type` (Enum): `earnings_announcement`, `quarterly_filing`, `annual_filing`, `press_release`, `analyst_report`, `news_article`, `transcript`, `other`
 - `time_period` (String, Nullable): Time period (e.g., “Q3 2023”)
 - `unique_id` (String, Nullable, Indexed): Dedupe identifier
 - `indexing_status` (Enum): `pending`, `uploading`, `classifying`, `indexing`, `indexed`, `error`
@@ -103,6 +103,7 @@ Stores analysis results (valuation, sensitivity, etc.).
 - `press_release`
 - `analyst_report`
 - `news_article`
+- `transcript`
 - `other`
 
 ### `ProcessingStatus`

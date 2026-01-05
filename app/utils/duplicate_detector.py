@@ -18,8 +18,11 @@ def check_duplicate_document(
 ) -> dict | None:
     """
     Check if a document is a duplicate based on company, type, and time period.
-    For earnings, quarterly, and annual filings: checks company, type, and time period.
-    For all other document types: checks unique_id if available.
+    For earnings announcements, quarterly filings, and annual filings: checks company, type, and time period (or filename).
+    For all other document types (press releases, analyst reports, news articles, transcripts, etc.): checks unique_id if available.
+
+    Note: Transcripts are treated like other event-based documents and use unique_id checking (document hash),
+    not company+type+time_period checking, since multiple transcript versions of the same call may exist.
 
     Args:
         db: Database session

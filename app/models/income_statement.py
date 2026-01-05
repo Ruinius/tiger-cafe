@@ -48,6 +48,11 @@ class IncomeStatement(Base):
     is_valid = Column(Boolean, default=False)  # Whether all validations passed
     validation_errors = Column(Text, nullable=True)  # JSON string of validation errors
 
+    # Extraction metadata
+    chunk_index = Column(
+        Integer, nullable=True
+    )  # Chunk index used for extraction (for traceability and observability)
+
     # Relationships
     document = relationship("Document", back_populates="income_statement")
     line_items = relationship(

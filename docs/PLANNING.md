@@ -255,15 +255,15 @@ Based on UI/UX Design specifications, build the frontend interface:
     - Earnings announcement: ignore first 30% and last 10% of document
     - Annual filing: ignore first 50% and last 20% of document
     - Quarterly filing: ignore last 50% of document (no front ignore)
-  - Two-stage validation with retry strategy (see section 5.5 for details):
-    - Stage 1: Try rank 1, 2, 3 chunks to find correct section (validates line count + key lines)
+  - Two-stage validation with retry strategy (see sections 5.5 and 5.6 for details):
+    - Stage 1: Try rank 1, 2, 3 chunks to find correct section (LLM completeness check on chunk text before extraction)
     - Stage 2: Retry extraction up to 3 times with LLM feedback if sum validation fails
 - [x] LLM-based extraction of balance sheet line items:
   - Extract balance sheet exactly line by line for the specified time period
   - Extract local currency when applicable
   - Extract unit of measurement (ones, thousands, millions, billions, or ten_thousands for foreign stocks)
-- [x] Validation and error handling (see section 5.5 for two-stage validation details):
-  - Stage 1 validation: Verify minimum line count (10 lines) and presence of key totals
+- [x] Validation and error handling (see sections 5.5 and 5.6 for two-stage validation details):
+  - Stage 1 validation: LLM completeness check on chunk text (validates chunk contains complete balance sheet before extraction)
   - Stage 2 validation: Verify that current assets sum correctly, total assets sum correctly, current liabilities sum correctly, total liabilities sum correctly, and total assets equal total liabilities and total equity
   - Precise total identification using regex to handle long line item names with notes
   - LLM feedback loop: If sum validation fails, retry extraction with validation errors and calculated differences included in prompt
@@ -289,8 +289,8 @@ Based on UI/UX Design specifications, build the frontend interface:
 - [x] Sequential processing: Runs after balance sheet processing to avoid overwhelming Gemini API
 - [x] Use balance sheet location to locate income statement:
   - First finds balance sheet location using chunk embeddings
-  - Two-stage validation with retry strategy (see section 5.5 for details):
-    - Stage 1: Try chunks before, after, and 2 after balance sheet to find correct section (validates line count + required items)
+  - Two-stage validation with retry strategy (see sections 5.5 and 5.6 for details):
+    - Stage 1: Try chunks before, after, and 2 after balance sheet to find correct section (LLM completeness check on chunk text before extraction)
     - Stage 2: Retry extraction up to 3 times with LLM feedback if post-processing validation fails
   - More reliable than independent search since income statements are typically near balance sheets
   - Document type-based search range restrictions (same as balance sheet):
@@ -307,8 +307,8 @@ Based on UI/UX Design specifications, build the frontend interface:
   - Extract diluted shares outstanding for the specific time period
   - Extract amortization for the specific time period
   - Extract unit of measurement for each additional item (revenue_prior_year, shares outstanding, amortization)
-- [x] Validation and error handling (see section 5.5 for two-stage validation details):
-  - Stage 1 validation: Verify minimum line count (5 lines) and presence of required items (Total Net Revenue, Net Income)
+- [x] Validation and error handling (see sections 5.5 and 5.6 for two-stage validation details):
+  - Stage 1 validation: LLM completeness check on chunk text (validates chunk contains complete income statement before extraction)
   - Stage 2 validation: Post-process and validate using final_diff logic (checks gross profit, operating income, and other calculations during normalization)
   - LLM feedback loop: If post-processing validation fails, retry extraction with validation errors, calculated differences, and cost normalization explanation included in prompt
 - [x] Line item classification:
@@ -442,14 +442,64 @@ All calculations are performed for a specific document using the extracted balan
   - LLM feedback loop includes calculation differences for better correction
   - More robust handling of edge cases and extraction errors
 
-#### 5.6: Further Updates to Balance Sheet and Income Statement Validation
-- [ ] Instead of the complex validation logic after extraction, which wastes output tokens. Ask the LLM do I have a complete consolidated balance sheet starting from cash to total shareholder's equity
-- [ ] Simiarly, for the income statement, ask the LLM do I have a complete consolidated income statement starting from revenue to net income. In particular, we need to avoid smaller informational tables that do not have the complete information
-- [ ] Keep the old validation logic as a potential future back-up, but do not use it in the main flow for now
-- [ ] Similar to how the income statement creates standard names for key line items, the balance sheet should also have standard names for a few key items: cash & equivalents, other current assets, total current assets, other non-current assets, other current liabilities, total current liabilities, other non-current liabilities, total liabilities, total shareholder's equity
-- [ ] For balance sheet, income statement, and future additional extractions for additional items, persist the final chunk number used for traceability and observability. The same chunk may also be used repeatedly in the future
+#### 5.6: Further Updates to Balance Sheet and Income Statement Validation (Complete)
+- [x] **LLM Completeness Checks (Before Extraction)**
+  - Added completeness checks that validate chunk text BEFORE extraction to avoid wasting tokens
+  - Balance sheet: Ask LLM if chunk contains a complete consolidated balance sheet starting from cash to total shareholder's equity
+  - Income statement: Ask LLM if chunk contains a complete consolidated income statement starting from revenue to net income
+  - Completeness checks avoid smaller informational tables that don't have complete information
+  - Updated processing flow: Find chunk → Check completeness (on chunk text) → Extract → Normalize & Classify → Stage 2 validation
+- [x] **Standard Names for Balance Sheet Key Items**
+  - Added standard names for key balance sheet line items (similar to income statement)
+  - Standard names include: Cash & Equivalents, Other Current Assets, Total Current Assets, Other Non-Current Assets, Other Current Liabilities, Total Current Liabilities, Other Non-Current Liabilities, Total Liabilities, Total Shareholder's Equity
+  - Original names preserved in parentheses (e.g., "Cash & Equivalents (Cash and cash equivalents)")
+  - Implemented via `get_balance_sheet_llm_insights()` and `post_process_balance_sheet_line_items()`
+- [x] **Stage 2 Validation Preserved**
+  - Kept Stage 2 validation logic as requested (calculation validation for balance sheet, post-processing validation for income statement)
+  - Balance sheet: Validates sums (current assets, total assets, current liabilities, total liabilities, balance sheet equation) with retries
+  - Income statement: Post-processes and validates using final_diff logic with retries
+- [x] **Chunk Index Persistence**
+  - Added `chunk_index` field to `BalanceSheet` and `IncomeStatement` database models
+  - Chunk index persisted after successful extraction for traceability and observability
+  - Enables tracking which chunk was used for each financial statement extraction
+  - Migration script created: `migrate_add_chunk_index_fields.py`
 
 ### Phase 6: Company Analysis and Adjustments
+
+#### Context for Phases 6.2-6.8: Implementation Architecture and Patterns
+
+**Key Architecture Patterns:**
+- **Agent Pattern**: Each extraction agent is a standalone module in `agents/` (e.g., `balance_sheet_extractor.py`, `income_statement_extractor.py`). Agents use LLM calls via `generate_content_safe()` from `app/utils/gemini_client.py` with `temperature=0.0` for extraction tasks to prevent hallucination.
+- **Document Section Finding**: Use `find_document_section()` from `app/utils/document_section_finder.py` to search for relevant chunks. Parameters: `query_texts` (list of search terms), `pages_before=0`, `pages_after=0` (for exact chunk text), `rerank_top_k=5` (re-rank top 5 chunks), `rerank_query_texts` (optional list for re-ranking). The function returns `(text, start_page, log_info)` or `(None, None, None)`.
+- **Progress Tracking**: Use `FinancialStatementMilestone` enum and progress tracking functions from `app/utils/financial_statement_progress.py`. Call `update_milestone()` to update status, `add_log()` for progress logs. Status values: `PENDING`, `IN_PROGRESS`, `COMPLETED`, `ERROR`, `NOT_FOUND`.
+- **Database Models**: SQLAlchemy models in `app/models/`. Follow existing patterns: `BalanceSheet`, `BalanceSheetLineItem`, `IncomeStatement`, `IncomeStatementLineItem`. Use `Numeric(20, 2)` for monetary values, `String` for text, nullable fields where appropriate. Include `document_id` foreign key, timestamps, validation flags.
+- **Router Pattern**: FastAPI routers in `app/routers/`. Use background tasks for async processing. Follow pattern in `balance_sheet.py` and `income_statement.py`: async processing function, progress tracking, error handling, database commits.
+- **Standardized Naming**: Balance sheet and income statement extractors use `get_*_llm_insights()` to identify key line items, then `post_process_*_line_items()` to rename them. Standard names format: `"Standard Name (Original Name)"` - original name preserved in parentheses. Example: `"Cash & Equivalents (Cash and cash equivalents)"`.
+- **Chunk Index Persistence**: Store `chunk_index` (Integer, nullable) in database models for traceability. The chunk index indicates which document chunk (0-based) was used for extraction.
+- **LLM Prompt Patterns**: Include `CRITICAL ANTI-HALLUCINATION RULES` in prompts. Use structured JSON output. Specify exact field names and formats. Use `temperature=0.0` for all extraction tasks.
+- **Validation Patterns**: Two-stage validation: Stage 1 (completeness/section validation) happens before extraction; Stage 2 (calculation/consistency validation) happens after extraction. Use retry logic with different chunk ranks or with error feedback to LLM.
+- **Unit Handling**: Each monetary value should have a unit field (String, nullable). Units: `"ones"`, `"thousands"`, `"millions"`, `"billions"`, `"ten_thousands"`. Extract units from document notes using LLM.
+
+**Existing Code References:**
+- Balance sheet extraction: `agents/balance_sheet_extractor.py` - see `extract_balance_sheet()`, `check_balance_sheet_completeness_llm()`, `get_balance_sheet_llm_insights()`, `post_process_balance_sheet_line_items()`
+- Income statement extraction: `agents/income_statement_extractor.py` - see `extract_income_statement()`, `extract_additional_data_llm()` (currently extracts amortization, shares outstanding)
+- Progress tracking: `app/utils/financial_statement_progress.py` - see `FinancialStatementMilestone` enum, `update_milestone()`, `add_log()`
+- Document section finding: `app/utils/document_section_finder.py` - see `find_document_section()`
+- Router patterns: `app/routers/balance_sheet.py`, `app/routers/income_statement.py`
+- Database models: `app/models/balance_sheet.py`, `app/models/income_statement.py`
+- Historical calculations: `app/routers/historical_calculations.py`, `app/models/historical_calculation.py`
+
+**Data Flow Pattern:**
+1. Document indexing completes → triggers financial statement processing
+2. Balance sheet extraction → income statement extraction → additional items extraction (currently in income statement extractor)
+3. Each extraction: find section → completeness check → extract → normalize/classify → validate → persist
+4. Progress tracked via milestones, displayed in frontend via polling
+
+**Future State (After Phase 6.2-6.8):**
+- Additional items separated into their own extraction agents
+- New database models for: organic growth, other assets, other liabilities, non-operating asset classification
+- Separate progress milestones for each additional item type
+- Historical calculations UI reorganized into sections (Invested Capital, Adjusted Tax Rate, EBITA, NOPAT & ROIC) plus summary table
 
 #### 6.1: Historical Calculations Table for Company View (Complete)
 - [x] **Company-Level Historical Calculations Display**
@@ -470,41 +520,165 @@ All calculations are performed for a specific document using the extracted balan
   - Display in right panel when a company is selected (currently blank)
   - Aggregate data from all eligible documents (earnings announcements, quarterly filings, annual reports) for the company
 
-#### 6.2: Major Refactor for placeholders for new Additional Items and Historical Calculations
-- [ ] Separate out Additional Items from the income_statement_extractor, validation logic, logging, and progress tracking
-- [ ] Create placeholders in the frontend and scaffolds in the backend for additional items: organic growth (prior period revenue and YOY revenue growth should go here), amortization, other assets, other liabilities, total shares outstanding, non-operating assets
-- [ ] Keep the current Historical Calculation table as is with two changes: Add Organic Growth to above EBITA and Effective Tax Rate changes to Adjusted Tax Rate. However, this is now the summary table at the end.
-- [ ] Create new Historical Calculation section above the summary table with sections called: Invested Capital, Adjusted Tax Rate, EBITA, and NOPAT & ROIC
+#### 6.2: Major Refactor for Additional Items and Historical Calculations Structure
+**Goal**: Separate additional items extraction from income statement extractor and reorganize historical calculations UI structure.
 
-#### 6.3: Organic Growth
-- [ ] Search the document with query: "merge", "acquire", "acquisition", "m&a" and concatenate the top 3 chunks with 0 pages before and after
-- [ ] Ask the LLM whether the company made an acquisition within the year and what was the revenue impact on this time period. ZERO toleration for hallucination
-- [ ] Show the prior period revenue, the current period revenue, simple revenue growth, the revenue impact from acquisition (show zero if none), current period adjusted revenue, and organic revenue growth (should be same as simple revenue growth if no adjustments)
+**Backend Refactoring:**
+- Extract additional items logic from `agents/income_statement_extractor.py`. The `extract_additional_data_llm()` function currently extracts amortization and shares outstanding - these should be moved to dedicated agents.
+- Create new agent modules in `agents/` for each additional item type (see sections 6.3-6.8 below). Each agent should follow the pattern: find section → completeness check → extract → validate → return structured data.
+- Create database models in `app/models/` for new data structures: organic growth, other assets line items, other liabilities line items, non-operating asset classifications. Follow existing patterns from `BalanceSheetLineItem` and `IncomeStatementLineItem`.
+- Create new routers in `app/routers/` for each additional item type, or a unified `additional_items.py` router with endpoints for each type. Follow the async processing pattern from balance sheet and income statement routers.
+- Update progress tracking in `app/utils/financial_statement_progress.py`: Add new milestones for each additional item type (or consolidate into milestone groups). Update `initialize_progress()` and reset functions to include new milestones.
+- Create Pydantic schemas in `app/schemas/` for request/response models for each additional item type.
 
-#### 6.4: Amortization
-- [ ] Search the document with query: "amortize", "amortization" and concatenate the top 3 chunks with 0 pages before and after
-- [ ] Ask the LLM to identify all the line items for amortization this time period and the value then categorize whether the line item is non-operating (amortization of acquired intangibles, amortization of financing costs) or operating (amortization of capitalized sales costs, amortization of capitalized software). ZERO toleration for hallucination
-- [ ] Double check for duplicates and show all the line items with type
+**Frontend Scaffolding:**
+- Create placeholder components in `frontend/src/components/` for displaying each additional item type (organic growth table, amortization table, other assets table, etc.).
+- Update `RightPanel.jsx` to include new sections for additional items. Structure should allow for each item type to be displayed independently.
+- Create placeholder API integration functions for fetching each additional item type.
 
-#### 6.5: Other Assets
-- [ ] Search the document with query: the raw names of the standardized "other current assets", "other non-current assets" (they should have been saved in parentheses) and concatenate the top 3 chunks with 0 pages before and after
-- [ ] Ask the LLM to identify all the line items within other current assets and other non-current assets this time period and then categorize whether the line item is non-operating (financial derivatives, currency hedges, investments) or operating. ZERO toleration for hallucination
-- [ ] Double check for duplicates and then double check the summation of the line items with the total other current asset and total other non-current assets. If validation fails here, then ask the LLM to double check if the time period is correct
-- [ ] Show all the line items with type
+**Historical Calculations UI Reorganization:**
+- The existing historical calculations table (section 6.1) becomes the "Summary Table" at the bottom of the historical calculations section.
+- Add "Organic Growth" row above "EBITA" in the summary table.
+- Change "Effective Tax Rate" label to "Adjusted Tax Rate" in the summary table.
+- Create new sections above the summary table (in order from top to bottom):
+  1. **Invested Capital Section**: Display components/calculations related to invested capital adjustments
+  2. **Adjusted Tax Rate Section**: Display components/calculations related to adjusted tax rate (currently calculated, but will need breakdown)
+  3. **EBITA Section**: Display components/calculations related to EBITA adjustments
+  4. **NOPAT & ROIC Section**: Display NOPAT and ROIC calculations and components
+- Summary Table: Display at the bottom with all time periods as columns, metrics as rows (including new Organic Growth row, Adjusted Tax Rate label change).
 
-#### 6.6: Other Liabilities
-- [ ] Search the document with query: the raw names of the standardized "other current liabilities", "other non-current liabilities" (they should have been saved in parentheses) and concatenate the top 3 chunks with 0 pages before and after
-- Do similar thing as Other Assets
+#### 6.3: Organic Growth Extraction
+**Goal**: Extract organic growth data by identifying acquisitions and their revenue impact, then calculating organic revenue growth.
 
-#### 6.7: Total shares outstanding
-- [ ] Search the document with query: "weighted average", "shares", "basic", "diluted" and concatenate the top 3 chunks with 0 pages before and after
-- [ ] Ask the LLM to identify the standardized name: basic shares outstanding and diluted shares outstanding
-- [ ] Show all the line items
+**Implementation Approach:**
+- Create `agents/organic_growth_extractor.py` following the pattern from balance sheet/income statement extractors.
+- Use `find_document_section()` with query texts: `["merge", "acquire", "acquisition", "m&a"]`. Set `pages_before=0`, `pages_after=0` to get exact chunk text (no page padding). Use `rerank_top_k=3` to get top 3 chunks, then concatenate them.
+- Create LLM extraction function that takes the concatenated text and time period. The prompt should:
+  - Ask if the company made an acquisition within the year that affects this time period's revenue
+  - Extract the revenue impact amount (zero if no acquisition)
+  - Use `temperature=0.0` and include anti-hallucination rules - only extract information explicitly stated in the text
+  - Return structured JSON with: acquisition flag (boolean), revenue impact (numeric, can be zero), unit (extracted from document notes)
+- Database model in `app/models/organic_growth.py`: Store `document_id`, `time_period`, `prior_period_revenue`, `prior_period_revenue_unit`, `current_period_revenue`, `current_period_revenue_unit`, `simple_revenue_growth` (percentage), `acquisition_revenue_impact`, `acquisition_revenue_impact_unit`, `current_period_adjusted_revenue`, `current_period_adjusted_revenue_unit`, `organic_revenue_growth` (percentage), `chunk_index`, timestamps, validation flags.
+- Calculation logic: 
+  - Prior period revenue comes from income statement (revenue_prior_year field)
+  - Current period revenue comes from income statement (total revenue)
+  - Simple revenue growth = (current - prior) / prior * 100
+  - Current period adjusted revenue = current period revenue - acquisition revenue impact
+  - Organic revenue growth = (adjusted - prior) / prior * 100 (equals simple growth if no acquisition impact)
+- Create router endpoint following pattern from balance sheet/income statement routers. Trigger after income statement extraction completes.
+- Progress tracking: Add milestone `EXTRACTING_ORGANIC_GROWTH` to `FinancialStatementMilestone` enum.
+- Frontend: Create component to display organic growth table with all fields, formatted appropriately (percentages as percentages, monetary values with units).
 
-#### 6.8: Non-operating asset
-- [ ] Pass the balance sheet line items, other assets (from above), and other liabilities (from above) labeled as non-operating (de-duplicated) to the LLM
-- [ ] Ask the LLM to classify each item as: cash (includes items such as restricted cash), short term investments (includes items such as marketable securities), operating lease-related, other financial or physical assets (includes items such as assets held for sale), debt (includes loans, notes), other financial liabilities, deferred tax assets, deferred tax liabilities, preferred equity, minority interest, goodwill/intangibles, UNKNOWN
-- [ ] Show all the line items with type
+#### 6.4: Amortization Extraction (Refactor from Income Statement)
+**Goal**: Extract all amortization line items from the document, categorize them as operating or non-operating, and store them separately from income statement data.
+
+**Implementation Approach:**
+- Extract amortization logic from `agents/income_statement_extractor.py` (currently in `extract_additional_data_llm()`). Create new `agents/amortization_extractor.py`.
+- Use `find_document_section()` with query texts: `["amortize", "amortization"]`. Set `pages_before=0`, `pages_after=0`, `rerank_top_k=3`, concatenate top 3 chunks.
+- Create LLM extraction function that:
+  - Identifies all amortization line items for the time period (name and value)
+  - Categorizes each as operating or non-operating based on examples:
+    - Non-operating: amortization of acquired intangibles, amortization of financing costs
+    - Operating: amortization of capitalized sales costs, amortization of capitalized software
+  - Uses `temperature=0.0` with strict anti-hallucination rules
+  - Returns JSON array of line items with: `line_name`, `line_value`, `unit`, `is_operating` (boolean), `category` (string: "operating" or "non-operating")
+- Database model in `app/models/amortization.py`: Create `Amortization` (parent) and `AmortizationLineItem` (child) tables. `Amortization` stores `document_id`, `time_period`, `currency`, `chunk_index`, timestamps. `AmortizationLineItem` stores `amortization_id`, `line_name`, `line_value`, `unit`, `is_operating`, `category`, `line_order`.
+- Validation: Deduplicate line items by name (case-insensitive, normalized). If duplicates found, log warning and keep one instance (prefer the one with more complete information).
+- Create router endpoint. Trigger after income statement extraction completes (can run in parallel with organic growth if desired, but sequential is safer for API rate limiting).
+- Progress tracking: Add milestone `EXTRACTING_AMORTIZATION` or reuse existing `EXTRACTING_ADDITIONAL_ITEMS` milestone (to be refactored in 6.2).
+- Frontend: Create component to display amortization line items table with columns: Line Name, Value, Unit, Type (Operating/Non-operating). Group by type or use visual indicators.
+
+#### 6.5: Other Assets Extraction and Classification
+**Goal**: Extract detailed line items within "Other Current Assets" and "Other Non-Current Assets" from the balance sheet, and classify each as operating or non-operating.
+
+**Implementation Approach:**
+- Create `agents/other_assets_extractor.py`. This agent requires the balance sheet to already be extracted (to get the standardized names).
+- Retrieve balance sheet line items from database for the document. Find line items with standardized names "Other Current Assets" or "Other Non-Current Assets". Extract the original names from parentheses (e.g., if standardized name is "Other Current Assets (Other current assets, net)", use "Other current assets, net" as the search term).
+- Use `find_document_section()` with query texts set to the original names from the balance sheet (for both other current assets and other non-current assets). Set `pages_before=0`, `pages_after=0`, `rerank_top_k=3`, concatenate top 3 chunks.
+- Create LLM extraction function that:
+  - Takes the concatenated text, time period, and the total values from balance sheet (for validation)
+  - Identifies all line items within other current assets and other non-current assets for the time period
+  - For each line item, extracts: `line_name`, `line_value`, `unit`, `category` ("Current Assets" or "Non-Current Assets")
+  - Classifies each as operating or non-operating:
+    - Non-operating examples: financial derivatives, currency hedges, investments, marketable securities
+    - Operating: everything else (the default assumption for other assets is operating unless explicitly financial)
+  - Uses `temperature=0.0` with strict anti-hallucination rules
+  - Returns JSON with line items array and validation totals
+- Validation logic:
+  - Deduplicate line items by name (case-insensitive, normalized)
+  - Sum line items for "Other Current Assets" and compare with balance sheet total
+  - Sum line items for "Other Non-Current Assets" and compare with balance sheet total
+  - If sums don't match (within small tolerance, e.g., 0.01% or $1000), retry LLM extraction with error feedback asking it to verify the time period is correct and check for missing line items
+- Database model in `app/models/other_assets.py`: Create `OtherAssets` (parent) and `OtherAssetsLineItem` (child) tables. `OtherAssets` stores `document_id`, `time_period`, `currency`, `chunk_index`, validation flags. `OtherAssetsLineItem` stores `other_assets_id`, `line_name`, `line_value`, `unit`, `is_operating`, `category` ("Current Assets" or "Non-Current Assets"), `line_order`.
+- Create router endpoint. Trigger after balance sheet extraction and classification completes.
+- Progress tracking: Add milestone `EXTRACTING_OTHER_ASSETS`.
+- Frontend: Create component to display other assets line items table. Show columns: Line Name, Value, Unit, Category (Current/Non-Current), Type (Operating/Non-operating). Allow filtering/grouping by category and type.
+
+#### 6.6: Other Liabilities Extraction and Classification
+**Goal**: Extract detailed line items within "Other Current Liabilities" and "Other Non-Current Liabilities" from the balance sheet, and classify each as operating or non-operating. Follow the same pattern as Other Assets (section 6.5).
+
+**Implementation Approach:**
+- Create `agents/other_liabilities_extractor.py` following the same structure as `other_assets_extractor.py`.
+- Retrieve balance sheet line items. Find standardized names "Other Current Liabilities" and "Other Non-Current Liabilities", extract original names from parentheses.
+- Use `find_document_section()` with original names as query texts. Set `pages_before=0`, `pages_after=0`, `rerank_top_k=3`, concatenate top 3 chunks.
+- Create LLM extraction function similar to other assets:
+  - Identifies all line items within other current liabilities and other non-current liabilities
+  - Classifies as operating or non-operating (default to operating unless explicitly financial)
+  - Non-operating examples: financial derivatives, currency hedges, investment-related liabilities
+- Same validation logic: deduplicate, sum validation against balance sheet totals, retry with error feedback if mismatch.
+- Database model in `app/models/other_liabilities.py`: Same structure as other assets, with `category` values "Current Liabilities" or "Non-Current Liabilities".
+- Create router endpoint. Trigger after balance sheet extraction completes (can run in parallel with other assets, but sequential is safer).
+- Progress tracking: Add milestone `EXTRACTING_OTHER_LIABILITIES`.
+- Frontend: Create component similar to other assets component, displaying other liabilities line items with appropriate columns and filtering.
+
+#### 6.7: Shares Outstanding Extraction (Refactor from Income Statement)
+**Goal**: Extract basic and diluted shares outstanding from the document. Currently extracted in income statement extractor, should be moved to dedicated agent.
+
+**Implementation Approach:**
+- Extract shares outstanding logic from `agents/income_statement_extractor.py` (currently in `extract_additional_data_llm()`). Create new `agents/shares_outstanding_extractor.py`.
+- Use `find_document_section()` with query texts: `["weighted average", "shares", "basic", "diluted"]`. Set `pages_before=0`, `pages_after=0`, `rerank_top_k=3`, concatenate top 3 chunks.
+- Create LLM extraction function that:
+  - Identifies basic shares outstanding and diluted shares outstanding for the time period
+  - Extracts values and units (usually "ones" for share counts)
+  - Uses standardized field names: "Basic Shares Outstanding" and "Diluted Shares Outstanding"
+  - Uses `temperature=0.0` with strict anti-hallucination rules
+  - Returns JSON with: `basic_shares_outstanding`, `basic_shares_outstanding_unit`, `diluted_shares_outstanding`, `diluted_shares_outstanding_unit`
+- Database model: Can reuse `IncomeStatement` model fields (since shares outstanding is already stored there), or create new `app/models/shares_outstanding.py` if we want to separate it completely. For now, keeping in income statement model is acceptable, but the extraction logic should be in a separate agent.
+- Create router endpoint or integrate into existing additional items router. Trigger after income statement extraction completes.
+- Progress tracking: Use existing milestone or add `EXTRACTING_SHARES_OUTSTANDING`.
+- Frontend: Can continue displaying in income statement section, or move to separate additional items section. Display as table with: Metric (Basic/Diluted), Value, Unit.
+
+#### 6.8: Non-Operating Asset Classification
+**Goal**: Classify all non-operating items from balance sheet, other assets, and other liabilities into detailed categories for valuation adjustments.
+
+**Implementation Approach:**
+- Create `agents/non_operating_classifier.py`. This agent requires balance sheet, other assets, and other liabilities to be already extracted.
+- Collect all non-operating line items from:
+  - Balance sheet line items where `is_operating = False`
+  - Other assets line items where `is_operating = False`
+  - Other liabilities line items where `is_operating = False`
+- Deduplicate items by name (case-insensitive, normalized) across all three sources. If the same item appears in multiple sources, keep one instance with the most complete information.
+- Create LLM classification function that:
+  - Takes the deduplicated list of non-operating items (line name, value, unit, source)
+  - Classifies each item into one of these categories:
+    - `cash`: Cash and cash equivalents, restricted cash
+    - `short_term_investments`: Marketable securities, short-term investments
+    - `operating_lease_related`: Operating lease assets/liabilities
+    - `other_financial_physical_assets`: Assets held for sale, other financial assets, physical assets not used in operations
+    - `debt`: Loans, notes payable, bonds, other debt
+    - `other_financial_liabilities`: Financial derivatives, currency hedges (liabilities), other financial liabilities
+    - `deferred_tax_assets`: Deferred tax assets
+    - `deferred_tax_liabilities`: Deferred tax liabilities
+    - `preferred_equity`: Preferred stock, preferred shares
+    - `minority_interest`: Non-controlling interest, minority interest
+    - `goodwill_intangibles`: Goodwill, intangible assets (acquired)
+    - `unknown`: Items that don't fit the above categories
+  - Uses `temperature=0.0` with strict anti-hallucination rules
+  - Returns JSON array with items and their classifications
+- Database model in `app/models/non_operating_classification.py`: Create `NonOperatingClassification` (parent) and `NonOperatingClassificationItem` (child) tables. `NonOperatingClassification` stores `document_id`, `time_period`, timestamps. `NonOperatingClassificationItem` stores `classification_id`, `line_name`, `line_value`, `unit`, `category` (one of the categories above), `source` ("balance_sheet", "other_assets", "other_liabilities"), `line_order`.
+- Create router endpoint. Trigger after balance sheet, other assets, and other liabilities extractions complete.
+- Progress tracking: Add milestone `CLASSIFYING_NON_OPERATING_ITEMS`.
+- Frontend: Create component to display non-operating classification table. Show columns: Line Name, Value, Unit, Category, Source. Allow filtering/grouping by category and source. Use color coding or icons for different categories.
 
 #### 6.9: Invested Capital
 - [ ] TBD
@@ -522,6 +696,12 @@ All calculations are performed for a specific document using the extracted balan
 - [ ] TBD
 
 ### Phase 8: App-wide Analysis and Dashboard (right panel of the Top-level page)
+- [ ] TBD
+
+### Phase 9: Insights from other document types
+- [ ] TBD
+
+### Phase 10: Industry-level and investment suggestions
 - [ ] TBD
 
 ## Next Steps
@@ -611,24 +791,32 @@ For detailed UI/UX specifications and design guidance, see [UI_UX_DESIGN.md](UI_
 - Navigates user back to company document list after deletion
 
 **Balance Sheet Validation:**
-- Two-stage validation approach (see section 5.5 for complete details)
-- Stage 1: Section validation (line count + key lines) with retry across chunk ranks 1, 2, 3
+- Two-stage validation approach (see sections 5.5 and 5.6 for complete details)
+- Stage 1: Completeness check (validates chunk text BEFORE extraction) with retry across chunk ranks 1, 2, 3
+  - LLM checks if chunk text contains a complete consolidated balance sheet
+  - Only extracts if chunk is complete, avoiding wasted tokens on incomplete sections
+  - Post-processes to add standard names for key line items
 - Stage 2: Calculation validation (sum verification) with LLM feedback retry loop
-- Validation logic uses precise regex-based matching to identify totals
-- Handles long line item names with notes in parentheses (e.g., "Accounts receivable, net (including consumer financing receivables...)")
-- Validation runs in frontend (not persisted) to avoid blocking on validation errors
-- Precise total identification using whole-word matching
-- Handles descriptive line items with long notes without false positives
-- Comprehensive sum verification for assets, liabilities, and equity
-- LLM feedback includes calculated differences for better error correction
+  - Validates sums (current assets, total assets, current liabilities, total liabilities, balance sheet equation)
+  - Uses precise regex-based matching to identify totals
+  - Handles long line item names with notes in parentheses (e.g., "Accounts receivable, net (including consumer financing receivables...)")
+  - Validation runs in frontend (not persisted) to avoid blocking on validation errors
+  - Precise total identification using whole-word matching
+  - Handles descriptive line items with long notes without false positives
+  - Comprehensive sum verification for assets, liabilities, and equity
+  - LLM feedback includes calculated differences for better error correction
 
 **Income Statement Validation:**
-- Two-stage validation approach (see section 5.5 for complete details)
-- Stage 1: Section validation (line count + required items) with retry across chunks before/after/2 after balance sheet
+- Two-stage validation approach (see sections 5.5 and 5.6 for complete details)
+- Stage 1: Completeness check (validates chunk text BEFORE extraction) with retry across chunks before/after/2 after balance sheet
+  - LLM checks if chunk text contains a complete consolidated income statement
+  - Only extracts if chunk is complete, avoiding wasted tokens on incomplete sections
+  - Avoids smaller informational tables that don't have complete information
 - Stage 2: Post-processing validation (final_diff logic) with LLM feedback retry loop
-- Validates gross profit, operating income, and net income calculations during normalization
-- Checks for empty line items and key items before validation
-- LLM feedback includes calculated differences and cost normalization explanation for better error correction
+  - Post-processes line items (normalize cost format, identify key items with standard names)
+  - Validates gross profit, operating income, and net income calculations during normalization
+  - Checks for empty line items and key items before validation
+  - LLM feedback includes calculated differences and cost normalization explanation for better error correction
 
 **API Rate Limiting and Throttling:**
 - Centralized Gemini API client with throttling (500ms-2s delays between calls)
@@ -645,6 +833,7 @@ For detailed UI/UX specifications and design guidance, see [UI_UX_DESIGN.md](UI_
 - Fallback heuristics when no lookup match
 - LLM classification for remaining items
 - Normalization: trim, case-insensitive, collapse whitespace, remove leading/trailing punctuation
+- Standard names: Key balance sheet line items are renamed with standardized names (original names preserved in parentheses) for consistency and traceability
 
 **Unit Support:**
 - Balance sheets and income statements extract and display units (ones, thousands, millions, billions, or ten_thousands)

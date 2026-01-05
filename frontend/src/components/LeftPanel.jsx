@@ -14,6 +14,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
   const [showUploadProgress, setShowUploadProgress] = useState(false)
   const [uploadingDocuments, setUploadingDocuments] = useState([])
+  const [isUploading, setIsUploading] = useState(false) // Track upload state to disable button immediately
   const [pdfUrl, setPdfUrl] = useState(null)
   const pdfUrlRef = useRef(null)
   const progressIntervalRef = useRef(null)
@@ -412,12 +413,16 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
   }
 
   const handleUploadSuccess = async (response) => {
+    // Set uploading state immediately to disable button
+    setIsUploading(true)
     // After batch upload, immediately check upload progress to update the button
     await loadUploadProgress()
     // The upload progress will be tracked in the background
     // User can click "Check Uploads" button to see progress if needed
     setShowUploadProgress(false)
     loadCompanies() // Refresh companies list
+    // Reset uploading state after progress is loaded (button will be disabled if hasActiveUploads is true)
+    setIsUploading(false)
   }
 
   const handleReplaceAndIndex = async (documentId) => {
@@ -487,7 +492,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
     return 'pending'
   }
 
-  const hasActiveUploads = uploadingDocuments.length > 0
+  const hasActiveUploads = uploadingDocuments.length > 0 || isUploading
 
   return (
     <div className="left-panel">

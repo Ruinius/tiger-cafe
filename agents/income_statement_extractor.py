@@ -657,6 +657,67 @@ Return only JSON with no extra text."""
         return {}, [f"LLM insights unavailable: {str(exc)}"]
 
 
+def check_income_statement_completeness_llm(text: str, time_period: str) -> bool:
+    """
+    Use LLM to check if the chunk text contains a complete consolidated income statement.
+    This is called BEFORE extraction to validate we have the right chunk.
+
+    Args:
+        text: Text containing income statement section (chunk text)
+        time_period: Time period (e.g., "Q3 2023")
+
+    Returns:
+        True if complete, False otherwise
+    """
+    prompt = f"""Analyze the following document text to determine if it contains a COMPLETE consolidated income statement starting from revenue to net income for the time period: {time_period}.
+
+CRITICAL ANTI-HALLUCINATION RULES:
+- ONLY use information from the provided document text below
+- DO NOT use external knowledge or assumptions
+- Base your assessment ONLY on what is provided in the text
+
+A COMPLETE consolidated income statement should:
+- Start with revenue (total net revenue, net sales, etc.)
+- Include cost of revenue/cost of goods sold
+- Have a gross profit line
+- Include operating expenses (R&D, SG&A, etc.)
+- Have an operating income/income from operations line
+- Include interest income/expense and other non-operating items
+- Have an income before taxes/pretax income line
+- Include tax expense
+- End with net income/net earnings
+- Avoid smaller informational tables that do not have the complete information
+
+Document text:
+{text[:10000]}
+
+Return a JSON object:
+{{
+    "is_complete": true or false,
+    "reason": "brief explanation of why it is or is not complete (only if not complete)"
+}}
+
+Return only valid JSON, no additional text."""
+
+    try:
+        # Use temperature 0.0 for completeness check to prevent hallucination
+        response_text = generate_content_safe(prompt, temperature=0.0)
+
+        # Remove markdown code blocks if present
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+            response_text = response_text.strip()
+
+        result = json.loads(response_text)
+        return result.get("is_complete", False)
+    except Exception as e:
+        print(f"Error checking income statement completeness: {str(e)}")
+        # If check fails, default to False (not complete) to be safe
+        return False
+
+
 def _normalize_line_name(line_name: str) -> str:
     """Normalize line name for matching."""
     import re
@@ -1200,6 +1261,7 @@ def extract_income_statement(
     start_page = None
     log_info = None
     extracted_data = None
+    successful_chunk_index = None  # Track successful chunk index for persistence
 
     for section_attempt in range(max_retries):  # 3 tries: before, after, 2 after
         try:
@@ -1266,34 +1328,23 @@ def extract_income_statement(
                     document_id, FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT, found_msg
                 )
 
-            # Extract income statement using LLM
-            extracted_data = extract_income_statement_llm(income_statement_text, time_period)
-            extracted_count_msg = (
-                f"Extracted {len(extracted_data.get('line_items', []))} line items"
+            # Stage 1 validation: Check completeness of chunk text using LLM (before extraction)
+            completeness_check_msg = (
+                "Stage 1: Checking if chunk contains complete income statement using LLM"
             )
-            print(extracted_count_msg)
+            print(completeness_check_msg)
             add_log(
                 document_id,
                 FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
-                extracted_count_msg,
+                completeness_check_msg,
             )
 
-            # Stage 1 validation: Check section (line count + required items)
-            section_valid, section_errors = validate_income_statement_section(
-                extracted_data["line_items"]
+            is_complete = check_income_statement_completeness_llm(
+                income_statement_text, time_period
             )
 
-            if section_valid:
-                section_valid_msg = "Stage 1 validation passed (section is correct)"
-                print(section_valid_msg)
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
-                    section_valid_msg,
-                )
-                break  # Section found and validated, proceed to Stage 2
-            else:
-                section_failed_msg = f"Stage 1 validation failed: {', '.join(section_errors[:2])}"
+            if not is_complete:
+                section_failed_msg = "Stage 1 validation failed: LLM determined chunk does not contain complete income statement"
                 print(section_failed_msg)
                 add_log(
                     document_id,
@@ -1303,7 +1354,13 @@ def extract_income_statement(
                 if section_attempt < max_retries - 1:
                     continue  # Try next chunk position
                 else:
-                    # All section attempts failed, return with errors (but still extract additional data)
+                    # All section attempts failed, need to create empty extracted_data for error handling
+                    extracted_data = {
+                        "line_items": [],
+                        "currency": None,
+                        "unit": None,
+                        "time_period": time_period,
+                    }
                     # Extract additional data before returning
                     additional_data_text = find_additional_data_section(
                         document_id, file_path, time_period
@@ -1320,8 +1377,45 @@ def extract_income_statement(
                     classified_items = classify_line_items_llm(extracted_data["line_items"])
                     extracted_data["line_items"] = classified_items
                     extracted_data["is_valid"] = False
-                    extracted_data["validation_errors"] = section_errors
+                    extracted_data["validation_errors"] = [
+                        "Income statement completeness check failed"
+                    ]
+                    # Note: chunk_index not set here since Stage 1 validation failed
                     return extracted_data
+
+            # Extract income statement using LLM (only if chunk is complete)
+            extraction_msg = "Extracting income statement from complete chunk"
+            print(extraction_msg)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                extraction_msg,
+            )
+
+            extracted_data = extract_income_statement_llm(income_statement_text, time_period)
+            extracted_count_msg = (
+                f"Extracted {len(extracted_data.get('line_items', []))} line items"
+            )
+            print(extracted_count_msg)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                extracted_count_msg,
+            )
+
+            section_valid_msg = (
+                "Stage 1 validation passed (complete income statement chunk found and extracted)"
+            )
+            print(section_valid_msg)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                section_valid_msg,
+            )
+            # Store successful chunk index
+            if log_info:
+                successful_chunk_index = log_info.get("income_statement_chunk_index")
+            break  # Section found and validated, proceed to Stage 2
 
         except Exception as e:
             error_str = str(e).lower()
@@ -1464,6 +1558,10 @@ def extract_income_statement(
                         revenue_growth = ((current_revenue - prior_revenue) / prior_revenue) * 100
                         extracted_data["revenue_growth_yoy"] = revenue_growth
 
+                # Store chunk index for persistence
+                if successful_chunk_index is not None:
+                    extracted_data["chunk_index"] = successful_chunk_index
+
                 return extracted_data
             else:
                 calc_failed_msg = (
@@ -1522,6 +1620,10 @@ def extract_income_statement(
                                 (current_revenue - prior_revenue) / prior_revenue
                             ) * 100
                             extracted_data["revenue_growth_yoy"] = revenue_growth
+
+                    # Store chunk index for persistence (even if validation failed)
+                    if successful_chunk_index is not None:
+                        extracted_data["chunk_index"] = successful_chunk_index
 
                     return extracted_data
 

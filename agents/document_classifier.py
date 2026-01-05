@@ -30,7 +30,7 @@ def classify_document(text: str) -> dict[str, str | None]:
     prompt = f"""Analyze the following document text and extract key information.
 Return a JSON object with the following structure:
 {{
-    "document_type": one of ["earnings_announcement", "quarterly_filing", "annual_filing", "press_release", "analyst_report", "news_article", "other"],
+    "document_type": one of ["earnings_announcement", "quarterly_filing", "annual_filing", "press_release", "analyst_report", "news_article", "transcript", "other"],
     "time_period": the time period in format like "Q3 2024", "FY 2023", "2024-Q1", or null if not EXPLICITLY found in the document text,
     "company_name": the company name or null if not EXPLICITLY found in the document text,
     "ticker": the stock ticker symbol or null if not EXPLICITLY found in the document text,
@@ -82,6 +82,7 @@ Return only valid JSON, no additional text."""
                     "press_release": DocumentType.PRESS_RELEASE,
                     "analyst_report": DocumentType.ANALYST_REPORT,
                     "news_article": DocumentType.NEWS_ARTICLE,
+                    "transcript": DocumentType.TRANSCRIPT,
                     "other": DocumentType.OTHER,
                 }
                 result["document_type"] = doc_type_map.get(

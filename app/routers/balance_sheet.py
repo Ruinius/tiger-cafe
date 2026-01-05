@@ -191,6 +191,9 @@ def process_balance_sheet_async(document_id: str, db: Session):
                 else None,
                 currency=extracted_data.get("currency"),
                 unit=extracted_data.get("unit"),
+                chunk_index=extracted_data.get(
+                    "chunk_index"
+                ),  # Persist chunk index for traceability
             )
             db_session.add(balance_sheet)
             db_session.commit()

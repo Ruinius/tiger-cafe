@@ -18,6 +18,7 @@ class DocumentType(enum.Enum):
     PRESS_RELEASE = "press_release"
     ANALYST_REPORT = "analyst_report"
     NEWS_ARTICLE = "news_article"
+    TRANSCRIPT = "transcript"
     OTHER = "other"
 
 

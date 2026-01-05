@@ -201,6 +201,9 @@ def process_income_statement_async(document_id: str, db: Session):
                     validation_errors=json.dumps(extracted_data.get("validation_errors", []))
                     if extracted_data.get("validation_errors")
                     else None,
+                    chunk_index=extracted_data.get(
+                        "chunk_index"
+                    ),  # Persist chunk index for traceability
                     revenue_prior_year=extracted_data.get("revenue_prior_year"),
                     revenue_prior_year_unit=extracted_data.get("revenue_prior_year_unit"),
                     revenue_growth_yoy=extracted_data.get("revenue_growth_yoy"),
