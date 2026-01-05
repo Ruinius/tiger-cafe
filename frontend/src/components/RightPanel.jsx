@@ -10,6 +10,9 @@ function RightPanel({ selectedCompany, selectedDocument }) {
   const [incomeStatement, setIncomeStatement] = useState(null)
   const [historicalCalculations, setHistoricalCalculations] = useState(null)
   const [historicalCalculationsLoadAttempted, setHistoricalCalculationsLoadAttempted] = useState(false)
+  const [companyHistoricalCalculations, setCompanyHistoricalCalculations] = useState(null)
+  const [companyHistoricalError, setCompanyHistoricalError] = useState(null)
+  const [companyHistoricalLoading, setCompanyHistoricalLoading] = useState(false)
   const [financialStatementProgress, setFinancialStatementProgress] = useState(null)
   const [error, setError] = useState(null)
   const [balanceSheetLoadAttempts, setBalanceSheetLoadAttempts] = useState(0)
@@ -221,6 +224,43 @@ function RightPanel({ selectedCompany, selectedDocument }) {
     setHistoricalCalculationsLoadAttempted(false)
   }, [selectedDocument?.id])
 
+  const loadCompanyHistoricalCalculations = useCallback(async () => {
+    if (!selectedCompany || selectedDocument) return
+
+    setCompanyHistoricalLoading(true)
+    setCompanyHistoricalError(null)
+
+    try {
+      const endpoint = isAuthenticated
+        ? 'historical-calculations'
+        : 'historical-calculations/test'
+      const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+      const response = await axios.get(
+        `${API_BASE_URL}/companies/${selectedCompany.id}/${endpoint}`,
+        { headers }
+      )
+      setCompanyHistoricalCalculations(response.data)
+    } catch (err) {
+      if (err.response?.status === 404) {
+        setCompanyHistoricalCalculations(null)
+      } else {
+        setCompanyHistoricalError(err.response?.data?.detail || 'Failed to load company analysis')
+        setCompanyHistoricalCalculations(null)
+      }
+    } finally {
+      setCompanyHistoricalLoading(false)
+    }
+  }, [selectedCompany, selectedDocument, isAuthenticated, token])
+
+  useEffect(() => {
+    setCompanyHistoricalCalculations(null)
+    setCompanyHistoricalError(null)
+
+    if (selectedCompany && !selectedDocument) {
+      loadCompanyHistoricalCalculations()
+    }
+  }, [selectedCompany?.id, selectedDocument?.id, loadCompanyHistoricalCalculations])
+
   // Load historical calculations only once when both balance sheet and income statement are loaded
   useEffect(() => {
     if (!selectedDocument || !isEligibleForFinancialStatements) return
@@ -244,6 +284,20 @@ function RightPanel({ selectedCompany, selectedDocument }) {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(displayValue)
+  }
+
+  const formatPercent = (value, multiplier = 1) => {
+    if (value === null || value === undefined) return 'N/A'
+    const percentValue = parseFloat(value) * multiplier
+    if (Number.isNaN(percentValue)) return 'N/A'
+    return `${percentValue.toFixed(2)}%`
+  }
+
+  const formatDecimal = (value, digits = 4) => {
+    if (value === null || value === undefined) return 'N/A'
+    const numericValue = parseFloat(value)
+    if (Number.isNaN(numericValue)) return 'N/A'
+    return numericValue.toFixed(digits)
   }
 
   // Expose function to clear data (for re-run and delete buttons)
@@ -795,14 +849,113 @@ function RightPanel({ selectedCompany, selectedDocument }) {
   }
 
   if (selectedCompany) {
+    const companyEntries = companyHistoricalCalculations?.entries || []
+    const hasCompanyData = companyEntries.length > 0
+    const timePeriods = companyEntries.map((entry) => entry.time_period)
+
+    const rows = [
+      {
+        label: 'Revenue',
+        render: (entry) => formatNumber(entry.revenue, companyHistoricalCalculations?.unit)
+      },
+      {
+        label: 'YOY Revenue Growth',
+        render: (entry) => formatPercent(entry.revenue_growth_yoy, 1)
+      },
+      {
+        label: 'EBITA',
+        render: (entry) => formatNumber(entry.ebita, companyHistoricalCalculations?.unit)
+      },
+      {
+        label: 'EBITA Margin',
+        render: (entry) => formatPercent(entry.ebita_margin, 100)
+      },
+      {
+        label: 'Effective Tax Rate',
+        render: (entry) => formatPercent(entry.effective_tax_rate, 100)
+      },
+      {
+        label: 'Adjusted Tax Rate',
+        render: (entry) => formatPercent(entry.adjusted_tax_rate, 100)
+      },
+      {
+        label: 'Net Working Capital',
+        render: (entry) =>
+          formatNumber(entry.net_working_capital, companyHistoricalCalculations?.unit)
+      },
+      {
+        label: 'Net Long Term Operating Assets',
+        render: (entry) =>
+          formatNumber(entry.net_long_term_operating_assets, companyHistoricalCalculations?.unit)
+      },
+      {
+        label: 'Invested Capital',
+        render: (entry) => formatNumber(entry.invested_capital, companyHistoricalCalculations?.unit)
+      },
+      {
+        label: 'Capital Turnover, Annualized',
+        render: (entry) => formatDecimal(entry.capital_turnover, 4)
+      }
+    ]
+
     return (
       <div className="right-panel">
         <div className="panel-content">
           <h2>{selectedCompany.name} Analysis</h2>
           <div className="company-analysis">
-            <p className="placeholder-text">
-              Company analysis will be displayed here once financial analysis is completed.
-            </p>
+            {companyHistoricalLoading && (
+              <p className="placeholder-text">Loading historical calculations...</p>
+            )}
+            {companyHistoricalError && (
+              <p className="placeholder-text">{companyHistoricalError}</p>
+            )}
+            {!companyHistoricalLoading && !companyHistoricalError && hasCompanyData && (
+              <div className="balance-sheet-container">
+                <div className="balance-sheet-header">
+                  <h3>Historical Calculations</h3>
+                  <div className="balance-sheet-meta">
+                    <span>
+                      <strong>Currency:</strong> {companyHistoricalCalculations?.currency || 'N/A'}
+                    </span>
+                    <span>
+                      <strong>Unit:</strong> {companyHistoricalCalculations?.unit || 'N/A'}
+                    </span>
+                    <span>
+                      <em>Units do not apply to percentages and ratios.</em>
+                    </span>
+                  </div>
+                </div>
+                <div className="balance-sheet-table-container">
+                  <table className="balance-sheet-table">
+                    <thead>
+                      <tr>
+                        <th>Metric</th>
+                        {timePeriods.map((period) => (
+                          <th key={period} className="text-right">{period}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((row) => (
+                        <tr key={row.label}>
+                          <td>{row.label}</td>
+                          {companyEntries.map((entry) => (
+                            <td key={`${row.label}-${entry.time_period}`} className="text-right">
+                              {row.render(entry)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {!companyHistoricalLoading && !companyHistoricalError && !hasCompanyData && (
+              <p className="placeholder-text">
+                Company analysis will be displayed here once financial analysis is completed.
+              </p>
+            )}
           </div>
         </div>
       </div>

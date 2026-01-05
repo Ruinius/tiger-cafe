@@ -410,8 +410,8 @@ All calculations are performed for a specific document using the extracted balan
 
 ### Phase 6: Company Analysis and Financial Metrics Display
 
-#### 6.1: Historical Calculations Table for Company View (Planned)
-- [ ] **Company-Level Historical Calculations Display**
+#### 6.1: Historical Calculations Table for Company View (Complete)
+- [x] **Company-Level Historical Calculations Display**
   - Show collected table of historical calculations from all earnings announcements, quarterly filings, and annual reports for the selected company
   - Columns: Time periods (de-duplicated and in ascending order, with most recent report on the right)
   - Display Currency and Unit above the table (with note that units do not apply to percentages and ratios)
@@ -589,4 +589,3 @@ For detailed UI/UX specifications and design guidance, see [UI_UX_DESIGN.md](UI_
 - Units are persisted in database and displayed throughout the UI
 
 <!-- Add any clarifications, decisions, or notes here as the project evolves -->
-
