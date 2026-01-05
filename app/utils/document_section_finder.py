@@ -47,6 +47,24 @@ def _extract_page_range_text(file_path: str, start_page: int, end_page: int) -> 
     return "\n\n".join(text_parts)
 
 
+def _numeric_density(text: str) -> float:
+    if not text:
+        return 0.0
+    digit_count = sum(1 for char in text if char.isdigit())
+    alpha_count = sum(1 for char in text if char.isalpha())
+    return digit_count / max(1, digit_count + alpha_count)
+
+
+def _chunk_search_range(num_chunks: int, ignore_fraction: float) -> range:
+    ignore_count = int(num_chunks * ignore_fraction)
+    start_index = ignore_count
+    end_index = num_chunks - ignore_count
+    if start_index >= end_index:
+        start_index = 0
+        end_index = num_chunks
+    return range(start_index, end_index)
+
+
 def find_document_section(
     document_id: str,
     file_path: str,
@@ -55,7 +73,10 @@ def find_document_section(
     score_threshold: float = 0.3,
     pages_before: int = 1,
     pages_after: int = 1,
-) -> tuple[str | None, int | None]:
+    rerank_top_k: int = 0,
+    numeric_density_weight: float = 0.2,
+    ignore_edge_fraction: float = 0.1,
+) -> tuple[str | None, int | None, dict | None]:
     """
     Use document embeddings to locate relevant sections for the provided queries.
 
@@ -79,7 +100,7 @@ def find_document_section(
             )
             return None, None
 
-        resolved_chunk_size = chunk_size or chunk_metadata.get("chunk_size", 5)
+        resolved_chunk_size = chunk_size or chunk_metadata.get("chunk_size", 1)
         num_chunks = chunk_metadata.get("num_chunks", 0)
 
         if num_chunks == 0:
@@ -100,9 +121,11 @@ def find_document_section(
 
         best_score = -1.0
         best_chunk_index = -1
+        chunk_scores: list[dict] = []
+        search_range = _chunk_search_range(num_chunks, ignore_edge_fraction)
 
         # Search through all chunks to find the best match
-        for chunk_index in range(num_chunks):
+        for chunk_index in search_range:
             chunk_embedding = load_chunk_embedding(document_id, chunk_index)
 
             if not chunk_embedding:
@@ -114,11 +137,39 @@ def find_document_section(
                 save_chunk_embedding(chunk_embedding, document_id, chunk_index)
 
             # Check similarity with all query embeddings and keep the best match
-            for query_embedding in query_embeddings:
-                similarity = cosine_similarity(chunk_embedding, query_embedding)
-                if similarity > best_score:
-                    best_score = similarity
-                    best_chunk_index = chunk_index
+            best_chunk_similarity = max(
+                cosine_similarity(chunk_embedding, query_embedding)
+                for query_embedding in query_embeddings
+            )
+            if best_chunk_similarity > best_score:
+                best_score = best_chunk_similarity
+                best_chunk_index = chunk_index
+            chunk_scores.append({"chunk_index": chunk_index, "similarity": best_chunk_similarity})
+
+        rerank_details = None
+        if rerank_top_k > 0 and chunk_scores:
+            top_chunks = sorted(chunk_scores, key=lambda item: item["similarity"], reverse=True)[
+                :rerank_top_k
+            ]
+            reranked = []
+            for chunk_info in top_chunks:
+                chunk_text, _, _ = get_chunk_text(
+                    file_path, chunk_info["chunk_index"], resolved_chunk_size
+                )
+                density = _numeric_density(chunk_text)
+                rerank_score = chunk_info["similarity"] + (numeric_density_weight * density)
+                reranked.append(
+                    {
+                        "chunk_index": chunk_info["chunk_index"],
+                        "similarity": chunk_info["similarity"],
+                        "numeric_density": density,
+                        "rerank_score": rerank_score,
+                    }
+                )
+            best_reranked = max(reranked, key=lambda item: item["rerank_score"])
+            best_chunk_index = best_reranked["chunk_index"]
+            best_score = best_reranked["similarity"]
+            rerank_details = reranked
 
         if best_score > score_threshold and best_chunk_index >= 0:
             # Calculate the page range for the best matching chunk
@@ -137,7 +188,11 @@ def find_document_section(
                 "similarity": best_score,
                 "start_extract_page": start_extract_page,
                 "end_extract_page": end_extract_page - 1,
+                "search_range": {"start": search_range.start, "end": search_range.stop - 1},
             }
+            if rerank_details is not None:
+                log_info["rerank_top_k"] = rerank_top_k
+                log_info["rerank_details"] = rerank_details
 
             print(
                 f"Best match: chunk {best_chunk_index} (pages {chunk_start_page}-{chunk_end_page - 1}), "
@@ -157,4 +212,4 @@ def find_document_section(
         import traceback
 
         traceback.print_exc()
-        return None, None
+        return None, None, None

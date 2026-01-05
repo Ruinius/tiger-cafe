@@ -155,12 +155,12 @@ Tiger-Cafe provides three main user journey epics:
 - Automatic document classification (earnings announcements, quarterly/annual filings, press releases, etc.)
 - Content-based duplicate detection
 - Real-time upload progress tracking with milestones
-- Chunk-based document indexing with Gemini embeddings (5-page chunks, persisted for reuse)
+- Chunk-based document indexing with Gemini embeddings (1-page chunks, persisted for reuse)
 - Priority-based processing queue (classification/indexing prioritized over financial statement extraction)
 
 ### Financial Statement Processing (Phase 5.1 & 5.2 - Complete)
 - Automatic balance sheet and income statement extraction from earnings announcements, quarterly filings, and annual reports
-- Chunk-based embedding search using persisted 5-page chunk embeddings
+- Chunk-based embedding search using persisted 1-page chunk embeddings
 - LLM-based line-by-line extraction with currency and unit detection
 - Unit support: Extracts and displays units (ones, thousands, millions, billions, or ten_thousands) for balance sheets, income statements, and additional items
 - Comprehensive validation:

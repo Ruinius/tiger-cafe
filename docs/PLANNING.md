@@ -59,7 +59,7 @@ Build AI agents that can analyze equity investments using principles from Tim Ko
    - If duplicate detected: stops at Classification milestone, shows warning with "Replace & Index" button
    - If no duplicate: automatically proceeds to indexing
 6. Index document using Google's embedding model (gemini-embedding-001)
-   - Documents are split into 5-page chunks for indexing
+   - Documents are split into 1-page chunks for indexing
    - Chunk embeddings are generated and persisted to disk
    - Classification and indexing happen sequentially via priority queue (high priority)
    - Upload step is parallel, but classification/indexing are sequential
@@ -115,7 +115,7 @@ Build AI agents that can analyze equity investments using principles from Tim Ko
   - Google Gemini Embedding (gemini-embedding-001) for document indexing
   - Using `google.genai` API (migrated from deprecated `google.generativeai`)
   - Centralized API client with throttling, retry logic, and processing queues
-  - Chunk-based indexing (5-page chunks) with persisted embeddings
+  - Chunk-based indexing (1-page chunks) with persisted embeddings
   - Priority-based processing queue (classification/indexing prioritized over financial statements)
 - **Web Framework**: FastAPI (with Uvicorn)
 - **Frontend**: React with Vite
@@ -159,7 +159,7 @@ Build AI agents that can analyze equity investments using principles from Tim Ko
   - High-priority tasks (classification/indexing) are always processed before lower-priority tasks (financial statements)
   - Prevents overwhelming Gemini API during batch uploads
 - [x] Chunk-based document indexing
-  - Documents split into 5-page chunks for embedding generation
+  - Documents split into 1-page chunks for embedding generation
   - Chunk embeddings are persisted to disk and reused
   - Eliminates duplicate embedding generation during extraction
   - More efficient than document-level embeddings
@@ -495,14 +495,14 @@ For detailed UI/UX specifications and design guidance, see [UI_UX_DESIGN.md](UI_
 ### Chunk-Based Document Indexing
 
 **Current Implementation:**
-- Documents are split into 5-page chunks for embedding generation
+- Documents are split into 1-page chunks for embedding generation
 - Each chunk embedding is persisted to disk (`{document_id}_chunk_{index}_embedding.json`)
 - Chunk metadata is stored (`{document_id}_chunks_metadata.json`)
 - Extractors reuse persisted chunk embeddings instead of regenerating them
 - Eliminates duplicate API calls and improves extraction performance
 
 **Benefits:**
-- More granular search: 5-page chunks provide better precision than document-level embeddings
+- More granular search: 1-page chunks provide better precision than document-level embeddings
 - Performance: Chunk embeddings generated once during indexing, reused during extraction
 - Efficiency: No duplicate embedding generation when re-running extractions
 - Scalability: Large documents are fully indexed across all chunks

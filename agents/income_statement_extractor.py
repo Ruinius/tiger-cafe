@@ -44,6 +44,8 @@ def find_income_statement_section(
             score_threshold=0.3,
             pages_before=1,  # Include 1 page before the best chunk
             pages_after=1,  # Include 1 page after the best chunk
+            rerank_top_k=5,
+            numeric_density_weight=0.2,
         )
         # Handle both old (2-tuple) and new (3-tuple) return formats for backward compatibility
         if len(result) == 2:
@@ -580,6 +582,29 @@ def validate_income_statement(
         errors.append("Income statement has no valid line items")
         return False, errors
 
+    def normalize_value(value: object) -> float | None:
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            stripped = value.strip().replace(",", "")
+            if not stripped:
+                return None
+            is_negative = stripped.startswith("(") and stripped.endswith(")")
+            if is_negative:
+                stripped = stripped[1:-1]
+            try:
+                parsed = float(stripped)
+            except ValueError:
+                return None
+            return -parsed if is_negative else parsed
+        return None
+
+    def exceeds_tolerance(reported: float, calculated: float) -> bool:
+        tolerance = max(abs(calculated) * 0.01, 0.01)
+        return abs(reported - calculated) > tolerance
+
     # Find key values - prioritize standardized names first
     revenue_value = None
     cost_of_revenue = None
@@ -591,7 +616,9 @@ def validate_income_statement(
     # First pass: Look for standardized names (e.g., "Total Net Revenue (Revenue)")
     for item in line_items:
         item_name_lower = item["line_name"].lower()
-        item_value = item["line_value"]
+        item_value = normalize_value(item.get("line_value"))
+        if item_value is None:
+            continue
 
         if "total net revenue (" in item_name_lower:
             revenue_value = item_value
@@ -604,7 +631,12 @@ def validate_income_statement(
 
     # Second pass: Look for cost of revenue and operating expenses (may not be standardized)
     # Also look for revenue if not found with standardized name
-    items_dict = {item["line_name"].lower(): item["line_value"] for item in line_items}
+    items_dict = {}
+    for item in line_items:
+        item_value = normalize_value(item.get("line_value"))
+        if item_value is None:
+            continue
+        items_dict[item["line_name"].lower()] = item_value
 
     if revenue_value is None:
         for key, value in items_dict.items():
@@ -633,7 +665,7 @@ def validate_income_statement(
 
     # Use provided revenue if available (override any found value)
     if revenue is not None:
-        revenue_value = revenue
+        revenue_value = normalize_value(revenue)
 
     # Validate gross profit: Revenue + Cost of Revenue = Gross Profit (costs are negative)
     # Note: Cost of Revenue should be negative after normalization (costs are normalized to negative)
@@ -641,8 +673,7 @@ def validate_income_statement(
         if cost_of_revenue is not None:
             # Cost of revenue is now normalized to negative, so add it (subtracting absolute value)
             calculated_gross_profit = revenue_value + cost_of_revenue  # cost_of_revenue is negative
-            diff = abs(gross_profit - calculated_gross_profit)
-            if diff > 0.01:
+            if exceeds_tolerance(gross_profit, calculated_gross_profit):
                 errors.append(
                     f"Gross profit calculation mismatch: reported={gross_profit}, calculated (Revenue + Cost of Revenue)={calculated_gross_profit}"
                 )
@@ -656,8 +687,7 @@ def validate_income_statement(
             calculated_operating_income = (
                 gross_profit + operating_expenses
             )  # operating_expenses is negative
-            diff = abs(operating_income - calculated_operating_income)
-            if diff > 0.01:
+            if exceeds_tolerance(operating_income, calculated_operating_income):
                 errors.append(
                     f"Operating income calculation mismatch: reported={operating_income}, calculated (Gross Profit + Operating Expenses)={calculated_operating_income}"
                 )
@@ -671,7 +701,9 @@ def validate_income_statement(
         for item in line_items:
             item_name_lower = item["line_name"].lower()
             if "net income (" in item_name_lower and "per share" not in item_name_lower:
-                net_income = item["line_value"]
+                net_income = normalize_value(item.get("line_value"))
+                if net_income is None:
+                    continue
                 break
 
         # Fallback to alternative names
@@ -927,23 +959,53 @@ def extract_income_statement(
 
             # Step 4: Validate (after post-processing)
             extracted_data.get("revenue_prior_year")  # Use revenue from extraction
+            def normalize_value(value: object) -> float | None:
+                if value is None:
+                    return None
+                if isinstance(value, (int, float)):
+                    return float(value)
+                if isinstance(value, str):
+                    stripped = value.strip().replace(",", "")
+                    if not stripped:
+                        return None
+                    is_negative = stripped.startswith("(") and stripped.endswith(")")
+                    if is_negative:
+                        stripped = stripped[1:-1]
+                    try:
+                        parsed = float(stripped)
+                    except ValueError:
+                        return None
+                    return -parsed if is_negative else parsed
+                return None
+
             # Find current revenue from line items (use standardized name if available)
             current_revenue = None
             for item in extracted_data.get("line_items", []):
                 item_name_lower = item.get("line_name", "").lower()
-                if "total net revenue (" in item_name_lower:
-                    current_revenue = item.get("line_value")
-                    break
+                if "total net revenue" in item_name_lower:
+                    current_revenue = normalize_value(item.get("line_value"))
+                    if current_revenue is not None:
+                        break
 
-            # Fallback to non-standardized name
+            # Fallback to common revenue labels
             if current_revenue is None:
                 for item in extracted_data.get("line_items", []):
-                    if (
-                        "revenue" in item.get("line_name", "").lower()
-                        and "total" not in item.get("line_name", "").lower()
+                    item_name_lower = item.get("line_name", "").lower()
+                    if "revenue" in item_name_lower and (
+                        "total" in item_name_lower or "net" in item_name_lower
                     ):
-                        current_revenue = item.get("line_value")
-                        break
+                        current_revenue = normalize_value(item.get("line_value"))
+                        if current_revenue is not None:
+                            break
+
+            # Final fallback to non-standardized name
+            if current_revenue is None:
+                for item in extracted_data.get("line_items", []):
+                    item_name_lower = item.get("line_name", "").lower()
+                    if "revenue" in item_name_lower:
+                        current_revenue = normalize_value(item.get("line_value"))
+                        if current_revenue is not None:
+                            break
 
             is_valid, errors = validate_income_statement(
                 extracted_data.get("line_items", []), current_revenue

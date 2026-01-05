@@ -46,7 +46,7 @@ def process_document(
     filename: str | None = None,
     document_id: str | None = None,
     document: Document | None = None,
-    chunk_size: int = 5,
+    chunk_size: int = 1,
 ) -> DocumentProcessingResult | None:
     """
     Process a document according to the requested mode.
