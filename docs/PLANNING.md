@@ -706,26 +706,44 @@ All calculations are performed for a specific document using the extracted balan
 
 ## Next Steps
 
-- [ ] **Phase 5.4: Adjusted Tax Rate Calculation Fix** (TODO: Needs revisit and fix)
-  - Review and fix logic for identifying tax-affecting non-operating items
-  - Validate tax shield vs. tax deduction assumptions
-  - Improve calculation methodology
-  - May need to use LLM to intelligently determine which non-operating items affect taxes
-- [ ] **Phase 6.1: Historical Calculations Table for Company View**
-  - Company-level historical calculations display
-  - Aggregate data from all eligible documents
-  - Display in right panel when company is selected
-- [ ] **Phase 6.2: Core Analysis Agents**
-  - Organic growth assessment agent
-  - Operating margin analysis agent
-  - Capital turnover evaluation agent
-  - Intrinsic value calculation agent (Koller's DCF methodology)
-  - Additional items extraction improvements (TODO: needs revisit and fix)
-- [ ] **Phase 7: Financial Metrics Display and Analysis**
-  - Trend analysis visualization
-  - Interactive valuation model UI
-  - Sensitivity analysis UI
-  - Company analysis results page
+### Phase 6.2-6.8 Refinements and Fixes
+
+**Progress Tracker and Pipeline Order:**
+- Consolidate milestone tracking to 4 main milestones (down from 10+ separate milestones):
+  1. **Balance Sheet** (combines extracting + classifying balance sheet into single milestone)
+  2. **Income Statement** (combines extracting + classifying income statement into single milestone)
+  3. **Extracting Additional Items** (combines organic growth, amortization, other assets, other liabilities, shares outstanding into single milestone with sub-item logging)
+  4. **Classifying Non-Operating Items** (unchanged)
+- Update `FinancialStatementMilestone` enum in `app/utils/financial_statement_progress.py`
+- Update milestone initialization, reset functions, and progress endpoint in `app/routers/documents.py`
+- Update all router files that reference milestones (balance_sheet.py, income_statement.py, organic_growth.py, amortization.py, other_assets.py, other_liabilities.py, shares_outstanding.py)
+- Update pipeline execution order in `app/utils/document_processing_queue.py` to match the new milestone order
+- For "Extracting Additional Items" milestone: add logging via `add_log()` to show which sub-items (organic growth, amortization, etc.) are being processed/completed
+
+**Frontend UI Fixes:**
+- **Right Panel Table Spacing**: Review and fix CSS spacing/padding in `frontend/src/components/RightPanel.css` to restore proper table layout. Reference existing table styles in the codebase for consistency.
+- **Remove Revenue Context Table**: Remove the "Revenue Context" table/section from `frontend/src/components/RightPanel.jsx`. This table is redundant with the Organic Growth table which already displays revenue information.
+
+**Configuration Defaults:**
+- Update `ignore_front_fraction` and `ignore_back_fraction` parameter defaults to `0.0` (currently may default to None or non-zero). Search codebase for function signatures using these parameters and update default values. These parameters control document section finding - `0.0` means "don't ignore any fraction" by default.
+
+**Other Assets and Other Liabilities Display:**
+- Update `OtherAssetsTable` and `OtherLiabilitiesTable` components in `frontend/src/components/` to:
+  - Display standardized line items separately with their standardized names shown as reference numbers (similar to how balance sheet shows "Standard Name (Original Name)")
+  - Modify de-duplication logic to exclude line items that match/duplicate the total lines (e.g., if "Other Current Assets" total exists, remove individual line items that sum to that total from the detailed list)
+  - Goal: Show what composes the "Other Assets/Liabilities" totals by displaying standardized breakdown items
+
+**Non-Operating Classification UI:**
+- Improve formatting in `NonOperatingClassificationTable` component:
+  - Enhance text formatting/styling for Category and Source columns (better readability, possibly tooltips or formatted text)
+  - Add "common_equity" to the category enum/options (update backend model if needed, then frontend display)
+  - Reference UI patterns from other table components for consistency
+
+**Balance Sheet Standardized Names:**
+- Add standardized names for: "Common Equity", "Total Equity", "Total Liabilities" (follow existing pattern in `get_balance_sheet_llm_insights()` and `post_process_balance_sheet_line_items()`)
+- Update balance sheet post-processing logic: ensure that total/subtotal lines (identified by standardized names or line_type flags) do NOT have an `is_operating` classification (should be `None` or excluded from operating/non-operating classification)
+- Reference: `agents/balance_sheet_extractor.py` - see `post_process_balance_sheet_line_items()` function
+
 
 ## UI/UX Design
 

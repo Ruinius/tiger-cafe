@@ -1158,8 +1158,13 @@ async def get_financial_statement_progress(
     document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """Get financial statement processing progress with milestones"""
+    from app.models.amortization import Amortization
     from app.models.balance_sheet import BalanceSheet
     from app.models.income_statement import IncomeStatement
+    from app.models.non_operating_classification import NonOperatingClassification
+    from app.models.organic_growth import OrganicGrowth
+    from app.models.other_assets import OtherAssets
+    from app.models.other_liabilities import OtherLiabilities
     from app.utils.financial_statement_progress import get_progress
 
     document = db.query(Document).filter(Document.id == document_id).first()

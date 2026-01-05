@@ -942,70 +942,70 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                 </tr>
                               </thead>
                               <tbody>
-                                {organicGrowth?.current_period_revenue !== null && (
+                                {organicGrowth && organicGrowth.current_period_revenue != null && (
                                   <tr>
                                     <td>Revenue</td>
                                     <td className="text-right">{formatNumber(organicGrowth.current_period_revenue, organicGrowth.current_period_revenue_unit)}</td>
                                     <td>{organicGrowth.current_period_revenue_unit ? organicGrowth.current_period_revenue_unit.replace('_', ' ') : 'N/A'}</td>
                                   </tr>
                                 )}
-                                {incomeStatement?.revenue_growth_yoy !== null && (
+                                {incomeStatement && incomeStatement.revenue_growth_yoy != null && (
                                   <tr>
                                     <td>YOY Revenue Growth</td>
                                     <td className="text-right">{formatPercent(incomeStatement.revenue_growth_yoy, 1)}</td>
                                     <td>—</td>
                                   </tr>
                                 )}
-                                {organicGrowth?.organic_revenue_growth !== null && (
+                                {organicGrowth && organicGrowth.organic_revenue_growth != null && (
                                   <tr>
                                     <td>Organic Growth</td>
                                     <td className="text-right">{formatPercent(organicGrowth.organic_revenue_growth, 1)}</td>
                                     <td>—</td>
                                   </tr>
                                 )}
-                                {historicalCalculations.ebita !== null && (
+                                {historicalCalculations && historicalCalculations.ebita != null && (
                                   <tr>
                                     <td>EBITA</td>
                                     <td className="text-right">{formatNumber(historicalCalculations.ebita, historicalCalculations.unit)}</td>
                                     <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
                                   </tr>
                                 )}
-                                {historicalCalculations.ebita_margin !== null && (
+                                {historicalCalculations && historicalCalculations.ebita_margin != null && (
                                   <tr>
                                     <td>EBITA Margin</td>
                                     <td className="text-right">{formatPercent(historicalCalculations.ebita_margin, 100)}</td>
                                     <td>—</td>
                                   </tr>
                                 )}
-                                {historicalCalculations.adjusted_tax_rate !== null && (
+                                {historicalCalculations && historicalCalculations.adjusted_tax_rate != null && (
                                   <tr>
                                     <td>Adjusted Tax Rate</td>
                                     <td className="text-right">{formatPercent(historicalCalculations.adjusted_tax_rate, 100)}</td>
                                     <td>—</td>
                                   </tr>
                                 )}
-                                {historicalCalculations.net_working_capital !== null && (
+                                {historicalCalculations && historicalCalculations.net_working_capital != null && (
                                   <tr>
                                     <td>Net Working Capital</td>
                                     <td className="text-right">{formatNumber(historicalCalculations.net_working_capital, historicalCalculations.unit)}</td>
                                     <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
                                   </tr>
                                 )}
-                                {historicalCalculations.net_long_term_operating_assets !== null && (
+                                {historicalCalculations && historicalCalculations.net_long_term_operating_assets != null && (
                                   <tr>
                                     <td>Net Long Term Operating Assets</td>
                                     <td className="text-right">{formatNumber(historicalCalculations.net_long_term_operating_assets, historicalCalculations.unit)}</td>
                                     <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
                                   </tr>
                                 )}
-                                {historicalCalculations.invested_capital !== null && (
+                                {historicalCalculations && historicalCalculations.invested_capital != null && (
                                   <tr>
                                     <td>Invested Capital</td>
                                     <td className="text-right">{formatNumber(historicalCalculations.invested_capital, historicalCalculations.unit)}</td>
                                     <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
                                   </tr>
                                 )}
-                                {historicalCalculations.capital_turnover !== null && (
+                                {historicalCalculations && historicalCalculations.capital_turnover != null && (
                                   <tr>
                                     <td>Capital Turnover, Annualized</td>
                                     <td className="text-right">{formatDecimal(historicalCalculations.capital_turnover, 4)}</td>
