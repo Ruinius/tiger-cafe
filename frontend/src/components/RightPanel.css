@@ -176,11 +176,12 @@
 }
 
 .balance-sheet-table th {
-  padding: 0.85rem 0.75rem;
+  padding: 0.85rem 1rem;
   text-align: left;
   font-weight: 600;
   color: var(--text-primary);
   border-bottom: 1px solid var(--border);
+  line-height: 1.4;
 }
 
 .balance-sheet-table th.text-right {
@@ -188,9 +189,10 @@
 }
 
 .balance-sheet-table td {
-  padding: 0.75rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
   color: var(--text-secondary);
+  line-height: 1.4;
 }
 
 .balance-sheet-table tbody tr:hover {
@@ -218,4 +220,76 @@
 
 .bold-text {
   font-weight: 700 !important;
+}
+
+.text-muted {
+  color: var(--text-secondary);
+}
+
+.type-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  background-color: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+
+.type-badge.operating {
+  background-color: var(--success-light);
+  color: var(--success);
+}
+
+.type-badge.non-operating {
+  background-color: var(--error-light);
+  color: var(--error);
+}
+
+.standardized-references {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  background-color: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.standardized-references-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.standardized-references ol {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.classification-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  background-color: var(--bg-elevated);
+  color: var(--text-secondary);
+  max-width: 100%;
+}
+
+.classification-pill.category {
+  background-color: rgba(10, 132, 255, 0.12);
+  color: var(--accent);
+}
+
+.classification-pill.source {
+  background-color: rgba(94, 92, 230, 0.12);
+  color: var(--text-primary);
 }

@@ -56,7 +56,7 @@ def _numeric_density(text: str) -> float:
 
 
 def _chunk_search_range(
-    num_chunks: int, ignore_front_fraction: float = 0.1, ignore_back_fraction: float = 0.1
+    num_chunks: int, ignore_front_fraction: float = 0.0, ignore_back_fraction: float = 0.0
 ) -> range:
     ignore_front_count = int(num_chunks * ignore_front_fraction)
     ignore_back_count = int(num_chunks * ignore_back_fraction)
@@ -78,8 +78,8 @@ def find_document_section(
     pages_after: int = 1,
     rerank_top_k: int = 0,
     rerank_query_texts: list[str] | None = None,
-    ignore_front_fraction: float = 0.1,
-    ignore_back_fraction: float = 0.1,
+    ignore_front_fraction: float = 0.0,
+    ignore_back_fraction: float = 0.0,
     chunk_rank: int = 0,
 ) -> tuple[str | None, int | None, dict | None]:
     """

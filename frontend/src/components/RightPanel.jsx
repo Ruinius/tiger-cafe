@@ -442,52 +442,22 @@ function RightPanel({ selectedCompany, selectedDocument }) {
         setFinancialStatementProgress({
           status: 'processing',
           milestones: {
-            extracting_balance_sheet: {
+            balance_sheet: {
               status: 'pending',
               message: 'Waiting to start...',
               updated_at: new Date().toISOString()
             },
-            classifying_balance_sheet: {
+            income_statement: {
               status: 'pending',
               message: 'Waiting to start...',
               updated_at: new Date().toISOString()
             },
-            extracting_other_assets: {
-              status: 'pending',
-              message: 'Waiting to start...',
-              updated_at: new Date().toISOString()
-            },
-            extracting_other_liabilities: {
+            extracting_additional_items: {
               status: 'pending',
               message: 'Waiting to start...',
               updated_at: new Date().toISOString()
             },
             classifying_non_operating_items: {
-              status: 'pending',
-              message: 'Waiting to start...',
-              updated_at: new Date().toISOString()
-            },
-            extracting_income_statement: {
-              status: 'pending',
-              message: 'Waiting to start...',
-              updated_at: new Date().toISOString()
-            },
-            extracting_shares_outstanding: {
-              status: 'pending',
-              message: 'Waiting to start...',
-              updated_at: new Date().toISOString()
-            },
-            extracting_amortization: {
-              status: 'pending',
-              message: 'Waiting to start...',
-              updated_at: new Date().toISOString()
-            },
-            extracting_organic_growth: {
-              status: 'pending',
-              message: 'Waiting to start...',
-              updated_at: new Date().toISOString()
-            },
-            classifying_income_statement: {
               status: 'pending',
               message: 'Waiting to start...',
               updated_at: new Date().toISOString()
@@ -551,16 +521,10 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                   <h4 style={{ marginTop: 0, marginBottom: '1rem' }}>Processing Progress</h4>
                   <div className="progress-milestones">
                     {[
-                      { key: 'extracting_balance_sheet', label: 'Extracting Balance Sheet' },
-                      { key: 'classifying_balance_sheet', label: 'Classifying Balance Sheet' },
-                      { key: 'extracting_other_assets', label: 'Extracting Other Assets' },
-                      { key: 'extracting_other_liabilities', label: 'Extracting Other Liabilities' },
-                      { key: 'classifying_non_operating_items', label: 'Classifying Non-Operating Items' },
-                      { key: 'extracting_income_statement', label: 'Extracting Income Statement' },
-                      { key: 'extracting_shares_outstanding', label: 'Extracting Shares Outstanding' },
-                      { key: 'extracting_amortization', label: 'Extracting Amortization' },
-                      { key: 'extracting_organic_growth', label: 'Extracting Organic Growth' },
-                      { key: 'classifying_income_statement', label: 'Classifying Income Statement' }
+                      { key: 'balance_sheet', label: 'Balance Sheet' },
+                      { key: 'income_statement', label: 'Income Statement' },
+                      { key: 'extracting_additional_items', label: 'Extracting Additional Items' },
+                      { key: 'classifying_non_operating_items', label: 'Classifying Non-Operating Items' }
                     ].map((milestone) => {
                       const milestoneData = financialStatementProgress.milestones?.[milestone.key]
                       const status = milestoneData?.status || 'checking'
@@ -717,9 +681,13 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                       <td className={isKeyTotal ? 'bold-text' : ''}>{item.line_category || 'N/A'}</td>
                                       <td className={`text-right ${isKeyTotal ? 'bold-text' : ''}`}>{formatNumber(item.line_value, balanceSheet.unit)}</td>
                                       <td>
-                                        <span className={`type-badge ${item.is_operating ? 'operating' : 'non-operating'}`}>
-                                          {item.is_operating ? 'Operating' : 'Non-Operating'}
-                                        </span>
+                                        {item.is_operating === null || item.is_operating === undefined ? (
+                                          <span className="text-muted">—</span>
+                                        ) : (
+                                          <span className={`type-badge ${item.is_operating ? 'operating' : 'non-operating'}`}>
+                                            {item.is_operating ? 'Operating' : 'Non-Operating'}
+                                          </span>
+                                        )}
                                       </td>
                                     </tr>
                                   )
@@ -802,9 +770,13 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                       </td>
                                       <td className={`text-right ${isKeyTotal ? 'bold-text' : ''}`}>{formatNumber(item.line_value, incomeStatement.unit)}</td>
                                       <td>
-                                        <span className={`type-badge ${item.is_operating ? 'operating' : 'non-operating'}`}>
-                                          {item.is_operating ? 'Operating' : 'Non-Operating'}
-                                        </span>
+                                        {item.is_operating === null || item.is_operating === undefined ? (
+                                          <span className="text-muted">—</span>
+                                        ) : (
+                                          <span className={`type-badge ${item.is_operating ? 'operating' : 'non-operating'}`}>
+                                            {item.is_operating ? 'Operating' : 'Non-Operating'}
+                                          </span>
+                                        )}
                                       </td>
                                     </tr>
                                   )
@@ -818,40 +790,6 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                           </table>
                         </div>
 
-                        {/* Revenue Context Table */}
-                        {(incomeStatement.revenue_prior_year !== null || 
-                           incomeStatement.revenue_growth_yoy !== null) && (
-                          <div style={{ marginTop: '2rem' }}>
-                            <h4>Revenue Context</h4>
-                            <div className="balance-sheet-table-container">
-                              <table className="balance-sheet-table">
-                                <thead>
-                                  <tr>
-                                    <th>Item</th>
-                                    <th className="text-right">Value</th>
-                                    <th>Unit</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {incomeStatement.revenue_prior_year !== null && (
-                                    <tr>
-                                      <td>Prior Period Revenue</td>
-                                      <td className="text-right">{formatNumber(incomeStatement.revenue_prior_year, incomeStatement.revenue_prior_year_unit)}</td>
-                                      <td>{incomeStatement.revenue_prior_year_unit ? incomeStatement.revenue_prior_year_unit.replace('_', ' ') : 'N/A'}</td>
-                                    </tr>
-                                  )}
-                                  {incomeStatement.revenue_growth_yoy !== null && (
-                                    <tr>
-                                      <td>YOY Revenue Growth</td>
-                                      <td className="text-right">{incomeStatement.revenue_growth_yoy.toFixed(2)}%</td>
-                                      <td>—</td>
-                                    </tr>
-                                  )}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </div>
                   )}
