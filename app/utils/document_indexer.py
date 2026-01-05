@@ -150,16 +150,16 @@ def _extract_page_range_text(file_path: str, start_page: int, end_page: int) -> 
 
 
 def index_document_chunks(
-    file_path: str, document_id: str, chunk_size: int = 1, storage_dir: str = "data/storage"
+    file_path: str, document_id: str, chunk_size: int = 2, storage_dir: str = "data/storage"
 ) -> dict:
     """
-    Index a document by creating embeddings for 1-page chunks.
+    Index a document by creating embeddings for multi-page chunks.
     This replaces the old document-level embedding approach.
 
     Args:
         file_path: Path to PDF file
         document_id: Document ID
-        chunk_size: Number of pages per chunk (default: 1)
+        chunk_size: Number of pages per chunk (default: 2)
         storage_dir: Directory to save chunk embeddings
 
     Returns:
@@ -217,7 +217,7 @@ def index_document_chunks(
         raise Exception(f"Error indexing document chunks: {str(e)}")
 
 
-def get_chunk_text(file_path: str, chunk_index: int, chunk_size: int = 1) -> tuple[str, int, int]:
+def get_chunk_text(file_path: str, chunk_index: int, chunk_size: int = 2) -> tuple[str, int, int]:
     """
     Get text for a specific chunk.
 

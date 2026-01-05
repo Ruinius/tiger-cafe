@@ -46,7 +46,7 @@ def process_document(
     filename: str | None = None,
     document_id: str | None = None,
     document: Document | None = None,
-    chunk_size: int = 1,
+    chunk_size: int = 2,
 ) -> DocumentProcessingResult | None:
     """
     Process a document according to the requested mode.
@@ -79,9 +79,7 @@ def process_document(
 
         index_document_chunks(resolved_file_path, document.id, chunk_size=chunk_size)
 
-        _, total_pages, character_count = extract_text_from_pdf(
-            resolved_file_path, max_pages=None
-        )
+        _, total_pages, character_count = extract_text_from_pdf(resolved_file_path, max_pages=None)
         document.indexing_status = ProcessingStatus.INDEXED
         document.indexed_at = datetime.utcnow()
         document.page_count = total_pages

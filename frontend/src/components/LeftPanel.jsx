@@ -127,13 +127,10 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
           `${API_BASE_URL}/documents/${selectedDocument.id}/${endpoint}`,
           { headers }
         )
-        // Only update if the status actually changed to avoid unnecessary re-renders
-        if (response.data && response.data.analysis_status !== selectedDocument.analysis_status) {
-          // Update the selectedDocument with latest status
-          // This will trigger a re-render with updated analysis_status
-          if (onDocumentSelect) {
-            onDocumentSelect(response.data)
-          }
+        // Always update selectedDocument with latest status (including indexing_status)
+        // This ensures polling keeps the document status current
+        if (response.data && onDocumentSelect) {
+          onDocumentSelect(response.data)
         }
         // After fetching status, we can enable buttons (they'll still be disabled if processing)
         setIsCheckingProcessingStatus(false)
@@ -162,12 +159,88 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
     }
   }, [selectedDocument?.id, isAuthenticated, token, checkFinancialStatements])
 
-  // Watch for when processing completes to reset isProcessing state
+  // Track last known status to avoid unnecessary updates during polling
+  const lastStatusRef = useRef({ indexingStatus: null, analysisStatus: null })
+
+  // Poll for selected document indexing status when it's being indexed
   useEffect(() => {
-    if (selectedDocument && selectedDocument.analysis_status !== 'processing' && isProcessing) {
-      setIsProcessing(false)
+    if (!selectedDocument) return
+    
+    const isIndexing = selectedDocument.indexing_status === 'indexing' || selectedDocument.indexing_status === 'INDEXING'
+    if (!isIndexing) {
+      // Reset tracking when not indexing
+      lastStatusRef.current = { indexingStatus: null, analysisStatus: null }
+      return
     }
-  }, [selectedDocument?.analysis_status, isProcessing])
+
+    // Initialize tracking with current status
+    lastStatusRef.current = {
+      indexingStatus: selectedDocument.indexing_status,
+      analysisStatus: selectedDocument.analysis_status
+    }
+
+    // Poll every 3 seconds while indexing (reduced frequency to avoid jarring updates)
+    const pollInterval = setInterval(async () => {
+      try {
+        const endpoint = isAuthenticated ? 'status' : 'status-test'
+        const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+        const response = await axios.get(
+          `${API_BASE_URL}/documents/${selectedDocument.id}/${endpoint}`,
+          { headers }
+        )
+        if (response.data && onDocumentSelect) {
+          const newIndexingStatus = response.data.indexing_status
+          const newAnalysisStatus = response.data.analysis_status
+          
+          // Only update if status actually changed to avoid unnecessary re-renders
+          if (newIndexingStatus !== lastStatusRef.current.indexingStatus || 
+              newAnalysisStatus !== lastStatusRef.current.analysisStatus) {
+            lastStatusRef.current.indexingStatus = newIndexingStatus
+            lastStatusRef.current.analysisStatus = newAnalysisStatus
+            onDocumentSelect(response.data)
+          }
+          
+          // If indexing completed, stop polling
+          if (newIndexingStatus !== 'indexing' && newIndexingStatus !== 'INDEXING') {
+            clearInterval(pollInterval)
+            lastStatusRef.current = { indexingStatus: null, analysisStatus: null }
+          }
+        }
+      } catch (error) {
+        console.error(`Error polling status for document ${selectedDocument.id}:`, error)
+      }
+    }, 3000) // Increased from 2000ms to 3000ms
+
+    return () => clearInterval(pollInterval)
+  }, [selectedDocument?.id, selectedDocument?.indexing_status, isAuthenticated, token, onDocumentSelect])
+
+  // Track if we're waiting for indexing to complete
+  const waitingForIndexingRef = useRef(false)
+  
+  // Set waiting flag when we trigger re-indexing
+  useEffect(() => {
+    if (isProcessing && selectedDocument?.indexing_status === 'indexing') {
+      waitingForIndexingRef.current = true
+    }
+  }, [isProcessing, selectedDocument?.indexing_status])
+
+  // Watch for when indexing completes to reset isProcessing state
+  useEffect(() => {
+    if (selectedDocument && isProcessing && waitingForIndexingRef.current) {
+      // Reset isProcessing when indexing completes
+      if (selectedDocument.indexing_status === 'indexed' || selectedDocument.indexing_status === 'INDEXED') {
+        setIsProcessing(false)
+        waitingForIndexingRef.current = false
+      }
+    } else if (selectedDocument && isProcessing && 
+               selectedDocument.indexing_status !== 'indexing' && 
+               selectedDocument.indexing_status !== 'INDEXING' &&
+               selectedDocument.analysis_status !== 'processing') {
+      // Also reset if neither indexing nor analysis is in progress
+      setIsProcessing(false)
+      waitingForIndexingRef.current = false
+    }
+  }, [selectedDocument?.indexing_status, selectedDocument?.analysis_status, isProcessing, selectedDocument])
 
   // Listen for event when financial statements processing completes
   useEffect(() => {
@@ -696,16 +769,62 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                 </div>
               )}
               
-              {/* Re-run Financial Statement Processing Buttons */}
-              {selectedDocument.document_type && 
-               ['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type) && 
-               selectedDocument.indexing_status === 'indexed' && (
+              {/* Re-run Processing Buttons */}
+              {(selectedDocument.indexing_status === 'indexed' || selectedDocument.indexing_status === 'indexing') && (
                 <div className="summary-section" style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
                   <strong>Re-run Processing</strong>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
                     <button 
                       className="button-secondary"
-                      disabled={isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing'}
+                      disabled={isCheckingProcessingStatus || selectedDocument.indexing_status === 'indexing'}
+                      onClick={async () => {
+                        setIsProcessing(true)
+                        try {
+                          const endpoint = isAuthenticated ? 'rerun-indexing' : 'rerun-indexing-test'
+                          const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+                          await axios.post(
+                            `${API_BASE_URL}/documents/${selectedDocument.id}/${endpoint}`,
+                            {},
+                            { headers }
+                          )
+                          // Refresh document status to update indexing_status
+                          // Polling will continue to update the status automatically
+                          if (onDocumentSelect && selectedDocument) {
+                            const statusEndpoint = isAuthenticated ? 'status' : 'status-test'
+                            const statusResponse = await axios.get(
+                              `${API_BASE_URL}/documents/${selectedDocument.id}/${statusEndpoint}`,
+                              { headers }
+                            )
+                            if (statusResponse.data) {
+                              // Update the document with latest status (including indexing_status)
+                              onDocumentSelect(statusResponse.data)
+                            }
+                          }
+                          // Refresh documents list if we have a company
+                          if (selectedCompany) {
+                            loadCompanyDocuments(selectedCompany.id)
+                          }
+                          // Don't set isProcessing(false) here - let the polling effect handle it
+                          // when indexing_status changes from 'indexing' to 'indexed'
+                        } catch (err) {
+                          alert(err.response?.data?.detail || 'Failed to re-run indexing')
+                          setIsProcessing(false)
+                        }
+                      }}
+                      style={{ width: '100%', textAlign: 'left', opacity: (isCheckingProcessingStatus || selectedDocument.indexing_status === 'indexing') ? 0.6 : 1, cursor: (isCheckingProcessingStatus || selectedDocument.indexing_status === 'indexing') ? 'not-allowed' : 'pointer' }}
+                    >
+                      Re-run Indexing
+                    </button>
+                    {/* Always show Extraction button, but disable if not eligible document type */}
+                    <button 
+                      className="button-secondary"
+                      disabled={
+                        isCheckingProcessingStatus || 
+                        isProcessing || 
+                        selectedDocument.analysis_status === 'processing' ||
+                        !selectedDocument.document_type ||
+                        !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)
+                      }
                       onClick={async () => {
                         setIsProcessing(true)
                         // Immediately set all milestones to PENDING in RightPanel
@@ -729,19 +848,30 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                           setIsProcessing(false)
                         }
                       }}
-                      style={{ width: '100%', textAlign: 'left', opacity: (isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing') ? 0.6 : 1, cursor: (isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing') ? 'not-allowed' : 'pointer' }}
-                    >
-                      {(isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing') ? 'Processing...' : 'Re-run Extraction and Classification'}
-                    </button>
-                    <button 
-                      className="button-secondary"
-                      disabled={!hasFinancialStatements}
                       style={{ 
                         width: '100%', 
                         textAlign: 'left', 
-                        marginTop: '0.5rem',
-                        opacity: !hasFinancialStatements ? 0.6 : 1,
-                        cursor: !hasFinancialStatements ? 'not-allowed' : 'pointer'
+                        opacity: (isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing' || !selectedDocument.document_type || !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)) ? 0.6 : 1, 
+                        cursor: (isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing' || !selectedDocument.document_type || !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)) ? 'not-allowed' : 'pointer' 
+                      }}
+                    >
+                      Re-run Extraction and Classification
+                    </button>
+                    {/* Always show Historical Calculations button, but disable if no financial statements */}
+                    <button 
+                      className="button-secondary"
+                      disabled={
+                        isCheckingProcessingStatus || 
+                        isProcessing || 
+                        !hasFinancialStatements ||
+                        !selectedDocument.document_type ||
+                        !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)
+                      }
+                      style={{ 
+                        width: '100%', 
+                        textAlign: 'left',
+                        opacity: (isCheckingProcessingStatus || isProcessing || !hasFinancialStatements || !selectedDocument.document_type || !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)) ? 0.6 : 1,
+                        cursor: (isCheckingProcessingStatus || isProcessing || !hasFinancialStatements || !selectedDocument.document_type || !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)) ? 'not-allowed' : 'pointer'
                       }}
                       onClick={async () => {
                         if (!hasFinancialStatements) return

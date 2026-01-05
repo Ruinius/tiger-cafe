@@ -18,6 +18,10 @@ function RightPanel({ selectedCompany, selectedDocument }) {
   const [balanceSheetLoadAttempts, setBalanceSheetLoadAttempts] = useState(0)
   const [incomeStatementLoadAttempts, setIncomeStatementLoadAttempts] = useState(0)
   const progressPollingIntervalRef = useRef(null)
+  const balanceSheetLoadingRef = useRef(false)
+  const incomeStatementLoadingRef = useRef(false)
+  const balanceSheetAttemptsRef = useRef(0)
+  const incomeStatementAttemptsRef = useRef(0)
   const MAX_LOAD_ATTEMPTS = 3
 
   // Check if document is eligible for financial statement processing
@@ -72,7 +76,10 @@ function RightPanel({ selectedCompany, selectedDocument }) {
 
   const loadBalanceSheet = useCallback(async () => {
     if (!selectedDocument) return
+    if (balanceSheetLoadingRef.current) return // Prevent concurrent calls
+    if (balanceSheetAttemptsRef.current >= MAX_LOAD_ATTEMPTS) return // Don't retry if max attempts reached
     
+    balanceSheetLoadingRef.current = true
     try {
       const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
       const response = await axios.get(
@@ -82,25 +89,34 @@ function RightPanel({ selectedCompany, selectedDocument }) {
       
       if (response.data && response.data.status === 'exists') {
         setBalanceSheet(response.data.data)
+        balanceSheetAttemptsRef.current = 0
         setBalanceSheetLoadAttempts(0) // Reset attempts on success
       } else {
         setBalanceSheet(null)
+        balanceSheetAttemptsRef.current += 1
         setBalanceSheetLoadAttempts(prev => prev + 1)
       }
     } catch (err) {
       if (err.response?.status === 404) {
         setBalanceSheet(null)
+        balanceSheetAttemptsRef.current += 1
         setBalanceSheetLoadAttempts(prev => prev + 1)
       } else {
         setError(err.response?.data?.detail || 'Failed to load balance sheet')
+        balanceSheetAttemptsRef.current += 1
         setBalanceSheetLoadAttempts(prev => prev + 1)
       }
+    } finally {
+      balanceSheetLoadingRef.current = false
     }
   }, [selectedDocument, isAuthenticated, token])
 
   const loadIncomeStatement = useCallback(async () => {
     if (!selectedDocument) return
+    if (incomeStatementLoadingRef.current) return // Prevent concurrent calls
+    if (incomeStatementAttemptsRef.current >= MAX_LOAD_ATTEMPTS) return // Don't retry if max attempts reached
     
+    incomeStatementLoadingRef.current = true
     try {
       const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
       const response = await axios.get(
@@ -110,19 +126,25 @@ function RightPanel({ selectedCompany, selectedDocument }) {
       
       if (response.data && response.data.status === 'exists') {
         setIncomeStatement(response.data.data)
+        incomeStatementAttemptsRef.current = 0
         setIncomeStatementLoadAttempts(0) // Reset attempts on success
       } else {
         setIncomeStatement(null)
+        incomeStatementAttemptsRef.current += 1
         setIncomeStatementLoadAttempts(prev => prev + 1)
       }
     } catch (err) {
       if (err.response?.status === 404) {
         setIncomeStatement(null)
+        incomeStatementAttemptsRef.current += 1
         setIncomeStatementLoadAttempts(prev => prev + 1)
       } else {
         setError(err.response?.data?.detail || 'Failed to load income statement')
+        incomeStatementAttemptsRef.current += 1
         setIncomeStatementLoadAttempts(prev => prev + 1)
       }
+    } finally {
+      incomeStatementLoadingRef.current = false
     }
   }, [selectedDocument, isAuthenticated, token])
 
@@ -135,6 +157,10 @@ function RightPanel({ selectedCompany, selectedDocument }) {
     setError(null)
     setBalanceSheetLoadAttempts(0)
     setIncomeStatementLoadAttempts(0)
+    balanceSheetLoadingRef.current = false
+    incomeStatementLoadingRef.current = false
+    balanceSheetAttemptsRef.current = 0
+    incomeStatementAttemptsRef.current = 0
     
     // Clear any existing polling intervals
     if (progressPollingIntervalRef.current) {
@@ -208,15 +234,15 @@ function RightPanel({ selectedCompany, selectedDocument }) {
     if (!selectedDocument || !isEligibleForFinancialStatements) return
     if (!areAllMilestonesTerminal()) return
     
-    // Only load if attempts haven't exceeded max and data isn't already loaded
-    if (balanceSheetLoadAttempts < MAX_LOAD_ATTEMPTS && !balanceSheet) {
+    // Only load if attempts haven't exceeded max and data isn't already loaded and not currently loading
+    if (balanceSheetAttemptsRef.current < MAX_LOAD_ATTEMPTS && !balanceSheet && !balanceSheetLoadingRef.current) {
       loadBalanceSheet()
     }
     
-    if (incomeStatementLoadAttempts < MAX_LOAD_ATTEMPTS && !incomeStatement) {
+    if (incomeStatementAttemptsRef.current < MAX_LOAD_ATTEMPTS && !incomeStatement && !incomeStatementLoadingRef.current) {
       loadIncomeStatement()
     }
-  }, [areAllMilestonesTerminal, selectedDocument?.id, balanceSheetLoadAttempts, incomeStatementLoadAttempts, balanceSheet, incomeStatement, loadBalanceSheet, loadIncomeStatement])
+  }, [areAllMilestonesTerminal, selectedDocument?.id, balanceSheet, incomeStatement, loadBalanceSheet, loadIncomeStatement])
 
   // Reset historical calculations state when document changes
   useEffect(() => {
@@ -310,6 +336,10 @@ function RightPanel({ selectedCompany, selectedDocument }) {
       setHistoricalCalculationsLoadAttempted(false)
       setBalanceSheetLoadAttempts(0)
       setIncomeStatementLoadAttempts(0)
+      balanceSheetLoadingRef.current = false
+      incomeStatementLoadingRef.current = false
+      balanceSheetAttemptsRef.current = 0
+      incomeStatementAttemptsRef.current = 0
     }
 
     // Listen for event to reload historical calculations

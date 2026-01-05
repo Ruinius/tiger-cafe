@@ -93,31 +93,41 @@ function UploadModal({ isOpen, onClose, onUploadSuccess }) {
     setUploading(true)
     setError(null)
 
-    try {
-      const formData = new FormData()
-      files.forEach(file => {
-        formData.append('files', file)
-      })
+    // Close modal immediately - don't wait for response
+    // Processing happens asynchronously in the background
+    const formData = new FormData()
+    files.forEach(file => {
+      formData.append('files', file)
+    })
 
-      const endpoint = isAuthenticated ? 'upload-batch' : 'upload-batch-test'
-      const response = await axios.post(
-        `${API_BASE_URL}/documents/${endpoint}`,
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
+    const endpoint = isAuthenticated ? 'upload-batch' : 'upload-batch-test'
+    const uploadPromise = axios.post(
+      `${API_BASE_URL}/documents/${endpoint}`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      }
+    )
+
+    // Close modal and call success handler immediately
+    handleClose()
+    onUploadSuccess({ message: `Uploading ${files.length} file(s)...` })
+
+    // Handle response/errors in background (won't block modal closing)
+    uploadPromise
+      .then((response) => {
+        // Success - response handled by parent component
+        if (onUploadSuccess) {
+          onUploadSuccess(response.data)
         }
-      )
-
-      // Success - close modal immediately (processing happens async)
-      onUploadSuccess(response.data)
-      handleClose()
-    } catch (err) {
-      console.error('Upload error:', err)
-      setError(err.response?.data?.detail || 'Failed to upload documents. Please try again.')
-      setUploading(false)
-    }
+      })
+      .catch((err) => {
+        console.error('Upload error:', err)
+        // Show error to user (could use a toast notification)
+        alert(err.response?.data?.detail || 'Failed to upload documents. Please try again.')
+      })
   }
 
   const handleClose = () => {

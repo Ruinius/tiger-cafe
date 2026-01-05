@@ -87,18 +87,25 @@ async def upload_batch(
         raise HTTPException(status_code=400, detail="Maximum 10 files allowed per upload")
 
     document_ids = []
-    for file in files:
-        if not file.filename.endswith(".pdf"):
-            continue  # Skip non-PDF files
+    import asyncio
 
+    async def read_file_content(file: UploadFile) -> tuple[bytes, str, str]:
+        """Read file content asynchronously"""
         document_id = str(uuid.uuid4())
-        document_ids.append(document_id)
-
-        # Read file content before request completes
         file_content = await file.read()
-        filename = file.filename
+        return file_content, file.filename, document_id
 
-        # Start async upload process with file content
+    # Read all files in parallel
+    file_tasks = [read_file_content(file) for file in files if file.filename.endswith(".pdf")]
+
+    if not file_tasks:
+        raise HTTPException(status_code=400, detail="No valid PDF files provided")
+
+    file_results = await asyncio.gather(*file_tasks)
+
+    # Start background tasks for all files
+    for file_content, filename, document_id in file_results:
+        document_ids.append(document_id)
         background_tasks.add_task(
             upload_and_process_async_with_content,
             file_content,
@@ -135,18 +142,25 @@ if DEBUG:
             raise HTTPException(status_code=400, detail="Maximum 10 files allowed per upload")
 
         document_ids = []
-        for file in files:
-            if not file.filename.endswith(".pdf"):
-                continue  # Skip non-PDF files
+        import asyncio
 
+        async def read_file_content(file: UploadFile) -> tuple[bytes, str, str]:
+            """Read file content asynchronously"""
             document_id = str(uuid.uuid4())
-            document_ids.append(document_id)
-
-            # Read file content before request completes
             file_content = await file.read()
-            filename = file.filename
+            return file_content, file.filename, document_id
 
-            # Start async upload process with file content
+        # Read all files in parallel
+        file_tasks = [read_file_content(file) for file in files if file.filename.endswith(".pdf")]
+
+        if not file_tasks:
+            raise HTTPException(status_code=400, detail="No valid PDF files provided")
+
+        file_results = await asyncio.gather(*file_tasks)
+
+        # Start background tasks for all files
+        for file_content, filename, document_id in file_results:
+            document_ids.append(document_id)
             background_tasks.add_task(
                 upload_and_process_async_with_content,
                 file_content,
@@ -804,6 +818,44 @@ async def replace_and_index(
     return existing_doc
 
 
+@router.post("/{document_id}/rerun-indexing", response_model=DocumentSchema)
+async def rerun_indexing(
+    document_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Re-run indexing for an already indexed document.
+    Deletes existing chunk embeddings and re-indexes the document.
+    """
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Only allow re-indexing if document is already indexed
+    if document.indexing_status != ProcessingStatus.INDEXED:
+        raise HTTPException(
+            status_code=400,
+            detail="Document must be indexed before re-indexing. Current status: "
+            + str(document.indexing_status),
+        )
+
+    # Delete existing chunk embeddings
+    delete_chunk_embeddings(document_id)
+
+    # Set status to INDEXING and queue for processing
+    document.indexing_status = ProcessingStatus.INDEXING
+    db.commit()
+
+    # Queue document for INDEX_ONLY processing
+    from app.utils.document_processing_queue import queue_document_for_processing
+
+    queue_document_for_processing(document_id)
+
+    db.refresh(document)
+    return document
+
+
 if DEBUG:
 
     @router.post("/{document_id}/replace-and-index-test", response_model=DocumentSchema)
@@ -825,6 +877,25 @@ if DEBUG:
             db.refresh(test_user)
 
         return await replace_and_index(document_id, background_tasks, db, test_user)
+
+    @router.post("/{document_id}/rerun-indexing-test", response_model=DocumentSchema)
+    async def rerun_indexing_test(
+        document_id: str,
+        db: Session = Depends(get_db),
+    ):
+        """
+        TEST ENDPOINT: Re-run indexing without authentication.
+        Only available when DEBUG=true or ENVIRONMENT=development.
+        """
+        # Create a dummy user for testing
+        test_user = db.query(User).filter(User.email == "test@example.com").first()
+        if not test_user:
+            test_user = User(id="test-user-id", email="test@example.com", name="Test User")
+            db.add(test_user)
+            db.commit()
+            db.refresh(test_user)
+
+        return await rerun_indexing(document_id, db, test_user)
 
     @router.delete("/{document_id}/test")
     async def delete_document_test(document_id: str, db: Session = Depends(get_db)):

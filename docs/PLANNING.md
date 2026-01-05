@@ -251,6 +251,11 @@ Based on UI/UX Design specifications, build the frontend interface:
   - Reuses chunk embeddings generated during document indexing
   - No duplicate embedding generation during extraction
   - Efficient chunk-level embedding search for precise location
+  - Document type-based search range restrictions:
+    - Earnings announcement: ignore first 30% and last 10% of document
+    - Annual filing: ignore first 50% and last 20% of document
+    - Quarterly filing: ignore last 50% of document (no front ignore)
+  - Retry strategy: 1st try uses best chunk, 2nd try uses 2nd best chunk, 3rd try uses 3rd best chunk
 - [x] LLM-based extraction of balance sheet line items:
   - Extract balance sheet exactly line by line for the specified time period
   - Extract local currency when applicable
@@ -261,7 +266,8 @@ Based on UI/UX Design specifications, build the frontend interface:
   - Verify that current liabilities sum correctly
   - Verify that total liabilities sum correctly
   - Verify that total assets equal total liabilities and total equity
-  - If sums are incorrect, retry extraction up to 3 times before failing
+  - Minimum line requirement: at least 10 valid line items
+  - If sums are incorrect, retry extraction up to 3 times before failing (1st try = best chunk, 2nd try = 2nd best chunk, 3rd try = 3rd best chunk)
   - Precise total identification using regex to handle long line item names with notes
   - Validation runs in frontend (not persisted) to avoid blocking on validation errors
   - Check for empty line items and key items before validation
@@ -284,11 +290,14 @@ Based on UI/UX Design specifications, build the frontend interface:
 #### 5.2: Income Statement Processing (Complete)
 - [x] Automatic trigger: Income statement processing automatically starts after balance sheet processing completes (for earnings announcements, quarterly filings, and annual reports only)
 - [x] Sequential processing: Runs after balance sheet processing to avoid overwhelming Gemini API
-- [x] Use persisted chunk embeddings to locate the income statement:
-  - May be called by various names (e.g., "consolidated statement of operations")
-  - Reuses chunk embeddings generated during document indexing
-  - No duplicate embedding generation during extraction
-  - Efficient chunk-level embedding search for precise location
+- [x] Use balance sheet location to locate income statement:
+  - First finds balance sheet location using chunk embeddings
+  - Then uses adjacent chunks: 1st try uses chunk immediately before balance sheet, 2nd try uses chunk immediately after balance sheet
+  - More reliable than independent search since income statements are typically near balance sheets
+  - Document type-based search range restrictions (same as balance sheet):
+    - Earnings announcement: ignore first 30% and last 10% of document
+    - Annual filing: ignore first 50% and last 20% of document
+    - Quarterly filing: ignore last 50% of document (no front ignore)
 - [x] LLM-based extraction of income statement line items:
   - Extract income statement exactly line by line for the specified time period
   - Extract local currency when applicable
@@ -300,10 +309,11 @@ Based on UI/UX Design specifications, build the frontend interface:
   - Extract amortization for the specific time period
   - Extract unit of measurement for each additional item (revenue_prior_year, shares outstanding, amortization)
 - [x] Validation and error handling:
-  - Verify gross profit calculation
-  - Verify operating income calculation
-  - Verify net income calculation
-  - If sums are incorrect or errors occur, retry extraction up to 3 times before failing
+  - Minimum line requirement: at least 5 valid line items
+  - Required line items: Total Net Revenue and Net Income must be present
+  - Verify gross profit calculation (validated during normalization)
+  - Verify operating income calculation (validated during normalization)
+  - If sums are incorrect or errors occur, retry extraction up to 2 times before failing
   - Check for empty line items and key items before validation
 - [x] Line item classification:
   - Use LLM to categorize each income statement line item as operating or non-operating

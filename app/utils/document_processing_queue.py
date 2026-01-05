@@ -149,14 +149,22 @@ def _process_document_worker():
                         # Refresh document to get updated status
                         db_session.refresh(document)
 
-                        # If document is eligible, queue financial statement processing
+                        # Only auto-trigger financial statement processing if:
+                        # 1. Document is eligible for financial statements
+                        # 2. Financial statements haven't been processed yet (not a re-index)
+                        # We check analysis_status to distinguish between initial indexing and re-indexing
                         eligible_types = [
                             DocumentType.EARNINGS_ANNOUNCEMENT,
                             DocumentType.QUARTERLY_FILING,
                             DocumentType.ANNUAL_FILING,
                         ]
 
-                        if document.document_type in eligible_types:
+                        if (
+                            document.document_type in eligible_types
+                            and document.analysis_status != ProcessingStatus.PROCESSED
+                        ):
+                            # Only queue if financial statements haven't been processed yet
+                            # This prevents re-triggering financial statement extraction during re-indexing
                             queue_financial_statements_processing(task.document_id)
 
                 elif task.task_type == "financial_statements":

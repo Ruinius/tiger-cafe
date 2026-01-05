@@ -91,7 +91,8 @@ def process_income_statement_async(document_id: str, db: Session):
             document_id=document_id,
             file_path=document.file_path,
             time_period=time_period,
-            max_retries=3,
+            max_retries=2,
+            document_type=document.document_type,
         )
 
         # Check if extraction returned valid data with line items

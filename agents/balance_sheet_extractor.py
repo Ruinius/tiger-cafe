@@ -15,7 +15,11 @@ from app.utils.pdf_extractor import extract_text_from_pdf
 
 
 def find_balance_sheet_section(
-    document_id: str, file_path: str, time_period: str
+    document_id: str,
+    file_path: str,
+    time_period: str,
+    document_type: str | None = None,
+    chunk_rank: int = 0,
 ) -> tuple[str | None, int | None, dict | None]:
     """
     Use document embedding to locate the consolidated balance sheet section.
@@ -24,18 +28,73 @@ def find_balance_sheet_section(
         document_id: Document ID
         file_path: Path to PDF file
         time_period: Time period to search for (e.g., "Q3 2023")
+        document_type: Document type (e.g., "earnings_announcement", "annual_filing", "quarterly_filing")
 
     Returns:
         Tuple of (extracted_text, start_page, log_info) or (None, None, None) if not found
     """
     try:
-        # Generate query embeddings for various balance sheet names
+        # Determine ignore fractions based on document type
+        # Convert document_type to string if it's an enum
+        doc_type_str = (
+            document_type.value
+            if hasattr(document_type, "value")
+            else str(document_type)
+            if document_type
+            else None
+        )
+
+        if doc_type_str == "earnings_announcement":
+            ignore_front_fraction = 0.3
+            ignore_back_fraction = 0.1
+        elif doc_type_str == "annual_filing":
+            ignore_front_fraction = 0.5
+            ignore_back_fraction = 0.2
+        elif doc_type_str == "quarterly_filing":
+            ignore_front_fraction = 0.0
+            ignore_back_fraction = 0.5
+        else:
+            # Default: ignore 10% from both edges
+            ignore_front_fraction = 0.1
+            ignore_back_fraction = 0.1
+
+        # Initial query texts for finding the balance sheet section
         query_texts = [
             "consolidated balance sheet",
             "balance sheet",
             "total assets",
             "total liabilities",
         ]
+
+        # Re-ranking query terms: normalized balance sheet line items
+        def normalize_term(term: str) -> str:
+            import re
+
+            # Lowercase, remove special characters except spaces, normalize whitespace
+            normalized = term.lower()
+            normalized = re.sub(r"[()]", "", normalized)  # Remove parentheses
+            normalized = normalized.replace(",", "")  # Remove commas
+            normalized = re.sub(r"\s+", " ", normalized)  # Normalize whitespace
+            return normalized.strip()
+
+        rerank_query_texts = [
+            "Cash",
+            "Accounts Receivable",
+            "Inventory",
+            "Other Assets",
+            "Property",
+            "Goodwill",
+            "Intangible",
+            "Other Liabilities",
+            "Payable",
+            "Debt",
+            # "consolidated balance sheet",
+            # "balance sheet",
+            # "total assets",
+            # "total liabilities",
+        ]
+        rerank_query_texts = [normalize_term(term) for term in rerank_query_texts]
+
         result = find_document_section(
             document_id=document_id,
             file_path=file_path,
@@ -45,7 +104,10 @@ def find_balance_sheet_section(
             pages_before=1,  # Include 1 page before the best chunk
             pages_after=1,  # Include 1 page after the best chunk
             rerank_top_k=5,
-            numeric_density_weight=0.2,
+            rerank_query_texts=rerank_query_texts,
+            ignore_front_fraction=ignore_front_fraction,
+            ignore_back_fraction=ignore_back_fraction,
+            chunk_rank=chunk_rank,
         )
         # Handle both old (2-tuple) and new (3-tuple) return formats for backward compatibility
         if len(result) == 2:
@@ -151,6 +213,14 @@ def validate_balance_sheet(line_items: list[dict]) -> tuple[bool, list[str]]:
     ]
     if len(valid_items) == 0:
         errors.append("Balance sheet has no valid line items")
+        return False, errors
+
+    # Check minimum number of lines required
+    MIN_LINES_REQUIRED = 10
+    if len(valid_items) < MIN_LINES_REQUIRED:
+        errors.append(
+            f"Balance sheet must have at least {MIN_LINES_REQUIRED} line items, found {len(valid_items)}"
+        )
         return False, errors
 
     # Convert to dictionary for easier lookup
@@ -565,7 +635,11 @@ Return only valid JSON array, no additional text."""
 
 
 def extract_balance_sheet(
-    document_id: str, file_path: str, time_period: str, max_retries: int = 3
+    document_id: str,
+    file_path: str,
+    time_period: str,
+    max_retries: int = 3,
+    document_type: str | None = None,
 ) -> dict:
     """
     Main function to extract balance sheet with validation and retries.
@@ -575,6 +649,7 @@ def extract_balance_sheet(
         file_path: Path to PDF file
         time_period: Time period (e.g., "Q3 2023")
         max_retries: Maximum number of retry attempts
+        document_type: Document type (e.g., "earnings_announcement", "annual_filing", "quarterly_filing")
 
     Returns:
         Dictionary with balance sheet data and validation status
@@ -586,8 +661,9 @@ def extract_balance_sheet(
             add_log(document_id, FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET, attempt_msg)
 
             # Step 1: Find balance sheet section using embeddings
+            # Use attempt number as chunk_rank: 0 = best, 1 = 2nd best, 2 = 3rd best
             balance_sheet_text, start_page, log_info = find_balance_sheet_section(
-                document_id, file_path, time_period
+                document_id, file_path, time_period, document_type, chunk_rank=attempt
             )
 
             if not balance_sheet_text:
@@ -607,7 +683,8 @@ def extract_balance_sheet(
             else:
                 # Log chunk/page information if available
                 if log_info:
-                    chunk_msg = f"Best match: chunk {log_info['best_chunk_index']} (pages {log_info['chunk_start_page']}-{log_info['chunk_end_page']})"
+                    rank_text = f" (rank {attempt + 1})" if attempt > 0 else ""
+                    chunk_msg = f"Best match{rank_text}: chunk {log_info['best_chunk_index']} (pages {log_info['chunk_start_page']}-{log_info['chunk_end_page']})"
                     print(chunk_msg)
                     add_log(
                         document_id, FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET, chunk_msg

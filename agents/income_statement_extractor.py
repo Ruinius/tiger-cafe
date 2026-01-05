@@ -13,8 +13,123 @@ from app.utils.gemini_client import generate_content_safe
 from app.utils.pdf_extractor import extract_text_from_pdf
 
 
+def find_income_statement_near_balance_sheet(
+    document_id: str,
+    file_path: str,
+    time_period: str,
+    document_type: str | None = None,
+    attempt: int = 0,
+) -> tuple[str | None, int | None, dict | None]:
+    """
+    Find income statement section by locating balance sheet first, then using adjacent chunks.
+
+    Args:
+        document_id: Document ID
+        file_path: Path to PDF file
+        time_period: Time period to search for (e.g., "Q3 2023")
+        document_type: Document type (e.g., "earnings_announcement", "annual_filing", "quarterly_filing")
+        attempt: 0 = chunk before balance sheet, 1 = chunk after balance sheet
+
+    Returns:
+        Tuple of (extracted_text, start_page, log_info) or (None, None, None) if not found
+    """
+    try:
+        import pdfplumber
+
+        from agents.balance_sheet_extractor import find_balance_sheet_section
+        from app.utils.document_indexer import get_chunk_metadata, get_chunk_text
+
+        # First, find the balance sheet location
+        balance_sheet_text, balance_start_page, balance_log_info = find_balance_sheet_section(
+            document_id, file_path, time_period, document_type, chunk_rank=0
+        )
+
+        if not balance_log_info or "best_chunk_index" not in balance_log_info:
+            print("Could not find balance sheet location")
+            return None, None, None
+
+        balance_chunk_index = balance_log_info["best_chunk_index"]
+        chunk_metadata = get_chunk_metadata(document_id)
+        if not chunk_metadata:
+            print("Could not get chunk metadata")
+            return None, None, None
+
+        chunk_size = chunk_metadata.get("chunk_size", 2)
+        num_chunks = chunk_metadata.get("num_chunks", 0)
+
+        # Determine which chunk to use based on attempt
+        # attempt 0 = chunk before balance sheet
+        # attempt 1 = chunk after balance sheet
+        if attempt == 0:
+            target_chunk_index = balance_chunk_index - 1
+            direction = "before"
+        elif attempt == 1:
+            target_chunk_index = balance_chunk_index + 1
+            direction = "after"
+        else:
+            print(f"Invalid attempt number: {attempt}, must be 0 or 1")
+            return None, None, None
+
+        # Validate chunk index
+        if target_chunk_index < 0 or target_chunk_index >= num_chunks:
+            print(f"Target chunk index {target_chunk_index} is out of bounds (0-{num_chunks - 1})")
+            return None, None, None
+
+        # Get chunk text
+        chunk_text, chunk_start_page, chunk_end_page = get_chunk_text(
+            file_path, target_chunk_index, chunk_size
+        )
+
+        # Extract with pages_before=1 and pages_after=1 (similar to find_document_section)
+        with pdfplumber.open(file_path) as pdf:
+            total_pages = len(pdf.pages)
+
+        start_extract_page = max(0, chunk_start_page - 1)
+        end_extract_page = min(total_pages, chunk_end_page + 1)
+
+        # Extract text from page range
+        text_parts = []
+        with pdfplumber.open(file_path) as pdf:
+            clamped_start = max(0, min(start_extract_page, total_pages))
+            clamped_end = max(clamped_start, min(end_extract_page, total_pages))
+            for page_index in range(clamped_start, clamped_end):
+                page_text = pdf.pages[page_index].extract_text()
+                if page_text:
+                    text_parts.append(page_text)
+        extracted_text = "\n\n".join(text_parts)
+
+        log_info = {
+            "balance_sheet_chunk_index": balance_chunk_index,
+            "income_statement_chunk_index": target_chunk_index,
+            "direction": direction,
+            "chunk_start_page": chunk_start_page,
+            "chunk_end_page": chunk_end_page - 1,
+            "start_extract_page": start_extract_page,
+            "end_extract_page": end_extract_page - 1,
+        }
+
+        print(
+            f"Income statement found {direction} balance sheet: chunk {target_chunk_index} "
+            f"(pages {chunk_start_page}-{chunk_end_page - 1}), "
+            f"extracting pages {start_extract_page}-{end_extract_page - 1}"
+        )
+
+        return extracted_text, start_extract_page, log_info
+
+    except Exception as e:
+        print(f"Error finding income statement near balance sheet: {str(e)}")
+        import traceback
+
+        traceback.print_exc()
+        return None, None, None
+
+
 def find_income_statement_section(
-    document_id: str, file_path: str, time_period: str
+    document_id: str,
+    file_path: str,
+    time_period: str,
+    document_type: str | None = None,
+    chunk_rank: int = 0,
 ) -> tuple[str | None, int | None, dict | None]:
     """
     Use document embedding to locate the income statement section.
@@ -24,18 +139,67 @@ def find_income_statement_section(
         document_id: Document ID
         file_path: Path to PDF file
         time_period: Time period to search for (e.g., "Q3 2023")
+        document_type: Document type (e.g., "earnings_announcement", "annual_filing", "quarterly_filing")
 
     Returns:
         Tuple of (extracted_text, start_page, log_info) or (None, None, None) if not found
     """
     try:
-        # Generate query embeddings for various income statement names
+        # Determine ignore fractions based on document type
+        # Convert document_type to string if it's an enum
+        doc_type_str = (
+            document_type.value
+            if hasattr(document_type, "value")
+            else str(document_type)
+            if document_type
+            else None
+        )
+
+        if doc_type_str == "earnings_announcement":
+            ignore_front_fraction = 0.3
+            ignore_back_fraction = 0.1
+        elif doc_type_str == "annual_filing":
+            ignore_front_fraction = 0.5
+            ignore_back_fraction = 0.2
+        elif doc_type_str == "quarterly_filing":
+            ignore_front_fraction = 0.0
+            ignore_back_fraction = 0.5
+        else:
+            # Default: ignore 10% from both edges
+            ignore_front_fraction = 0.1
+            ignore_back_fraction = 0.1
+
+        # Initial query texts for finding the income statement section
         query_texts = [
             "consolidated statement of operations",
             "income statement",
             "statement of operations",
             "consolidated income statement",
         ]
+
+        # Re-ranking query terms: normalized income statement line items
+        def normalize_term(term: str) -> str:
+            import re
+
+            # Lowercase, remove special characters except spaces, normalize whitespace
+            normalized = term.lower()
+            normalized = re.sub(r"[()]", "", normalized)  # Remove parentheses
+            normalized = normalized.replace(",", "")  # Remove commas
+            normalized = re.sub(r"\s+", " ", normalized)  # Normalize whitespace
+            return normalized.strip()
+
+        rerank_query_texts = [
+            # "Net Income",
+            # "Tax",
+            # "Interest Expense",
+            # "Interest Income",
+            "consolidated statement of operations",
+            "income statement",
+            "statement of operations",
+            "consolidated income statement",
+        ]
+        rerank_query_texts = [normalize_term(term) for term in rerank_query_texts]
+
         result = find_document_section(
             document_id=document_id,
             file_path=file_path,
@@ -45,7 +209,10 @@ def find_income_statement_section(
             pages_before=1,  # Include 1 page before the best chunk
             pages_after=1,  # Include 1 page after the best chunk
             rerank_top_k=5,
-            numeric_density_weight=0.2,
+            rerank_query_texts=rerank_query_texts,
+            ignore_front_fraction=ignore_front_fraction,
+            ignore_back_fraction=ignore_back_fraction,
+            chunk_rank=chunk_rank,
         )
         # Handle both old (2-tuple) and new (3-tuple) return formats for backward compatibility
         if len(result) == 2:
@@ -352,15 +519,21 @@ def _match_line_item(line_items: list[dict], target_name: str | None) -> dict | 
     return None
 
 
-def post_process_income_statement_line_items(line_items: list[dict]) -> list[dict]:
+def post_process_income_statement_line_items(
+    line_items: list[dict],
+) -> tuple[list[dict], list[str]]:
     """
     Post-process income statement line items:
     1. Use LLM to identify key line items
     2. Rename identified items with standardized names (original in parentheses)
-    3. Detect cost format (positive vs negative) and normalize to positive costs
+    3. Detect cost format (positive vs negative) and normalize to negative costs
+    4. Validate calculations during normalization
+
+    Returns:
+        Tuple of (processed_line_items, validation_errors)
     """
     if not line_items:
-        return line_items
+        return line_items, []
 
     # Step 1: Get LLM insights to identify key line items
     llm_insights, _ = get_income_statement_llm_insights(line_items=line_items)
@@ -445,32 +618,44 @@ def post_process_income_statement_line_items(line_items: list[dict]) -> list[dic
         f"pretax_income_item at idx={pretax_income_item[0] if pretax_income_item else None}"
     )
 
+    validation_errors = []  # Collect validation errors during normalization
+
     def normalize_items_between(start_item, end_item, description):
-        """Normalize items between two line items by detecting if they should be flipped."""
+        """Normalize items between two line items by detecting if they should be flipped.
+        Also validates that the calculation matches the reported value.
+        Returns a validation error message if validation fails, None otherwise.
+        """
         if not start_item or not end_item:
-            return
+            return None
 
         start_idx = start_item[0]
         end_idx = end_item[0]
 
         if start_idx >= end_idx:
-            return
+            return None
 
         items_between = processed_items[start_idx + 1 : end_idx]
         if not items_between:
-            return
+            return None
 
         # Calculate sums to test both formats
         sum_between_raw = sum(item.get("line_value", 0) for item in items_between)
         sum_between_abs = sum(abs(item.get("line_value", 0)) for item in items_between)
         start_value = start_item[1].get("line_value", 0)
         end_value = end_item[1].get("line_value", 0)
+        start_name = start_item[1].get("line_name", "Start")
+        end_name = end_item[1].get("line_name", "End")
 
         # Test which formula matches: start + items = end (negative costs) or start - items = end (positive costs)
         # When costs are negative: Revenue + (negative sum) = Operating Income ✓ (desired format)
         # When costs are positive: Revenue - (positive sum) = Operating Income (needs flipping)
         diff_with_negative = abs((start_value + sum_between_raw) - end_value)
         diff_with_positive = abs((start_value - sum_between_abs) - end_value)
+
+        # Validation: If at least one of the differences is not zero, validation has failed
+        # Use a small tolerance for floating point comparison
+        tolerance = max(abs(end_value) * 0.01, 0.01) if end_value != 0 else 0.01
+        validation_failed = (diff_with_negative > tolerance) and (diff_with_positive > tolerance)
 
         # Count negative vs positive items to help decide when there's a tie
         negative_count = sum(1 for item in items_between if item.get("line_value", 0) < 0)
@@ -517,17 +702,47 @@ def post_process_income_statement_line_items(line_items: list[dict]) -> list[dic
                 else:
                     print(f"    Skipped benefit/credit: {item.get('line_name')} = {item_value}")
 
+        # After normalization, check validation again with updated values
+        # Recalculate with potentially flipped values
+        final_diff = diff_with_negative
+        final_sum = sum_between_raw
+
+        if should_flip:
+            # After flipping, recalculate the sum of all items (now normalized to negative costs)
+            final_sum = sum(item.get("line_value", 0) for item in items_between)
+            final_diff = abs((start_value + final_sum) - end_value)
+
+        # Return validation error if validation failed (at least one diff was not zero)
+        if validation_failed:
+            # After normalization, re-check if it's still invalid
+            tolerance = max(abs(end_value) * 0.01, 0.01) if end_value != 0 else 0.01
+            if final_diff > tolerance:
+                calculated_value = start_value + final_sum
+                return f"{description.capitalize()} calculation mismatch: {start_name} + items = {calculated_value:.2f}, but {end_name} = {end_value:.2f} (difference: {final_diff:.2f})"
+
+        return None
+
     # Normalize items between revenue and gross profit
     if revenue_item and gross_profit_item:
-        normalize_items_between(revenue_item, gross_profit_item, "costs")
+        error = normalize_items_between(revenue_item, gross_profit_item, "costs")
+        if error:
+            validation_errors.append(error)
 
     # Normalize items between gross profit and operating income
     if gross_profit_item and operating_income_item:
-        normalize_items_between(gross_profit_item, operating_income_item, "operating expenses")
+        error = normalize_items_between(
+            gross_profit_item, operating_income_item, "operating expenses"
+        )
+        if error:
+            validation_errors.append(error)
 
     # Normalize items between operating income and pretax income
     if operating_income_item and pretax_income_item:
-        normalize_items_between(operating_income_item, pretax_income_item, "non-operating items")
+        error = normalize_items_between(
+            operating_income_item, pretax_income_item, "non-operating items"
+        )
+        if error:
+            validation_errors.append(error)
 
     # Handle missing gross profit: check between revenue and operating income or pretax income
     if revenue_item and not gross_profit_item:
@@ -535,9 +750,15 @@ def post_process_income_statement_line_items(line_items: list[dict]) -> list[dic
             "Gross profit missing, normalizing between Revenue and Operating Income/Pretax Income"
         )
         if operating_income_item:
-            normalize_items_between(revenue_item, operating_income_item, "costs and expenses")
+            error = normalize_items_between(
+                revenue_item, operating_income_item, "costs and expenses"
+            )
+            if error:
+                validation_errors.append(error)
         elif pretax_income_item:
-            normalize_items_between(revenue_item, pretax_income_item, "costs and expenses")
+            error = normalize_items_between(revenue_item, pretax_income_item, "costs and expenses")
+            if error:
+                validation_errors.append(error)
 
     # Handle missing operating income: check between revenue/gross profit and pretax income
     if not operating_income_item and pretax_income_item:
@@ -545,13 +766,17 @@ def post_process_income_statement_line_items(line_items: list[dict]) -> list[dic
             "Operating income missing, normalizing between Revenue/Gross Profit and Pretax Income"
         )
         if gross_profit_item:
-            normalize_items_between(
+            error = normalize_items_between(
                 gross_profit_item, pretax_income_item, "operating and non-operating items"
             )
+            if error:
+                validation_errors.append(error)
         elif revenue_item:
-            normalize_items_between(revenue_item, pretax_income_item, "all expenses")
+            error = normalize_items_between(revenue_item, pretax_income_item, "all expenses")
+            if error:
+                validation_errors.append(error)
 
-    return processed_items
+    return processed_items, validation_errors
 
 
 def validate_income_statement(
@@ -582,6 +807,14 @@ def validate_income_statement(
         errors.append("Income statement has no valid line items")
         return False, errors
 
+    # Check minimum number of lines required
+    MIN_LINES_REQUIRED = 5
+    if len(valid_items) < MIN_LINES_REQUIRED:
+        errors.append(
+            f"Income statement must have at least {MIN_LINES_REQUIRED} line items, found {len(valid_items)}"
+        )
+        return False, errors
+
     def normalize_value(value: object) -> float | None:
         if value is None:
             return None
@@ -601,16 +834,8 @@ def validate_income_statement(
             return -parsed if is_negative else parsed
         return None
 
-    def exceeds_tolerance(reported: float, calculated: float) -> bool:
-        tolerance = max(abs(calculated) * 0.01, 0.01)
-        return abs(reported - calculated) > tolerance
-
     # Find key values - prioritize standardized names first
     revenue_value = None
-    cost_of_revenue = None
-    gross_profit = None
-    operating_expenses = None
-    operating_income = None
     net_income = None
 
     # First pass: Look for standardized names (e.g., "Total Net Revenue (Revenue)")
@@ -623,14 +848,14 @@ def validate_income_statement(
         if "total net revenue (" in item_name_lower:
             revenue_value = item_value
         elif "gross profit (" in item_name_lower:
-            gross_profit = item_value
+            pass
         elif "operating income (" in item_name_lower:
-            operating_income = item_value
+            pass
         elif "net income (" in item_name_lower and "per share" not in item_name_lower:
             net_income = item_value
 
-    # Second pass: Look for cost of revenue and operating expenses (may not be standardized)
-    # Also look for revenue if not found with standardized name
+    # Second pass: Look for revenue if not found with standardized name
+    # Also build items_dict for net income lookup
     items_dict = {}
     for item in line_items:
         item_value = normalize_value(item.get("line_value"))
@@ -647,53 +872,14 @@ def validate_income_statement(
                 if revenue_value is None:
                     revenue_value = value
 
-    # Look for cost of revenue
-    for key, value in items_dict.items():
-        if (
-            "cost of revenue" in key or "cost of goods sold" in key or "cogs" in key
-        ) and "total" not in key:
-            cost_of_revenue = value
-            break
-
-    # Look for operating expenses
-    for key, value in items_dict.items():
-        if (
-            "operating expenses" in key or "total operating expenses" in key
-        ) and "income" not in key:
-            operating_expenses = value
-            break
-
     # Use provided revenue if available (override any found value)
     if revenue is not None:
         revenue_value = normalize_value(revenue)
 
-    # Validate gross profit: Revenue + Cost of Revenue = Gross Profit (costs are negative)
-    # Note: Cost of Revenue should be negative after normalization (costs are normalized to negative)
-    if revenue_value is not None and gross_profit is not None:
-        if cost_of_revenue is not None:
-            # Cost of revenue is now normalized to negative, so add it (subtracting absolute value)
-            calculated_gross_profit = revenue_value + cost_of_revenue  # cost_of_revenue is negative
-            if exceeds_tolerance(gross_profit, calculated_gross_profit):
-                errors.append(
-                    f"Gross profit calculation mismatch: reported={gross_profit}, calculated (Revenue + Cost of Revenue)={calculated_gross_profit}"
-                )
-        # If cost_of_revenue is None, we can't validate gross profit, but that's okay
+    # Note: Gross profit and operating income calculations are validated during normalization
+    # (in normalize_items_between), so we don't duplicate those checks here.
 
-    # Validate operating income: Gross Profit + Operating Expenses = Operating Income (expenses are negative)
-    # Note: Operating Expenses should be negative after normalization (costs are normalized to negative)
-    if gross_profit is not None and operating_income is not None:
-        if operating_expenses is not None:
-            # Operating expenses are now normalized to negative, so add them
-            calculated_operating_income = (
-                gross_profit + operating_expenses
-            )  # operating_expenses is negative
-            if exceeds_tolerance(operating_income, calculated_operating_income):
-                errors.append(
-                    f"Operating income calculation mismatch: reported={operating_income}, calculated (Gross Profit + Operating Expenses)={calculated_operating_income}"
-                )
-        # If operating_expenses is None, we can't validate operating income, but that's okay
-
-    # Validate net income (if we can calculate it)
+    # Check for net income existence (validation of net income calculation is complex and not done)
     # Net Income = Operating Income - Other Expenses + Other Income - Taxes
     # This is more complex, so we'll just check if net income exists
     if net_income is None:
@@ -713,17 +899,14 @@ def validate_income_statement(
                     net_income = value
                     break
 
-    # Check if we have at least one key income statement item (revenue, gross profit, operating income, or net income)
-    # This ensures we didn't get an empty or invalid income statement
-    if (
-        revenue_value is None
-        and gross_profit is None
-        and operating_income is None
-        and net_income is None
-    ):
-        errors.append(
-            "Income statement is missing key items (Revenue, Gross Profit, Operating Income, or Net Income)"
-        )
+    # Check that required key items are present
+    # Total Net Revenue is required
+    if revenue_value is None:
+        errors.append("Income statement is missing Total Net Revenue")
+
+    # Net Income is required
+    if net_income is None:
+        errors.append("Income statement is missing Net Income")
 
     return len(errors) == 0, errors
 
@@ -827,7 +1010,11 @@ Return only valid JSON, no additional text."""
 
 
 def extract_income_statement(
-    document_id: str, file_path: str, time_period: str, max_retries: int = 3
+    document_id: str,
+    file_path: str,
+    time_period: str,
+    max_retries: int = 2,
+    document_type: str | None = None,
 ) -> dict:
     """
     Main function to extract income statement with validation and retries.
@@ -837,6 +1024,7 @@ def extract_income_statement(
         file_path: Path to PDF file
         time_period: Time period (e.g., "Q3 2023")
         max_retries: Maximum number of retry attempts
+        document_type: Document type (e.g., "earnings_announcement", "annual_filing", "quarterly_filing")
 
     Returns:
         Dictionary with income statement data and validation status
@@ -849,9 +1037,10 @@ def extract_income_statement(
                 document_id, FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT, attempt_msg
             )
 
-            # Step 1: Find income statement section using embeddings
-            income_statement_text, start_page, log_info = find_income_statement_section(
-                document_id, file_path, time_period
+            # Step 1: Find income statement section near balance sheet
+            # attempt 0 = chunk before balance sheet, attempt 1 = chunk after balance sheet
+            income_statement_text, start_page, log_info = find_income_statement_near_balance_sheet(
+                document_id, file_path, time_period, document_type, attempt=attempt
             )
 
             if not income_statement_text:
@@ -877,7 +1066,11 @@ def extract_income_statement(
             else:
                 # Log chunk/page information if available
                 if log_info:
-                    chunk_msg = f"Best match: chunk {log_info['best_chunk_index']} (pages {log_info['chunk_start_page']}-{log_info['chunk_end_page']})"
+                    direction_text = log_info.get("direction", "near")
+                    chunk_index = log_info.get("income_statement_chunk_index", "unknown")
+                    chunk_start = log_info.get("chunk_start_page", "unknown")
+                    chunk_end = log_info.get("chunk_end_page", "unknown")
+                    chunk_msg = f"Income statement found {direction_text} balance sheet: chunk {chunk_index} (pages {chunk_start}-{chunk_end})"
                     print(chunk_msg)
                     add_log(
                         document_id,
@@ -953,12 +1146,16 @@ def extract_income_statement(
 
             # Step 4.5: Post-process line items (rename key items, normalize cost format)
             # Do this BEFORE validation so validation can use standardized names
-            extracted_data["line_items"] = post_process_income_statement_line_items(
+            # Post-processing now also performs validation during normalization
+            processed_line_items, normalization_errors = post_process_income_statement_line_items(
                 extracted_data.get("line_items", [])
             )
+            extracted_data["line_items"] = processed_line_items
 
             # Step 4: Validate (after post-processing)
+            # Collect validation errors from both normalization and traditional validation
             extracted_data.get("revenue_prior_year")  # Use revenue from extraction
+
             def normalize_value(value: object) -> float | None:
                 if value is None:
                     return None
@@ -1007,9 +1204,13 @@ def extract_income_statement(
                         if current_revenue is not None:
                             break
 
-            is_valid, errors = validate_income_statement(
+            is_valid, validation_errors = validate_income_statement(
                 extracted_data.get("line_items", []), current_revenue
             )
+
+            # Combine normalization errors with validation errors
+            errors = normalization_errors + validation_errors
+            is_valid = is_valid and len(normalization_errors) == 0
 
             if is_valid:
                 validation_msg = "Validation passed"
@@ -1050,14 +1251,19 @@ def extract_income_statement(
                     continue  # Retry
                 else:
                     # Post-process line items even if validation failed
-                    extracted_data["line_items"] = post_process_income_statement_line_items(
-                        extracted_data.get("line_items", [])
+                    processed_line_items, normalization_errors = (
+                        post_process_income_statement_line_items(
+                            extracted_data.get("line_items", [])
+                        )
                     )
+                    extracted_data["line_items"] = processed_line_items
+                    # Combine normalization errors with existing validation errors
+                    all_errors = normalization_errors + errors
                     # Return with errors on final attempt
                     classified_items = classify_line_items_llm(extracted_data["line_items"])
                     extracted_data["line_items"] = classified_items
                     extracted_data["is_valid"] = False
-                    extracted_data["validation_errors"] = errors
+                    extracted_data["validation_errors"] = all_errors
 
                     # Still calculate revenue growth if possible
                     if (
