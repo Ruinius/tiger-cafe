@@ -974,8 +974,18 @@ async def delete_document_permanent(
     Permanently delete a document and all associated data including financial statements.
     This is a destructive operation that cannot be undone.
     """
+    from app.models.amortization import Amortization
+    from app.models.amortization import Amortization
     from app.models.balance_sheet import BalanceSheet
     from app.models.income_statement import IncomeStatement
+    from app.models.non_operating_classification import NonOperatingClassification
+    from app.models.organic_growth import OrganicGrowth
+    from app.models.other_assets import OtherAssets
+    from app.models.other_liabilities import OtherLiabilities
+    from app.models.non_operating_classification import NonOperatingClassification
+    from app.models.organic_growth import OrganicGrowth
+    from app.models.other_assets import OtherAssets
+    from app.models.other_liabilities import OtherLiabilities
     from app.utils.financial_statement_progress import clear_progress
 
     document = db.query(Document).filter(Document.id == document_id).first()
@@ -999,6 +1009,34 @@ async def delete_document_permanent(
     for income_statement in income_statements:
         print(f"Deleting income statement {income_statement.id} for document {target_document_id}")
         db.delete(income_statement)
+
+    amortizations = db.query(Amortization).filter_by(document_id=target_document_id).all()
+    for amortization in amortizations:
+        db.delete(amortization)
+
+    organic_growth_entries = (
+        db.query(OrganicGrowth).filter_by(document_id=target_document_id).all()
+    )
+    for organic_growth in organic_growth_entries:
+        db.delete(organic_growth)
+
+    other_assets_entries = (
+        db.query(OtherAssets).filter_by(document_id=target_document_id).all()
+    )
+    for other_assets in other_assets_entries:
+        db.delete(other_assets)
+
+    other_liabilities_entries = (
+        db.query(OtherLiabilities).filter_by(document_id=target_document_id).all()
+    )
+    for other_liabilities in other_liabilities_entries:
+        db.delete(other_liabilities)
+
+    non_operating_entries = (
+        db.query(NonOperatingClassification).filter_by(document_id=target_document_id).all()
+    )
+    for non_operating in non_operating_entries:
+        db.delete(non_operating)
 
     # Commit financial statement deletions before deleting the document
     db.commit()
@@ -1031,8 +1069,18 @@ if DEBUG:
         """
         TEST ENDPOINT: Permanently delete a document without authentication.
         """
+        from app.models.amortization import Amortization
+        from app.models.amortization import Amortization
         from app.models.balance_sheet import BalanceSheet
         from app.models.income_statement import IncomeStatement
+        from app.models.non_operating_classification import NonOperatingClassification
+        from app.models.organic_growth import OrganicGrowth
+        from app.models.other_assets import OtherAssets
+        from app.models.other_liabilities import OtherLiabilities
+        from app.models.non_operating_classification import NonOperatingClassification
+        from app.models.organic_growth import OrganicGrowth
+        from app.models.other_assets import OtherAssets
+        from app.models.other_liabilities import OtherLiabilities
         from app.utils.financial_statement_progress import clear_progress
 
         document = db.query(Document).filter(Document.id == document_id).first()
@@ -1053,6 +1101,34 @@ if DEBUG:
         )
         for income_statement in income_statements:
             db.delete(income_statement)
+
+        amortizations = db.query(Amortization).filter_by(document_id=target_document_id).all()
+        for amortization in amortizations:
+            db.delete(amortization)
+
+        organic_growth_entries = (
+            db.query(OrganicGrowth).filter_by(document_id=target_document_id).all()
+        )
+        for organic_growth in organic_growth_entries:
+            db.delete(organic_growth)
+
+        other_assets_entries = (
+            db.query(OtherAssets).filter_by(document_id=target_document_id).all()
+        )
+        for other_assets in other_assets_entries:
+            db.delete(other_assets)
+
+        other_liabilities_entries = (
+            db.query(OtherLiabilities).filter_by(document_id=target_document_id).all()
+        )
+        for other_liabilities in other_liabilities_entries:
+            db.delete(other_liabilities)
+
+        non_operating_entries = (
+            db.query(NonOperatingClassification).filter_by(document_id=target_document_id).all()
+        )
+        for non_operating in non_operating_entries:
+            db.delete(non_operating)
 
         # Commit financial statement deletions before deleting the document
         db.commit()
@@ -1096,6 +1172,19 @@ async def get_financial_statement_progress(
     balance_sheet = db.query(BalanceSheet).filter(BalanceSheet.document_id == document_id).first()
     income_statement = (
         db.query(IncomeStatement).filter(IncomeStatement.document_id == document_id).first()
+    )
+    other_assets = db.query(OtherAssets).filter(OtherAssets.document_id == document_id).first()
+    other_liabilities = (
+        db.query(OtherLiabilities).filter(OtherLiabilities.document_id == document_id).first()
+    )
+    amortization = db.query(Amortization).filter(Amortization.document_id == document_id).first()
+    organic_growth = (
+        db.query(OrganicGrowth).filter(OrganicGrowth.document_id == document_id).first()
+    )
+    non_operating = (
+        db.query(NonOperatingClassification)
+        .filter(NonOperatingClassification.document_id == document_id)
+        .first()
     )
 
     # Build milestones based on database state
@@ -1190,6 +1279,102 @@ async def get_financial_statement_progress(
             "updated_at": None,
         }
 
+    # 3. Extracting Other Assets
+    if other_assets and other_assets.line_items and len(other_assets.line_items) > 0:
+        if other_assets.is_valid:
+            milestones["extracting_other_assets"] = {
+                "status": "completed",
+                "message": "Other assets extracted and validated",
+                "updated_at": other_assets.extraction_date.isoformat()
+                if other_assets.extraction_date
+                else None,
+            }
+        else:
+            error_message = "Other assets extraction failed or validation errors"
+            if other_assets.validation_errors:
+                error_message = other_assets.validation_errors
+            milestones["extracting_other_assets"] = {
+                "status": "error",
+                "message": error_message,
+                "updated_at": other_assets.extraction_date.isoformat()
+                if other_assets.extraction_date
+                else None,
+            }
+    elif progress and progress.get("milestones", {}).get("extracting_other_assets", {}).get(
+        "status"
+    ) in ["pending", "in_progress"]:
+        milestones["extracting_other_assets"] = progress["milestones"]["extracting_other_assets"]
+    else:
+        milestones["extracting_other_assets"] = {
+            "status": "not_found",
+            "message": "Other assets not found",
+            "updated_at": None,
+        }
+
+    # 4. Extracting Other Liabilities
+    if other_liabilities and other_liabilities.line_items and len(other_liabilities.line_items) > 0:
+        if other_liabilities.is_valid:
+            milestones["extracting_other_liabilities"] = {
+                "status": "completed",
+                "message": "Other liabilities extracted and validated",
+                "updated_at": other_liabilities.extraction_date.isoformat()
+                if other_liabilities.extraction_date
+                else None,
+            }
+        else:
+            error_message = "Other liabilities extraction failed or validation errors"
+            if other_liabilities.validation_errors:
+                error_message = other_liabilities.validation_errors
+            milestones["extracting_other_liabilities"] = {
+                "status": "error",
+                "message": error_message,
+                "updated_at": other_liabilities.extraction_date.isoformat()
+                if other_liabilities.extraction_date
+                else None,
+            }
+    elif progress and progress.get("milestones", {}).get("extracting_other_liabilities", {}).get(
+        "status"
+    ) in ["pending", "in_progress"]:
+        milestones["extracting_other_liabilities"] = progress["milestones"][
+            "extracting_other_liabilities"
+        ]
+    else:
+        milestones["extracting_other_liabilities"] = {
+            "status": "not_found",
+            "message": "Other liabilities not found",
+            "updated_at": None,
+        }
+
+    # 5. Classifying Non-Operating Items
+    if non_operating and non_operating.line_items and len(non_operating.line_items) > 0:
+        milestones["classifying_non_operating_items"] = {
+            "status": "completed",
+            "message": "Non-operating items classified",
+            "updated_at": non_operating.extraction_date.isoformat()
+            if non_operating.extraction_date
+            else None,
+        }
+    elif progress and progress.get("milestones", {}).get(
+        "classifying_non_operating_items", {}
+    ).get("status") in ["pending", "in_progress"]:
+        milestones["classifying_non_operating_items"] = progress["milestones"][
+            "classifying_non_operating_items"
+        ]
+    elif non_operating:
+        milestones["classifying_non_operating_items"] = {
+            "status": "error",
+            "message": "Non-operating classification incomplete",
+            "updated_at": non_operating.extraction_date.isoformat()
+            if non_operating.extraction_date
+            else None,
+        }
+    else:
+        milestones["classifying_non_operating_items"] = {
+            "status": "not_found",
+            "message": "Non-operating classification not found",
+            "updated_at": None,
+        }
+
     # 3. Extracting Income Statement: completed if non-empty income statement with validation passed
     if (
         income_statement
@@ -1238,46 +1423,104 @@ async def get_financial_statement_progress(
             "updated_at": None,
         }
 
-    # 4. Extracting Additional Items: completed if at least one additional item is not null
+    # 6. Extracting Shares Outstanding
     if income_statement:
-        has_additional_items = (
-            income_statement.revenue_prior_year is not None
-            or income_statement.revenue_growth_yoy is not None
-            or income_statement.amortization is not None
-            or income_statement.basic_shares_outstanding is not None
+        has_shares = (
+            income_statement.basic_shares_outstanding is not None
             or income_statement.diluted_shares_outstanding is not None
         )
-        if has_additional_items:
-            milestones["extracting_additional_items"] = {
+        if has_shares:
+            milestones["extracting_shares_outstanding"] = {
                 "status": "completed",
-                "message": "Additional items extracted",
+                "message": "Shares outstanding extracted",
                 "updated_at": income_statement.extraction_date.isoformat()
                 if income_statement.extraction_date
                 else None,
             }
         else:
-            milestones["extracting_additional_items"] = {
+            milestones["extracting_shares_outstanding"] = {
                 "status": "error",
-                "message": "Additional items not found",
+                "message": "Shares outstanding not found",
                 "updated_at": income_statement.extraction_date.isoformat()
                 if income_statement.extraction_date
                 else None,
             }
-    elif progress and progress.get("milestones", {}).get("extracting_additional_items", {}).get(
-        "status"
-    ) in ["pending", "in_progress"]:
-        milestones["extracting_additional_items"] = progress["milestones"][
-            "extracting_additional_items"
+    elif progress and progress.get("milestones", {}).get(
+        "extracting_shares_outstanding", {}
+    ).get("status") in ["pending", "in_progress"]:
+        milestones["extracting_shares_outstanding"] = progress["milestones"][
+            "extracting_shares_outstanding"
         ]
     else:
-        # No income statement exists - would return 404
-        milestones["extracting_additional_items"] = {
+        milestones["extracting_shares_outstanding"] = {
             "status": "not_found",
-            "message": "Additional items not found",
+            "message": "Shares outstanding not found",
             "updated_at": None,
         }
 
-    # 5. Classifying Income Statement: completed if income statement has non-empty Type column (is_operating is not null)
+    # 7. Extracting Amortization
+    if amortization and amortization.line_items and len(amortization.line_items) > 0:
+        if amortization.is_valid:
+            milestones["extracting_amortization"] = {
+                "status": "completed",
+                "message": "Amortization extracted and validated",
+                "updated_at": amortization.extraction_date.isoformat()
+                if amortization.extraction_date
+                else None,
+            }
+        else:
+            milestones["extracting_amortization"] = {
+                "status": "error",
+                "message": amortization.validation_errors
+                or "Amortization extraction failed or validation errors",
+                "updated_at": amortization.extraction_date.isoformat()
+                if amortization.extraction_date
+                else None,
+            }
+    elif progress and progress.get("milestones", {}).get("extracting_amortization", {}).get(
+        "status"
+    ) in ["pending", "in_progress"]:
+        milestones["extracting_amortization"] = progress["milestones"]["extracting_amortization"]
+    else:
+        milestones["extracting_amortization"] = {
+            "status": "not_found",
+            "message": "Amortization not found",
+            "updated_at": None,
+        }
+
+    # 8. Extracting Organic Growth
+    if organic_growth:
+        if organic_growth.is_valid:
+            milestones["extracting_organic_growth"] = {
+                "status": "completed",
+                "message": "Organic growth extracted",
+                "updated_at": organic_growth.extraction_date.isoformat()
+                if organic_growth.extraction_date
+                else None,
+            }
+        else:
+            milestones["extracting_organic_growth"] = {
+                "status": "error",
+                "message": organic_growth.validation_errors
+                or "Organic growth extraction failed or validation errors",
+                "updated_at": organic_growth.extraction_date.isoformat()
+                if organic_growth.extraction_date
+                else None,
+            }
+    elif progress and progress.get("milestones", {}).get("extracting_organic_growth", {}).get(
+        "status"
+    ) in ["pending", "in_progress"]:
+        milestones["extracting_organic_growth"] = progress["milestones"][
+            "extracting_organic_growth"
+        ]
+    else:
+        milestones["extracting_organic_growth"] = {
+            "status": "not_found",
+            "message": "Organic growth not found",
+            "updated_at": None,
+        }
+
+    # 9. Classifying Income Statement: completed if income statement has non-empty Type column (is_operating is not null)
     if income_statement and income_statement.line_items:
         has_classifications = any(
             item.is_operating is not None for item in income_statement.line_items
@@ -1396,6 +1639,23 @@ if DEBUG:
         income_statement = (
             db.query(IncomeStatement).filter(IncomeStatement.document_id == document_id).first()
         )
+        other_assets = (
+            db.query(OtherAssets).filter(OtherAssets.document_id == document_id).first()
+        )
+        other_liabilities = (
+            db.query(OtherLiabilities).filter(OtherLiabilities.document_id == document_id).first()
+        )
+        amortization = (
+            db.query(Amortization).filter(Amortization.document_id == document_id).first()
+        )
+        organic_growth = (
+            db.query(OrganicGrowth).filter(OrganicGrowth.document_id == document_id).first()
+        )
+        non_operating = (
+            db.query(NonOperatingClassification)
+            .filter(NonOperatingClassification.document_id == document_id)
+            .first()
+        )
 
         # Build milestones based on database state (same logic as authenticated endpoint)
         milestones = {}
@@ -1478,6 +1738,86 @@ if DEBUG:
                 "updated_at": None,
             }
 
+        # 3. Extracting Other Assets
+        if other_assets and other_assets.line_items and len(other_assets.line_items) > 0:
+            status = "completed" if other_assets.is_valid else "error"
+            milestones["extracting_other_assets"] = {
+                "status": status,
+                "message": "Other assets extracted"
+                if status == "completed"
+                else "Other assets extraction failed",
+                "updated_at": other_assets.extraction_date.isoformat()
+                if other_assets.extraction_date
+                else None,
+            }
+        elif progress and progress.get("milestones", {}).get("extracting_other_assets", {}).get(
+            "status"
+        ) in ["pending", "in_progress"]:
+            milestones["extracting_other_assets"] = progress["milestones"][
+                "extracting_other_assets"
+            ]
+        else:
+            milestones["extracting_other_assets"] = {
+                "status": "not_found",
+                "message": "Other assets not found",
+                "updated_at": None,
+            }
+
+        # 4. Extracting Other Liabilities
+        if other_liabilities and other_liabilities.line_items and len(other_liabilities.line_items) > 0:
+            status = "completed" if other_liabilities.is_valid else "error"
+            milestones["extracting_other_liabilities"] = {
+                "status": status,
+                "message": "Other liabilities extracted"
+                if status == "completed"
+                else "Other liabilities extraction failed",
+                "updated_at": other_liabilities.extraction_date.isoformat()
+                if other_liabilities.extraction_date
+                else None,
+            }
+        elif progress and progress.get("milestones", {}).get(
+            "extracting_other_liabilities", {}
+        ).get("status") in ["pending", "in_progress"]:
+            milestones["extracting_other_liabilities"] = progress["milestones"][
+                "extracting_other_liabilities"
+            ]
+        else:
+            milestones["extracting_other_liabilities"] = {
+                "status": "not_found",
+                "message": "Other liabilities not found",
+                "updated_at": None,
+            }
+
+        # 5. Classifying Non-Operating Items
+        if non_operating and non_operating.line_items and len(non_operating.line_items) > 0:
+            milestones["classifying_non_operating_items"] = {
+                "status": "completed",
+                "message": "Non-operating items classified",
+                "updated_at": non_operating.extraction_date.isoformat()
+                if non_operating.extraction_date
+                else None,
+            }
+        elif progress and progress.get("milestones", {}).get(
+            "classifying_non_operating_items", {}
+        ).get("status") in ["pending", "in_progress"]:
+            milestones["classifying_non_operating_items"] = progress["milestones"][
+                "classifying_non_operating_items"
+            ]
+        elif non_operating:
+            milestones["classifying_non_operating_items"] = {
+                "status": "error",
+                "message": "Non-operating classification incomplete",
+                "updated_at": non_operating.extraction_date.isoformat()
+                if non_operating.extraction_date
+                else None,
+            }
+        else:
+            milestones["classifying_non_operating_items"] = {
+                "status": "not_found",
+                "message": "Non-operating classification not found",
+                "updated_at": None,
+            }
+
         # 3. Extracting Income Statement
         if (
             income_statement
@@ -1514,46 +1854,92 @@ if DEBUG:
                 "updated_at": None,
             }
 
-        # 4. Extracting Additional Items
+        # 6. Extracting Shares Outstanding
         if income_statement:
-            has_additional_items = (
-                income_statement.revenue_prior_year is not None
-                or income_statement.revenue_growth_yoy is not None
-                or income_statement.amortization is not None
-                or income_statement.basic_shares_outstanding is not None
+            has_shares = (
+                income_statement.basic_shares_outstanding is not None
                 or income_statement.diluted_shares_outstanding is not None
             )
-            if has_additional_items:
-                milestones["extracting_additional_items"] = {
+            if has_shares:
+                milestones["extracting_shares_outstanding"] = {
                     "status": "completed",
-                    "message": "Additional items extracted",
+                    "message": "Shares outstanding extracted",
                     "updated_at": income_statement.extraction_date.isoformat()
                     if income_statement.extraction_date
                     else None,
                 }
             else:
-                milestones["extracting_additional_items"] = {
+                milestones["extracting_shares_outstanding"] = {
                     "status": "error",
-                    "message": "Additional items not found",
+                    "message": "Shares outstanding not found",
                     "updated_at": income_statement.extraction_date.isoformat()
                     if income_statement.extraction_date
                     else None,
                 }
-        elif progress and progress.get("milestones", {}).get("extracting_additional_items", {}).get(
-            "status"
-        ) in ["pending", "in_progress"]:
-            milestones["extracting_additional_items"] = progress["milestones"][
-                "extracting_additional_items"
+        elif progress and progress.get("milestones", {}).get(
+            "extracting_shares_outstanding", {}
+        ).get("status") in ["pending", "in_progress"]:
+            milestones["extracting_shares_outstanding"] = progress["milestones"][
+                "extracting_shares_outstanding"
             ]
         else:
-            # No income statement exists - would return 404
-            milestones["extracting_additional_items"] = {
+            milestones["extracting_shares_outstanding"] = {
                 "status": "not_found",
-                "message": "Additional items not found",
+                "message": "Shares outstanding not found",
                 "updated_at": None,
             }
 
-        # 5. Classifying Income Statement
+        # 7. Extracting Amortization
+        if amortization and amortization.line_items and len(amortization.line_items) > 0:
+            status = "completed" if amortization.is_valid else "error"
+            milestones["extracting_amortization"] = {
+                "status": status,
+                "message": "Amortization extracted"
+                if status == "completed"
+                else "Amortization extraction failed",
+                "updated_at": amortization.extraction_date.isoformat()
+                if amortization.extraction_date
+                else None,
+            }
+        elif progress and progress.get("milestones", {}).get("extracting_amortization", {}).get(
+            "status"
+        ) in ["pending", "in_progress"]:
+            milestones["extracting_amortization"] = progress["milestones"][
+                "extracting_amortization"
+            ]
+        else:
+            milestones["extracting_amortization"] = {
+                "status": "not_found",
+                "message": "Amortization not found",
+                "updated_at": None,
+            }
+
+        # 8. Extracting Organic Growth
+        if organic_growth:
+            status = "completed" if organic_growth.is_valid else "error"
+            milestones["extracting_organic_growth"] = {
+                "status": status,
+                "message": "Organic growth extracted"
+                if status == "completed"
+                else "Organic growth extraction failed",
+                "updated_at": organic_growth.extraction_date.isoformat()
+                if organic_growth.extraction_date
+                else None,
+            }
+        elif progress and progress.get("milestones", {}).get("extracting_organic_growth", {}).get(
+            "status"
+        ) in ["pending", "in_progress"]:
+            milestones["extracting_organic_growth"] = progress["milestones"][
+                "extracting_organic_growth"
+            ]
+        else:
+            milestones["extracting_organic_growth"] = {
+                "status": "not_found",
+                "message": "Organic growth not found",
+                "updated_at": None,
+            }
+
+        # 9. Classifying Income Statement
         if income_statement and income_statement.line_items:
             has_classifications = any(
                 item.is_operating is not None for item in income_statement.line_items

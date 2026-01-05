@@ -85,6 +85,12 @@ def test_reset_balance_and_income_milestones():
             MilestoneStatus.ERROR,
             message="Failed",
         )
+        update_milestone(
+            document_id,
+            FinancialStatementMilestone.EXTRACTING_SHARES_OUTSTANDING,
+            MilestoneStatus.COMPLETED,
+            message="Done",
+        )
 
         reset_balance_sheet_milestones(document_id)
         progress = get_progress(document_id)
@@ -95,16 +101,24 @@ def test_reset_balance_and_income_milestones():
         income_milestone = progress["milestones"][
             FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT.value
         ]
+        shares_milestone = progress["milestones"][
+            FinancialStatementMilestone.EXTRACTING_SHARES_OUTSTANDING.value
+        ]
 
         assert balance_milestone["status"] == MilestoneStatus.PENDING.value
         assert income_milestone["status"] == MilestoneStatus.ERROR.value
+        assert shares_milestone["status"] == MilestoneStatus.COMPLETED.value
 
         reset_income_statement_milestones(document_id)
         progress = get_progress(document_id)
         income_milestone = progress["milestones"][
             FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT.value
         ]
+        shares_milestone = progress["milestones"][
+            FinancialStatementMilestone.EXTRACTING_SHARES_OUTSTANDING.value
+        ]
 
         assert income_milestone["status"] == MilestoneStatus.PENDING.value
+        assert shares_milestone["status"] == MilestoneStatus.PENDING.value
     finally:
         clear_progress(document_id)

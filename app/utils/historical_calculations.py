@@ -467,7 +467,9 @@ def calculate_adjusted_tax_rate(
 
 
 def calculate_all_historical_metrics(
-    balance_sheet: BalanceSheet, income_statement: IncomeStatement
+    balance_sheet: BalanceSheet,
+    income_statement: IncomeStatement,
+    amortization_value: Decimal | None = None,
 ) -> dict[str, Any]:
     """
     Calculate all historical financial metrics for a document.
@@ -478,7 +480,9 @@ def calculate_all_historical_metrics(
 
     # Get basic values
     revenue = get_revenue(income_statement)
-    amortization = income_statement.amortization if income_statement else None
+    amortization = (
+        amortization_value if amortization_value is not None else income_statement.amortization
+    )
 
     # Calculate metrics
     net_working_capital = calculate_net_working_capital(balance_sheet)

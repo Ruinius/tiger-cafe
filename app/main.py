@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine
 from app.routers import (
+    additional_items,
     auth,
     balance_sheet,
     companies,
@@ -37,6 +38,7 @@ app.include_router(companies.router, prefix="/api/companies", tags=["companies"]
 app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
 app.include_router(balance_sheet.router, prefix="/api/documents", tags=["balance-sheet"])
 app.include_router(income_statement.router, prefix="/api/documents", tags=["income-statement"])
+app.include_router(additional_items.router, prefix="/api/documents", tags=["additional-items"])
 app.include_router(
     historical_calculations.router, prefix="/api/documents", tags=["historical-calculations"]
 )

@@ -520,7 +520,7 @@ All calculations are performed for a specific document using the extracted balan
   - Display in right panel when a company is selected (currently blank)
   - Aggregate data from all eligible documents (earnings announcements, quarterly filings, annual reports) for the company
 
-#### 6.2: Major Refactor for Additional Items and Historical Calculations Structure
+#### 6.2: Major Refactor for Additional Items and Historical Calculations Structure (Complete)
 **Goal**: Separate additional items extraction from income statement extractor and reorganize historical calculations UI structure.
 
 **Backend Refactoring:**
@@ -547,7 +547,7 @@ All calculations are performed for a specific document using the extracted balan
   4. **NOPAT & ROIC Section**: Display NOPAT and ROIC calculations and components
 - Summary Table: Display at the bottom with all time periods as columns, metrics as rows (including new Organic Growth row, Adjusted Tax Rate label change).
 
-#### 6.3: Organic Growth Extraction
+#### 6.3: Organic Growth Extraction (Complete)
 **Goal**: Extract organic growth data by identifying acquisitions and their revenue impact, then calculating organic revenue growth.
 
 **Implementation Approach:**
@@ -569,7 +569,7 @@ All calculations are performed for a specific document using the extracted balan
 - Progress tracking: Add milestone `EXTRACTING_ORGANIC_GROWTH` to `FinancialStatementMilestone` enum.
 - Frontend: Create component to display organic growth table with all fields, formatted appropriately (percentages as percentages, monetary values with units).
 
-#### 6.4: Amortization Extraction (Refactor from Income Statement)
+#### 6.4: Amortization Extraction (Refactor from Income Statement) (Complete)
 **Goal**: Extract all amortization line items from the document, categorize them as operating or non-operating, and store them separately from income statement data.
 
 **Implementation Approach:**
@@ -588,7 +588,7 @@ All calculations are performed for a specific document using the extracted balan
 - Progress tracking: Add milestone `EXTRACTING_AMORTIZATION` or reuse existing `EXTRACTING_ADDITIONAL_ITEMS` milestone (to be refactored in 6.2).
 - Frontend: Create component to display amortization line items table with columns: Line Name, Value, Unit, Type (Operating/Non-operating). Group by type or use visual indicators.
 
-#### 6.5: Other Assets Extraction and Classification
+#### 6.5: Other Assets Extraction and Classification (Complete)
 **Goal**: Extract detailed line items within "Other Current Assets" and "Other Non-Current Assets" from the balance sheet, and classify each as operating or non-operating.
 
 **Implementation Approach:**
@@ -614,7 +614,7 @@ All calculations are performed for a specific document using the extracted balan
 - Progress tracking: Add milestone `EXTRACTING_OTHER_ASSETS`.
 - Frontend: Create component to display other assets line items table. Show columns: Line Name, Value, Unit, Category (Current/Non-Current), Type (Operating/Non-operating). Allow filtering/grouping by category and type.
 
-#### 6.6: Other Liabilities Extraction and Classification
+#### 6.6: Other Liabilities Extraction and Classification (Complete)
 **Goal**: Extract detailed line items within "Other Current Liabilities" and "Other Non-Current Liabilities" from the balance sheet, and classify each as operating or non-operating. Follow the same pattern as Other Assets (section 6.5).
 
 **Implementation Approach:**
@@ -631,7 +631,7 @@ All calculations are performed for a specific document using the extracted balan
 - Progress tracking: Add milestone `EXTRACTING_OTHER_LIABILITIES`.
 - Frontend: Create component similar to other assets component, displaying other liabilities line items with appropriate columns and filtering.
 
-#### 6.7: Shares Outstanding Extraction (Refactor from Income Statement)
+#### 6.7: Shares Outstanding Extraction (Refactor from Income Statement) (Complete)
 **Goal**: Extract basic and diluted shares outstanding from the document. Currently extracted in income statement extractor, should be moved to dedicated agent.
 
 **Implementation Approach:**
@@ -648,7 +648,7 @@ All calculations are performed for a specific document using the extracted balan
 - Progress tracking: Use existing milestone or add `EXTRACTING_SHARES_OUTSTANDING`.
 - Frontend: Can continue displaying in income statement section, or move to separate additional items section. Display as table with: Metric (Basic/Diluted), Value, Unit.
 
-#### 6.8: Non-Operating Asset Classification
+#### 6.8: Non-Operating Asset Classification (Complete)
 **Goal**: Classify all non-operating items from balance sheet, other assets, and other liabilities into detailed categories for valuation adjustments.
 
 **Implementation Approach:**

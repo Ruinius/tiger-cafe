@@ -10,10 +10,15 @@ from datetime import datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from agents.amortization_extractor import extract_amortization
 from agents.income_statement_extractor import extract_income_statement
+from agents.organic_growth_extractor import extract_organic_growth
+from agents.shares_outstanding_extractor import extract_shares_outstanding
 from app.database import get_db
 from app.models.document import Document, DocumentType, ProcessingStatus
+from app.models.amortization import Amortization, AmortizationLineItem
 from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
+from app.models.organic_growth import OrganicGrowth
 from app.models.user import User
 from app.routers.auth import get_current_user
 from app.routers.historical_calculations import calculate_and_save_historical_calculations
@@ -117,7 +122,19 @@ def process_income_statement_async(document_id: str, db: Session):
             # Mark additional items and classification milestones as ERROR as well since we can't proceed
             update_milestone(
                 document_id,
-                FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
+                FinancialStatementMilestone.EXTRACTING_SHARES_OUTSTANDING,
+                MilestoneStatus.ERROR,
+                "Cannot extract: income statement extraction failed",
+            )
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.EXTRACTING_AMORTIZATION,
+                MilestoneStatus.ERROR,
+                "Cannot extract: income statement extraction failed",
+            )
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.EXTRACTING_ORGANIC_GROWTH,
                 MilestoneStatus.ERROR,
                 "Cannot extract: income statement extraction failed",
             )
@@ -159,14 +176,6 @@ def process_income_statement_async(document_id: str, db: Session):
                 "Income statement extraction completed",
             )
 
-        # Update milestone: extracting additional items (happens as part of extract_income_statement)
-        update_milestone(
-            document_id,
-            FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-            MilestoneStatus.COMPLETED,
-            "Additional items extraction completed",
-        )
-
         # Update milestone: classifying income statement
         update_milestone(
             document_id,
@@ -207,16 +216,12 @@ def process_income_statement_async(document_id: str, db: Session):
                     revenue_prior_year=extracted_data.get("revenue_prior_year"),
                     revenue_prior_year_unit=extracted_data.get("revenue_prior_year_unit"),
                     revenue_growth_yoy=extracted_data.get("revenue_growth_yoy"),
-                    basic_shares_outstanding=extracted_data.get("basic_shares_outstanding"),
-                    basic_shares_outstanding_unit=extracted_data.get(
-                        "basic_shares_outstanding_unit"
-                    ),
-                    diluted_shares_outstanding=extracted_data.get("diluted_shares_outstanding"),
-                    diluted_shares_outstanding_unit=extracted_data.get(
-                        "diluted_shares_outstanding_unit"
-                    ),
-                    amortization=extracted_data.get("amortization"),
-                    amortization_unit=extracted_data.get("amortization_unit"),
+                    basic_shares_outstanding=None,
+                    basic_shares_outstanding_unit=None,
+                    diluted_shares_outstanding=None,
+                    diluted_shares_outstanding_unit=None,
+                    amortization=None,
+                    amortization_unit=None,
                 )
                 db_session.add(income_statement)
                 db_session.commit()
@@ -235,20 +240,12 @@ def process_income_statement_async(document_id: str, db: Session):
             income_statement.revenue_prior_year = extracted_data.get("revenue_prior_year")
             income_statement.revenue_prior_year_unit = extracted_data.get("revenue_prior_year_unit")
             income_statement.revenue_growth_yoy = extracted_data.get("revenue_growth_yoy")
-            income_statement.basic_shares_outstanding = extracted_data.get(
-                "basic_shares_outstanding"
-            )
-            income_statement.basic_shares_outstanding_unit = extracted_data.get(
-                "basic_shares_outstanding_unit"
-            )
-            income_statement.diluted_shares_outstanding = extracted_data.get(
-                "diluted_shares_outstanding"
-            )
-            income_statement.diluted_shares_outstanding_unit = extracted_data.get(
-                "diluted_shares_outstanding_unit"
-            )
-            income_statement.amortization = extracted_data.get("amortization")
-            income_statement.amortization_unit = extracted_data.get("amortization_unit")
+            income_statement.basic_shares_outstanding = None
+            income_statement.basic_shares_outstanding_unit = None
+            income_statement.diluted_shares_outstanding = None
+            income_statement.diluted_shares_outstanding_unit = None
+            income_statement.amortization = None
+            income_statement.amortization_unit = None
 
             # Create line items
             for idx, item in enumerate(line_items):
@@ -283,6 +280,221 @@ def process_income_statement_async(document_id: str, db: Session):
                 MilestoneStatus.COMPLETED,
                 classification_message,
             )
+
+            # Extract shares outstanding
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.EXTRACTING_SHARES_OUTSTANDING,
+                MilestoneStatus.IN_PROGRESS,
+                "Extracting shares outstanding...",
+            )
+            try:
+                shares_result = extract_shares_outstanding(
+                    document_id=document_id,
+                    file_path=document.file_path,
+                    time_period=time_period,
+                )
+                if shares_result.get("is_valid"):
+                    income_statement.basic_shares_outstanding = shares_result.get(
+                        "basic_shares_outstanding"
+                    )
+                    income_statement.basic_shares_outstanding_unit = shares_result.get(
+                        "basic_shares_outstanding_unit"
+                    )
+                    income_statement.diluted_shares_outstanding = shares_result.get(
+                        "diluted_shares_outstanding"
+                    )
+                    income_statement.diluted_shares_outstanding_unit = shares_result.get(
+                        "diluted_shares_outstanding_unit"
+                    )
+                    update_milestone(
+                        document_id,
+                        FinancialStatementMilestone.EXTRACTING_SHARES_OUTSTANDING,
+                        MilestoneStatus.COMPLETED,
+                        "Shares outstanding extracted",
+                    )
+                else:
+                    update_milestone(
+                        document_id,
+                        FinancialStatementMilestone.EXTRACTING_SHARES_OUTSTANDING,
+                        MilestoneStatus.ERROR,
+                        "Shares outstanding extraction failed or not found",
+                    )
+            except Exception as shares_error:
+                update_milestone(
+                    document_id,
+                    FinancialStatementMilestone.EXTRACTING_SHARES_OUTSTANDING,
+                    MilestoneStatus.ERROR,
+                    f"Shares outstanding extraction failed: {str(shares_error)}",
+                )
+
+            db_session.commit()
+
+            # Extract amortization
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.EXTRACTING_AMORTIZATION,
+                MilestoneStatus.IN_PROGRESS,
+                "Extracting amortization line items...",
+            )
+            try:
+                amortization_result = extract_amortization(
+                    document_id=document_id,
+                    file_path=document.file_path,
+                    time_period=time_period,
+                )
+                if amortization_result.get("line_items"):
+                    existing_amortization = (
+                        db_session.query(Amortization)
+                        .filter(Amortization.document_id == document_id)
+                        .first()
+                    )
+                    if existing_amortization:
+                        db_session.query(AmortizationLineItem).filter(
+                            AmortizationLineItem.amortization_id == existing_amortization.id
+                        ).delete()
+                        db_session.delete(existing_amortization)
+                        db_session.commit()
+
+                    amortization = Amortization(
+                        id=str(uuid.uuid4()),
+                        document_id=document_id,
+                        time_period=time_period,
+                        currency=income_statement.currency,
+                        chunk_index=amortization_result.get("chunk_index"),
+                        is_valid=amortization_result.get("is_valid", False),
+                        validation_errors=json.dumps(
+                            amortization_result.get("validation_errors", [])
+                        )
+                        if amortization_result.get("validation_errors")
+                        else None,
+                    )
+                    db_session.add(amortization)
+                    db_session.commit()
+                    db_session.refresh(amortization)
+
+                    for idx, item in enumerate(amortization_result.get("line_items", [])):
+                        db_session.add(
+                            AmortizationLineItem(
+                                id=str(uuid.uuid4()),
+                                amortization_id=amortization.id,
+                                line_name=item.get("line_name"),
+                                line_value=item.get("line_value"),
+                                unit=item.get("unit"),
+                                is_operating=item.get("is_operating"),
+                                category=item.get("category"),
+                                line_order=idx,
+                            )
+                        )
+                    db_session.commit()
+
+                    update_milestone(
+                        document_id,
+                        FinancialStatementMilestone.EXTRACTING_AMORTIZATION,
+                        MilestoneStatus.COMPLETED,
+                        "Amortization extraction completed",
+                    )
+                else:
+                    update_milestone(
+                        document_id,
+                        FinancialStatementMilestone.EXTRACTING_AMORTIZATION,
+                        MilestoneStatus.ERROR,
+                        "Amortization extraction failed or not found",
+                    )
+            except Exception as amortization_error:
+                update_milestone(
+                    document_id,
+                    FinancialStatementMilestone.EXTRACTING_AMORTIZATION,
+                    MilestoneStatus.ERROR,
+                    f"Amortization extraction failed: {str(amortization_error)}",
+                )
+
+            # Extract organic growth
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.EXTRACTING_ORGANIC_GROWTH,
+                MilestoneStatus.IN_PROGRESS,
+                "Extracting organic growth signals...",
+            )
+            try:
+                income_statement_data = {
+                    "line_items": [
+                        {
+                            "line_name": item.line_name,
+                            "line_value": item.line_value,
+                        }
+                        for item in income_statement.line_items
+                    ],
+                    "revenue_prior_year": income_statement.revenue_prior_year,
+                }
+                organic_growth_result = extract_organic_growth(
+                    document_id=document_id,
+                    file_path=document.file_path,
+                    time_period=time_period,
+                    income_statement_data=income_statement_data,
+                )
+                if organic_growth_result.get("current_period_revenue") is not None:
+                    existing_growth = (
+                        db_session.query(OrganicGrowth)
+                        .filter(OrganicGrowth.document_id == document_id)
+                        .first()
+                    )
+                    if existing_growth:
+                        db_session.delete(existing_growth)
+                        db_session.commit()
+
+                    organic_growth = OrganicGrowth(
+                        id=str(uuid.uuid4()),
+                        document_id=document_id,
+                        time_period=time_period,
+                        currency=income_statement.currency,
+                        prior_period_revenue=organic_growth_result.get("prior_period_revenue"),
+                        prior_period_revenue_unit=income_statement.revenue_prior_year_unit,
+                        current_period_revenue=organic_growth_result.get("current_period_revenue"),
+                        current_period_revenue_unit=income_statement.unit,
+                        simple_revenue_growth=organic_growth_result.get("simple_revenue_growth"),
+                        acquisition_revenue_impact=organic_growth_result.get(
+                            "acquisition_revenue_impact"
+                        ),
+                        acquisition_revenue_impact_unit=organic_growth_result.get(
+                            "acquisition_revenue_impact_unit"
+                        ),
+                        current_period_adjusted_revenue=organic_growth_result.get(
+                            "current_period_adjusted_revenue"
+                        ),
+                        current_period_adjusted_revenue_unit=income_statement.unit,
+                        organic_revenue_growth=organic_growth_result.get("organic_revenue_growth"),
+                        chunk_index=organic_growth_result.get("chunk_index"),
+                        is_valid=organic_growth_result.get("is_valid", False),
+                        validation_errors=json.dumps(
+                            organic_growth_result.get("validation_errors", [])
+                        )
+                        if organic_growth_result.get("validation_errors")
+                        else None,
+                    )
+                    db_session.add(organic_growth)
+                    db_session.commit()
+
+                    update_milestone(
+                        document_id,
+                        FinancialStatementMilestone.EXTRACTING_ORGANIC_GROWTH,
+                        MilestoneStatus.COMPLETED,
+                        "Organic growth extraction completed",
+                    )
+                else:
+                    update_milestone(
+                        document_id,
+                        FinancialStatementMilestone.EXTRACTING_ORGANIC_GROWTH,
+                        MilestoneStatus.ERROR,
+                        "Organic growth extraction failed or insufficient data",
+                    )
+            except Exception as organic_error:
+                update_milestone(
+                    document_id,
+                    FinancialStatementMilestone.EXTRACTING_ORGANIC_GROWTH,
+                    MilestoneStatus.ERROR,
+                    f"Organic growth extraction failed: {str(organic_error)}",
+                )
 
             # Automatically trigger historical calculations after income statement completes
             # Use a fresh database session to ensure we can see committed data

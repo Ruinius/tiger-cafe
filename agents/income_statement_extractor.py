@@ -1361,19 +1361,6 @@ def extract_income_statement(
                         "unit": None,
                         "time_period": time_period,
                     }
-                    # Extract additional data before returning
-                    additional_data_text = find_additional_data_section(
-                        document_id, file_path, time_period
-                    )
-                    if additional_data_text:
-                        additional_data = extract_additional_data_llm(
-                            additional_data_text, time_period
-                        )
-                    else:
-                        additional_data = extract_additional_data_llm(
-                            income_statement_text, time_period
-                        )
-                    extracted_data.update(additional_data)
                     classified_items = classify_line_items_llm(extracted_data["line_items"])
                     extracted_data["line_items"] = classified_items
                     extracted_data["is_valid"] = False
@@ -1441,26 +1428,6 @@ def extract_income_statement(
     if not income_statement_text or extracted_data is None:
         raise Exception("Failed to find income statement section after all attempts")
 
-    # Extract additional data (shares outstanding, amortization)
-    additional_data_msg = "Searching for additional data (shares outstanding, amortization)..."
-    print(additional_data_msg)
-    add_log(
-        document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, additional_data_msg
-    )
-    additional_data_text = find_additional_data_section(document_id, file_path, time_period)
-    if additional_data_text:
-        additional_data = extract_additional_data_llm(additional_data_text, time_period)
-    else:
-        additional_data = extract_additional_data_llm(income_statement_text, time_period)
-    extracted_data.update(additional_data)
-    additional_complete_msg = "Additional data extraction completed"
-    print(additional_complete_msg)
-    add_log(
-        document_id,
-        FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-        additional_complete_msg,
-    )
-
     # Stage 2: Post-process and validate extraction (retry extraction with LLM feedback)
     EXTRACTION_MAX_RETRIES = 3
     normalization_errors = []
@@ -1493,10 +1460,6 @@ def extract_income_statement(
                     extracted_data,  # Previous extraction
                     normalization_errors,  # Validation errors with differences from previous attempt
                 )
-                # Re-extract additional data for retry
-                additional_data = extract_additional_data_llm(income_statement_text, time_period)
-                extracted_data.update(additional_data)
-
             # Post-process line items (rename key items, normalize cost format)
             # This performs validation during normalization using final_diff logic
             processed_line_items, normalization_errors = post_process_income_statement_line_items(

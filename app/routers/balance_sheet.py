@@ -10,14 +10,51 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from agents.balance_sheet_extractor import extract_balance_sheet
+from agents.non_operating_classifier import classify_non_operating_items
+from agents.other_assets_extractor import (
+    extract_original_name_from_standardized as extract_other_assets_label,
+    extract_other_assets,
+)
+from agents.other_liabilities_extractor import (
+    extract_original_name_from_standardized as extract_other_liabilities_label,
+    extract_other_liabilities,
+)
 from app.database import get_db
 from app.models.balance_sheet import BalanceSheet, BalanceSheetLineItem
 from app.models.document import Document, DocumentType, ProcessingStatus
+from app.models.non_operating_classification import (
+    NonOperatingClassification,
+    NonOperatingClassificationItem,
+)
+from app.models.other_assets import OtherAssets, OtherAssetsLineItem
+from app.models.other_liabilities import OtherLiabilities, OtherLiabilitiesLineItem
 from app.models.user import User
 from app.routers.auth import get_current_user
 from app.schemas.balance_sheet import BalanceSheet as BalanceSheetSchema
 
 router = APIRouter()
+
+
+def _find_standardized_line_item(line_items: list[BalanceSheetLineItem], label: str):
+    for item in line_items:
+        if label.lower() in (item.line_name or "").lower():
+            return item
+    return None
+
+
+def _extract_balance_sheet_terms(
+    balance_sheet: BalanceSheet,
+    label: str,
+) -> tuple[list[str], float | None]:
+    item = _find_standardized_line_item(balance_sheet.line_items, label)
+    if not item:
+        return [], None
+
+    original = extract_other_assets_label(item.line_name) or extract_other_liabilities_label(
+        item.line_name
+    )
+    terms = [original] if original else [item.line_name]
+    return terms, float(item.line_value) if item.line_value is not None else None
 
 
 def process_balance_sheet_async(document_id: str, db: Session):
@@ -254,6 +291,273 @@ def process_balance_sheet_async(document_id: str, db: Session):
             )
             raise  # Re-raise to be caught by outer exception handler
 
+        # Extract other assets
+        update_milestone(
+            document_id,
+            FinancialStatementMilestone.EXTRACTING_OTHER_ASSETS,
+            MilestoneStatus.IN_PROGRESS,
+            "Extracting other assets line items...",
+        )
+        other_assets_result = None
+        if balance_sheet and balance_sheet.line_items:
+            current_terms, current_total = _extract_balance_sheet_terms(
+                balance_sheet, "Other Current Assets"
+            )
+            non_current_terms, non_current_total = _extract_balance_sheet_terms(
+                balance_sheet, "Other Non-Current Assets"
+            )
+            query_terms = current_terms + non_current_terms
+            other_assets_result = extract_other_assets(
+                document_id=document_id,
+                file_path=document.file_path,
+                time_period=time_period,
+                query_terms=query_terms,
+                expected_current_total=current_total,
+                expected_non_current_total=non_current_total,
+            )
+
+        if other_assets_result and other_assets_result.get("line_items"):
+            existing_other_assets = (
+                db_session.query(OtherAssets).filter(OtherAssets.document_id == document_id).first()
+            )
+            if existing_other_assets:
+                db_session.query(OtherAssetsLineItem).filter(
+                    OtherAssetsLineItem.other_assets_id == existing_other_assets.id
+                ).delete()
+                db_session.delete(existing_other_assets)
+                db_session.commit()
+
+            other_assets = OtherAssets(
+                id=str(uuid.uuid4()),
+                document_id=document_id,
+                time_period=time_period,
+                currency=balance_sheet.currency,
+                chunk_index=other_assets_result.get("chunk_index"),
+                is_valid=other_assets_result.get("is_valid", False),
+                validation_errors=json.dumps(other_assets_result.get("validation_errors", []))
+                if other_assets_result.get("validation_errors")
+                else None,
+            )
+            db_session.add(other_assets)
+            db_session.commit()
+            db_session.refresh(other_assets)
+
+            for idx, item in enumerate(other_assets_result.get("line_items", [])):
+                db_session.add(
+                    OtherAssetsLineItem(
+                        id=str(uuid.uuid4()),
+                        other_assets_id=other_assets.id,
+                        line_name=item.get("line_name"),
+                        line_value=item.get("line_value"),
+                        unit=item.get("unit"),
+                        is_operating=item.get("is_operating"),
+                        category=item.get("category"),
+                        line_order=idx,
+                    )
+                )
+            db_session.commit()
+
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.EXTRACTING_OTHER_ASSETS,
+                MilestoneStatus.COMPLETED,
+                "Other assets extraction completed",
+            )
+        else:
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.EXTRACTING_OTHER_ASSETS,
+                MilestoneStatus.ERROR,
+                "Other assets extraction failed or no line items found",
+            )
+
+        # Extract other liabilities
+        update_milestone(
+            document_id,
+            FinancialStatementMilestone.EXTRACTING_OTHER_LIABILITIES,
+            MilestoneStatus.IN_PROGRESS,
+            "Extracting other liabilities line items...",
+        )
+        other_liabilities_result = None
+        if balance_sheet and balance_sheet.line_items:
+            current_terms, current_total = _extract_balance_sheet_terms(
+                balance_sheet, "Other Current Liabilities"
+            )
+            non_current_terms, non_current_total = _extract_balance_sheet_terms(
+                balance_sheet, "Other Non-Current Liabilities"
+            )
+            query_terms = current_terms + non_current_terms
+            other_liabilities_result = extract_other_liabilities(
+                document_id=document_id,
+                file_path=document.file_path,
+                time_period=time_period,
+                query_terms=query_terms,
+                expected_current_total=current_total,
+                expected_non_current_total=non_current_total,
+            )
+
+        if other_liabilities_result and other_liabilities_result.get("line_items"):
+            existing_other_liabilities = (
+                db_session.query(OtherLiabilities)
+                .filter(OtherLiabilities.document_id == document_id)
+                .first()
+            )
+            if existing_other_liabilities:
+                db_session.query(OtherLiabilitiesLineItem).filter(
+                    OtherLiabilitiesLineItem.other_liabilities_id == existing_other_liabilities.id
+                ).delete()
+                db_session.delete(existing_other_liabilities)
+                db_session.commit()
+
+            other_liabilities = OtherLiabilities(
+                id=str(uuid.uuid4()),
+                document_id=document_id,
+                time_period=time_period,
+                currency=balance_sheet.currency,
+                chunk_index=other_liabilities_result.get("chunk_index"),
+                is_valid=other_liabilities_result.get("is_valid", False),
+                validation_errors=json.dumps(other_liabilities_result.get("validation_errors", []))
+                if other_liabilities_result.get("validation_errors")
+                else None,
+            )
+            db_session.add(other_liabilities)
+            db_session.commit()
+            db_session.refresh(other_liabilities)
+
+            for idx, item in enumerate(other_liabilities_result.get("line_items", [])):
+                db_session.add(
+                    OtherLiabilitiesLineItem(
+                        id=str(uuid.uuid4()),
+                        other_liabilities_id=other_liabilities.id,
+                        line_name=item.get("line_name"),
+                        line_value=item.get("line_value"),
+                        unit=item.get("unit"),
+                        is_operating=item.get("is_operating"),
+                        category=item.get("category"),
+                        line_order=idx,
+                    )
+                )
+            db_session.commit()
+
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.EXTRACTING_OTHER_LIABILITIES,
+                MilestoneStatus.COMPLETED,
+                "Other liabilities extraction completed",
+            )
+        else:
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.EXTRACTING_OTHER_LIABILITIES,
+                MilestoneStatus.ERROR,
+                "Other liabilities extraction failed or no line items found",
+            )
+
+        # Classify non-operating items
+        update_milestone(
+            document_id,
+            FinancialStatementMilestone.CLASSIFYING_NON_OPERATING_ITEMS,
+            MilestoneStatus.IN_PROGRESS,
+            "Classifying non-operating items...",
+        )
+        non_operating_items = []
+        if balance_sheet and balance_sheet.line_items:
+            for item in balance_sheet.line_items:
+                if item.is_operating is False:
+                    non_operating_items.append(
+                        {
+                            "line_name": item.line_name,
+                            "line_value": float(item.line_value) if item.line_value is not None else None,
+                            "unit": balance_sheet.unit,
+                            "source": "balance_sheet",
+                        }
+                    )
+
+        other_assets = (
+            db_session.query(OtherAssets).filter(OtherAssets.document_id == document_id).first()
+        )
+        if other_assets and other_assets.line_items:
+            for item in other_assets.line_items:
+                if item.is_operating is False:
+                    non_operating_items.append(
+                        {
+                            "line_name": item.line_name,
+                            "line_value": float(item.line_value) if item.line_value is not None else None,
+                            "unit": item.unit,
+                            "source": "other_assets",
+                        }
+                    )
+
+        other_liabilities = (
+            db_session.query(OtherLiabilities)
+            .filter(OtherLiabilities.document_id == document_id)
+            .first()
+        )
+        if other_liabilities and other_liabilities.line_items:
+            for item in other_liabilities.line_items:
+                if item.is_operating is False:
+                    non_operating_items.append(
+                        {
+                            "line_name": item.line_name,
+                            "line_value": float(item.line_value) if item.line_value is not None else None,
+                            "unit": item.unit,
+                            "source": "other_liabilities",
+                        }
+                    )
+
+        classified_items = classify_non_operating_items(non_operating_items)
+        if classified_items:
+            existing_classification = (
+                db_session.query(NonOperatingClassification)
+                .filter(NonOperatingClassification.document_id == document_id)
+                .first()
+            )
+            if existing_classification:
+                db_session.query(NonOperatingClassificationItem).filter(
+                    NonOperatingClassificationItem.classification_id
+                    == existing_classification.id
+                ).delete()
+                db_session.delete(existing_classification)
+                db_session.commit()
+
+            classification = NonOperatingClassification(
+                id=str(uuid.uuid4()),
+                document_id=document_id,
+                time_period=time_period,
+            )
+            db_session.add(classification)
+            db_session.commit()
+            db_session.refresh(classification)
+
+            for idx, item in enumerate(classified_items):
+                db_session.add(
+                    NonOperatingClassificationItem(
+                        id=str(uuid.uuid4()),
+                        classification_id=classification.id,
+                        line_name=item.get("line_name"),
+                        line_value=item.get("line_value"),
+                        unit=item.get("unit"),
+                        category=item.get("category"),
+                        source=item.get("source"),
+                        line_order=idx,
+                    )
+                )
+            db_session.commit()
+
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.CLASSIFYING_NON_OPERATING_ITEMS,
+                MilestoneStatus.COMPLETED,
+                "Non-operating items classification completed",
+            )
+        else:
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.CLASSIFYING_NON_OPERATING_ITEMS,
+                MilestoneStatus.ERROR,
+                "No non-operating items found to classify",
+            )
+
         # Update document status
         document.analysis_status = ProcessingStatus.PROCESSED
         document.processed_at = datetime.utcnow()
@@ -371,6 +675,14 @@ async def rerun_financial_statements(
     # Delete existing financial statements and historical calculations before re-run
     from app.models.historical_calculation import HistoricalCalculation
     from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
+    from app.models.amortization import Amortization, AmortizationLineItem
+    from app.models.non_operating_classification import (
+        NonOperatingClassification,
+        NonOperatingClassificationItem,
+    )
+    from app.models.organic_growth import OrganicGrowth
+    from app.models.other_assets import OtherAssets, OtherAssetsLineItem
+    from app.models.other_liabilities import OtherLiabilities, OtherLiabilitiesLineItem
 
     # Delete existing balance sheet
     existing_balance_sheet = (
@@ -391,6 +703,55 @@ async def rerun_financial_statements(
             IncomeStatementLineItem.income_statement_id == existing_income_statement.id
         ).delete()
         db.delete(existing_income_statement)
+
+    # Delete existing amortization
+    existing_amortization = (
+        db.query(Amortization).filter(Amortization.document_id == document_id).first()
+    )
+    if existing_amortization:
+        db.query(AmortizationLineItem).filter(
+            AmortizationLineItem.amortization_id == existing_amortization.id
+        ).delete()
+        db.delete(existing_amortization)
+
+    # Delete existing organic growth
+    existing_organic_growth = (
+        db.query(OrganicGrowth).filter(OrganicGrowth.document_id == document_id).first()
+    )
+    if existing_organic_growth:
+        db.delete(existing_organic_growth)
+
+    # Delete existing other assets
+    existing_other_assets = (
+        db.query(OtherAssets).filter(OtherAssets.document_id == document_id).first()
+    )
+    if existing_other_assets:
+        db.query(OtherAssetsLineItem).filter(
+            OtherAssetsLineItem.other_assets_id == existing_other_assets.id
+        ).delete()
+        db.delete(existing_other_assets)
+
+    # Delete existing other liabilities
+    existing_other_liabilities = (
+        db.query(OtherLiabilities).filter(OtherLiabilities.document_id == document_id).first()
+    )
+    if existing_other_liabilities:
+        db.query(OtherLiabilitiesLineItem).filter(
+            OtherLiabilitiesLineItem.other_liabilities_id == existing_other_liabilities.id
+        ).delete()
+        db.delete(existing_other_liabilities)
+
+    # Delete existing non-operating classification
+    existing_non_operating = (
+        db.query(NonOperatingClassification)
+        .filter(NonOperatingClassification.document_id == document_id)
+        .first()
+    )
+    if existing_non_operating:
+        db.query(NonOperatingClassificationItem).filter(
+            NonOperatingClassificationItem.classification_id == existing_non_operating.id
+        ).delete()
+        db.delete(existing_non_operating)
 
     # Delete existing historical calculations
     existing_historical_calc = (
@@ -455,6 +816,14 @@ async def rerun_financial_statements_test(
     # Delete existing financial statements and historical calculations before re-run
     from app.models.historical_calculation import HistoricalCalculation
     from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
+    from app.models.amortization import Amortization, AmortizationLineItem
+    from app.models.non_operating_classification import (
+        NonOperatingClassification,
+        NonOperatingClassificationItem,
+    )
+    from app.models.organic_growth import OrganicGrowth
+    from app.models.other_assets import OtherAssets, OtherAssetsLineItem
+    from app.models.other_liabilities import OtherLiabilities, OtherLiabilitiesLineItem
 
     # Delete existing balance sheet
     existing_balance_sheet = (
@@ -476,6 +845,54 @@ async def rerun_financial_statements_test(
         ).delete()
         db.delete(existing_income_statement)
 
+    # Delete existing amortization
+    existing_amortization = (
+        db.query(Amortization).filter(Amortization.document_id == document_id).first()
+    )
+    if existing_amortization:
+        db.query(AmortizationLineItem).filter(
+            AmortizationLineItem.amortization_id == existing_amortization.id
+        ).delete()
+        db.delete(existing_amortization)
+
+    # Delete existing organic growth
+    existing_organic_growth = (
+        db.query(OrganicGrowth).filter(OrganicGrowth.document_id == document_id).first()
+    )
+    if existing_organic_growth:
+        db.delete(existing_organic_growth)
+
+    # Delete existing other assets
+    existing_other_assets = (
+        db.query(OtherAssets).filter(OtherAssets.document_id == document_id).first()
+    )
+    if existing_other_assets:
+        db.query(OtherAssetsLineItem).filter(
+            OtherAssetsLineItem.other_assets_id == existing_other_assets.id
+        ).delete()
+        db.delete(existing_other_assets)
+
+    # Delete existing other liabilities
+    existing_other_liabilities = (
+        db.query(OtherLiabilities).filter(OtherLiabilities.document_id == document_id).first()
+    )
+    if existing_other_liabilities:
+        db.query(OtherLiabilitiesLineItem).filter(
+            OtherLiabilitiesLineItem.other_liabilities_id == existing_other_liabilities.id
+        ).delete()
+        db.delete(existing_other_liabilities)
+
+    # Delete existing non-operating classification
+    existing_non_operating = (
+        db.query(NonOperatingClassification)
+        .filter(NonOperatingClassification.document_id == document_id)
+        .first()
+    )
+    if existing_non_operating:
+        db.query(NonOperatingClassificationItem).filter(
+            NonOperatingClassificationItem.classification_id == existing_non_operating.id
+        ).delete()
+        db.delete(existing_non_operating)
     # Delete existing historical calculations
     existing_historical_calc = (
         db.query(HistoricalCalculation)
@@ -512,7 +929,15 @@ async def delete_financial_statements(
     document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """Delete all financial statements (balance sheet and income statement) for a document"""
+    from app.models.amortization import Amortization, AmortizationLineItem
     from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
+    from app.models.non_operating_classification import (
+        NonOperatingClassification,
+        NonOperatingClassificationItem,
+    )
+    from app.models.organic_growth import OrganicGrowth
+    from app.models.other_assets import OtherAssets, OtherAssetsLineItem
+    from app.models.other_liabilities import OtherLiabilities, OtherLiabilitiesLineItem
     from app.utils.financial_statement_progress import clear_progress
 
     document = db.query(Document).filter(Document.id == document_id).first()
@@ -538,6 +963,46 @@ async def delete_financial_statements(
             IncomeStatementLineItem.income_statement_id == income_statement.id
         ).delete()
         db.delete(income_statement)
+
+    amortization = db.query(Amortization).filter(Amortization.document_id == document_id).first()
+    if amortization:
+        db.query(AmortizationLineItem).filter(
+            AmortizationLineItem.amortization_id == amortization.id
+        ).delete()
+        db.delete(amortization)
+
+    organic_growth = (
+        db.query(OrganicGrowth).filter(OrganicGrowth.document_id == document_id).first()
+    )
+    if organic_growth:
+        db.delete(organic_growth)
+
+    other_assets = db.query(OtherAssets).filter(OtherAssets.document_id == document_id).first()
+    if other_assets:
+        db.query(OtherAssetsLineItem).filter(
+            OtherAssetsLineItem.other_assets_id == other_assets.id
+        ).delete()
+        db.delete(other_assets)
+
+    other_liabilities = (
+        db.query(OtherLiabilities).filter(OtherLiabilities.document_id == document_id).first()
+    )
+    if other_liabilities:
+        db.query(OtherLiabilitiesLineItem).filter(
+            OtherLiabilitiesLineItem.other_liabilities_id == other_liabilities.id
+        ).delete()
+        db.delete(other_liabilities)
+
+    non_operating = (
+        db.query(NonOperatingClassification)
+        .filter(NonOperatingClassification.document_id == document_id)
+        .first()
+    )
+    if non_operating:
+        db.query(NonOperatingClassificationItem).filter(
+            NonOperatingClassificationItem.classification_id == non_operating.id
+        ).delete()
+        db.delete(non_operating)
 
     # Clear progress tracking
     clear_progress(document_id)
@@ -554,7 +1019,15 @@ async def delete_financial_statements(
 @router.delete("/{document_id}/financial-statements/test")
 async def delete_financial_statements_test(document_id: str, db: Session = Depends(get_db)):
     """TEST ENDPOINT: Delete all financial statements without authentication"""
+    from app.models.amortization import Amortization, AmortizationLineItem
     from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
+    from app.models.non_operating_classification import (
+        NonOperatingClassification,
+        NonOperatingClassificationItem,
+    )
+    from app.models.organic_growth import OrganicGrowth
+    from app.models.other_assets import OtherAssets, OtherAssetsLineItem
+    from app.models.other_liabilities import OtherLiabilities, OtherLiabilitiesLineItem
     from app.utils.financial_statement_progress import clear_progress
 
     document = db.query(Document).filter(Document.id == document_id).first()
@@ -580,6 +1053,46 @@ async def delete_financial_statements_test(document_id: str, db: Session = Depen
             IncomeStatementLineItem.income_statement_id == income_statement.id
         ).delete()
         db.delete(income_statement)
+
+    amortization = db.query(Amortization).filter(Amortization.document_id == document_id).first()
+    if amortization:
+        db.query(AmortizationLineItem).filter(
+            AmortizationLineItem.amortization_id == amortization.id
+        ).delete()
+        db.delete(amortization)
+
+    organic_growth = (
+        db.query(OrganicGrowth).filter(OrganicGrowth.document_id == document_id).first()
+    )
+    if organic_growth:
+        db.delete(organic_growth)
+
+    other_assets = db.query(OtherAssets).filter(OtherAssets.document_id == document_id).first()
+    if other_assets:
+        db.query(OtherAssetsLineItem).filter(
+            OtherAssetsLineItem.other_assets_id == other_assets.id
+        ).delete()
+        db.delete(other_assets)
+
+    other_liabilities = (
+        db.query(OtherLiabilities).filter(OtherLiabilities.document_id == document_id).first()
+    )
+    if other_liabilities:
+        db.query(OtherLiabilitiesLineItem).filter(
+            OtherLiabilitiesLineItem.other_liabilities_id == other_liabilities.id
+        ).delete()
+        db.delete(other_liabilities)
+
+    non_operating = (
+        db.query(NonOperatingClassification)
+        .filter(NonOperatingClassification.document_id == document_id)
+        .first()
+    )
+    if non_operating:
+        db.query(NonOperatingClassificationItem).filter(
+            NonOperatingClassificationItem.classification_id == non_operating.id
+        ).delete()
+        db.delete(non_operating)
 
     # Clear progress tracking
     clear_progress(document_id)

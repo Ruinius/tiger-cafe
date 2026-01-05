@@ -17,8 +17,13 @@ class MilestoneStatus(Enum):
 class FinancialStatementMilestone(Enum):
     EXTRACTING_BALANCE_SHEET = "extracting_balance_sheet"
     CLASSIFYING_BALANCE_SHEET = "classifying_balance_sheet"
+    EXTRACTING_OTHER_ASSETS = "extracting_other_assets"
+    EXTRACTING_OTHER_LIABILITIES = "extracting_other_liabilities"
+    CLASSIFYING_NON_OPERATING_ITEMS = "classifying_non_operating_items"
     EXTRACTING_INCOME_STATEMENT = "extracting_income_statement"
-    EXTRACTING_ADDITIONAL_ITEMS = "extracting_additional_items"
+    EXTRACTING_SHARES_OUTSTANDING = "extracting_shares_outstanding"
+    EXTRACTING_AMORTIZATION = "extracting_amortization"
+    EXTRACTING_ORGANIC_GROWTH = "extracting_organic_growth"
     CLASSIFYING_INCOME_STATEMENT = "classifying_income_statement"
 
 
@@ -139,13 +144,43 @@ def initialize_progress(document_id: str):
                     "logs": [],
                     "updated_at": datetime.utcnow().isoformat(),
                 },
+                FinancialStatementMilestone.EXTRACTING_OTHER_ASSETS.value: {
+                    "status": MilestoneStatus.PENDING.value,
+                    "message": None,
+                    "logs": [],
+                    "updated_at": datetime.utcnow().isoformat(),
+                },
+                FinancialStatementMilestone.EXTRACTING_OTHER_LIABILITIES.value: {
+                    "status": MilestoneStatus.PENDING.value,
+                    "message": None,
+                    "logs": [],
+                    "updated_at": datetime.utcnow().isoformat(),
+                },
+                FinancialStatementMilestone.CLASSIFYING_NON_OPERATING_ITEMS.value: {
+                    "status": MilestoneStatus.PENDING.value,
+                    "message": None,
+                    "logs": [],
+                    "updated_at": datetime.utcnow().isoformat(),
+                },
                 FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT.value: {
                     "status": MilestoneStatus.PENDING.value,
                     "message": None,
                     "logs": [],
                     "updated_at": datetime.utcnow().isoformat(),
                 },
-                FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS.value: {
+                FinancialStatementMilestone.EXTRACTING_SHARES_OUTSTANDING.value: {
+                    "status": MilestoneStatus.PENDING.value,
+                    "message": None,
+                    "logs": [],
+                    "updated_at": datetime.utcnow().isoformat(),
+                },
+                FinancialStatementMilestone.EXTRACTING_AMORTIZATION.value: {
+                    "status": MilestoneStatus.PENDING.value,
+                    "message": None,
+                    "logs": [],
+                    "updated_at": datetime.utcnow().isoformat(),
+                },
+                FinancialStatementMilestone.EXTRACTING_ORGANIC_GROWTH.value: {
                     "status": MilestoneStatus.PENDING.value,
                     "message": None,
                     "logs": [],
@@ -189,6 +224,30 @@ def reset_balance_sheet_milestones(document_id: str):
             "logs": [],
             "updated_at": datetime.utcnow().isoformat(),
         }
+        _progress_store[document_id]["milestones"][
+            FinancialStatementMilestone.EXTRACTING_OTHER_ASSETS.value
+        ] = {
+            "status": MilestoneStatus.PENDING.value,
+            "message": None,
+            "logs": [],
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+        _progress_store[document_id]["milestones"][
+            FinancialStatementMilestone.EXTRACTING_OTHER_LIABILITIES.value
+        ] = {
+            "status": MilestoneStatus.PENDING.value,
+            "message": None,
+            "logs": [],
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+        _progress_store[document_id]["milestones"][
+            FinancialStatementMilestone.CLASSIFYING_NON_OPERATING_ITEMS.value
+        ] = {
+            "status": MilestoneStatus.PENDING.value,
+            "message": None,
+            "logs": [],
+            "updated_at": datetime.utcnow().isoformat(),
+        }
         _progress_store[document_id]["last_updated"] = datetime.utcnow().isoformat()
 
 
@@ -212,7 +271,23 @@ def reset_income_statement_milestones(document_id: str):
             "updated_at": datetime.utcnow().isoformat(),
         }
         _progress_store[document_id]["milestones"][
-            FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS.value
+            FinancialStatementMilestone.EXTRACTING_SHARES_OUTSTANDING.value
+        ] = {
+            "status": MilestoneStatus.PENDING.value,
+            "message": None,
+            "logs": [],
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+        _progress_store[document_id]["milestones"][
+            FinancialStatementMilestone.EXTRACTING_AMORTIZATION.value
+        ] = {
+            "status": MilestoneStatus.PENDING.value,
+            "message": None,
+            "logs": [],
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+        _progress_store[document_id]["milestones"][
+            FinancialStatementMilestone.EXTRACTING_ORGANIC_GROWTH.value
         ] = {
             "status": MilestoneStatus.PENDING.value,
             "message": None,

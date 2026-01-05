@@ -75,3 +75,10 @@ class Document(Base):
     historical_calculation = relationship(
         "HistoricalCalculation", back_populates="document", uselist=False
     )
+    organic_growth = relationship("OrganicGrowth", back_populates="document", uselist=False)
+    amortization = relationship("Amortization", back_populates="document", uselist=False)
+    other_assets = relationship("OtherAssets", back_populates="document", uselist=False)
+    other_liabilities = relationship("OtherLiabilities", back_populates="document", uselist=False)
+    non_operating_classification = relationship(
+        "NonOperatingClassification", back_populates="document", uselist=False
+    )

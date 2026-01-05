@@ -12,6 +12,7 @@ from app.models.balance_sheet import BalanceSheet
 from app.models.document import Document
 from app.models.historical_calculation import HistoricalCalculation
 from app.models.income_statement import IncomeStatement
+from app.models.amortization import Amortization
 from app.models.user import User
 from app.routers.auth import get_current_user
 from app.schemas.historical_calculation import HistoricalCalculation as HistoricalCalculationSchema
@@ -43,8 +44,17 @@ def calculate_and_save_historical_calculations(
     if not income_statement:
         raise HTTPException(status_code=404, detail="Income statement not found for this document")
 
+    amortization = (
+        db.query(Amortization).filter(Amortization.document_id == document_id).first()
+    )
+    amortization_value = None
+    if amortization and amortization.line_items:
+        amortization_value = sum(item.line_value for item in amortization.line_items)
+
     # Calculate all metrics
-    results = calculate_all_historical_metrics(balance_sheet, income_statement)
+    results = calculate_all_historical_metrics(
+        balance_sheet, income_statement, amortization_value=amortization_value
+    )
 
     # Convert calculation notes list to JSON string
     import json

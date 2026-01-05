@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import axios from 'axios'
 import { useAuth } from '../contexts/AuthContext'
+import AmortizationTable from './AmortizationTable'
+import NonOperatingClassificationTable from './NonOperatingClassificationTable'
+import OrganicGrowthTable from './OrganicGrowthTable'
+import OtherAssetsTable from './OtherAssetsTable'
+import OtherLiabilitiesTable from './OtherLiabilitiesTable'
+import SharesOutstandingTable from './SharesOutstandingTable'
 import './RightPanel.css'
 
 function RightPanel({ selectedCompany, selectedDocument }) {
@@ -8,6 +14,12 @@ function RightPanel({ selectedCompany, selectedDocument }) {
   const { isAuthenticated, token } = useAuth()
   const [balanceSheet, setBalanceSheet] = useState(null)
   const [incomeStatement, setIncomeStatement] = useState(null)
+  const [organicGrowth, setOrganicGrowth] = useState(null)
+  const [amortization, setAmortization] = useState(null)
+  const [otherAssets, setOtherAssets] = useState(null)
+  const [otherLiabilities, setOtherLiabilities] = useState(null)
+  const [nonOperatingClassification, setNonOperatingClassification] = useState(null)
+  const [additionalItemsLoadAttempted, setAdditionalItemsLoadAttempted] = useState(false)
   const [historicalCalculations, setHistoricalCalculations] = useState(null)
   const [historicalCalculationsLoadAttempted, setHistoricalCalculationsLoadAttempted] = useState(false)
   const [companyHistoricalCalculations, setCompanyHistoricalCalculations] = useState(null)
@@ -148,12 +160,57 @@ function RightPanel({ selectedCompany, selectedDocument }) {
     }
   }, [selectedDocument, isAuthenticated, token])
 
+  const loadAdditionalItems = useCallback(async () => {
+    if (!selectedDocument || !isEligibleForFinancialStatements) return
+
+    const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+
+    const endpoints = {
+      organicGrowth: 'organic-growth',
+      amortization: 'amortization',
+      otherAssets: 'other-assets',
+      otherLiabilities: 'other-liabilities',
+      nonOperatingClassification: 'non-operating-classification'
+    }
+
+    const results = await Promise.allSettled(
+      Object.entries(endpoints).map(([key, endpoint]) =>
+        axios.get(`${API_BASE_URL}/documents/${selectedDocument.id}/${endpoint}`, { headers })
+          .then(response => ({ key, data: response.data?.data || null }))
+      )
+    )
+
+    results.forEach(result => {
+      if (result.status === 'fulfilled') {
+        const { key, data } = result.value
+        if (key === 'organicGrowth') setOrganicGrowth(data)
+        if (key === 'amortization') setAmortization(data)
+        if (key === 'otherAssets') setOtherAssets(data)
+        if (key === 'otherLiabilities') setOtherLiabilities(data)
+        if (key === 'nonOperatingClassification') setNonOperatingClassification(data)
+      } else {
+        const message = result.reason?.response?.data?.detail
+        if (message && message.includes('not found')) {
+          // Keep null for not found
+        } else {
+          setError(result.reason?.response?.data?.detail || 'Failed to load additional items')
+        }
+      }
+    })
+  }, [selectedDocument, isEligibleForFinancialStatements, isAuthenticated, token])
+
   // Load progress tracker first when document is selected
   useEffect(() => {
     // Reset state when document changes
     setFinancialStatementProgress(null)
     setBalanceSheet(null)
     setIncomeStatement(null)
+    setOrganicGrowth(null)
+    setAmortization(null)
+    setOtherAssets(null)
+    setOtherLiabilities(null)
+    setNonOperatingClassification(null)
+    setAdditionalItemsLoadAttempted(false)
     setError(null)
     setBalanceSheetLoadAttempts(0)
     setIncomeStatementLoadAttempts(0)
@@ -233,16 +290,33 @@ function RightPanel({ selectedCompany, selectedDocument }) {
   useEffect(() => {
     if (!selectedDocument || !isEligibleForFinancialStatements) return
     if (!areAllMilestonesTerminal()) return
-    
+
     // Only load if attempts haven't exceeded max and data isn't already loaded and not currently loading
     if (balanceSheetAttemptsRef.current < MAX_LOAD_ATTEMPTS && !balanceSheet && !balanceSheetLoadingRef.current) {
       loadBalanceSheet()
     }
-    
+
     if (incomeStatementAttemptsRef.current < MAX_LOAD_ATTEMPTS && !incomeStatement && !incomeStatementLoadingRef.current) {
       loadIncomeStatement()
     }
-  }, [areAllMilestonesTerminal, selectedDocument?.id, balanceSheet, incomeStatement, loadBalanceSheet, loadIncomeStatement])
+
+    if (!additionalItemsLoadAttempted) {
+      const loadItems = async () => {
+        await loadAdditionalItems()
+        setAdditionalItemsLoadAttempted(true)
+      }
+      loadItems()
+    }
+  }, [
+    areAllMilestonesTerminal,
+    selectedDocument?.id,
+    balanceSheet,
+    incomeStatement,
+    additionalItemsLoadAttempted,
+    loadBalanceSheet,
+    loadIncomeStatement,
+    loadAdditionalItems
+  ])
 
   // Reset historical calculations state when document changes
   useEffect(() => {
@@ -332,6 +406,12 @@ function RightPanel({ selectedCompany, selectedDocument }) {
     const handleClearData = () => {
       setBalanceSheet(null)
       setIncomeStatement(null)
+      setOrganicGrowth(null)
+      setAmortization(null)
+      setOtherAssets(null)
+      setOtherLiabilities(null)
+      setNonOperatingClassification(null)
+      setAdditionalItemsLoadAttempted(false)
       setHistoricalCalculations(null)
       setHistoricalCalculationsLoadAttempted(false)
       setBalanceSheetLoadAttempts(0)
@@ -372,12 +452,37 @@ function RightPanel({ selectedCompany, selectedDocument }) {
               message: 'Waiting to start...',
               updated_at: new Date().toISOString()
             },
+            extracting_other_assets: {
+              status: 'pending',
+              message: 'Waiting to start...',
+              updated_at: new Date().toISOString()
+            },
+            extracting_other_liabilities: {
+              status: 'pending',
+              message: 'Waiting to start...',
+              updated_at: new Date().toISOString()
+            },
+            classifying_non_operating_items: {
+              status: 'pending',
+              message: 'Waiting to start...',
+              updated_at: new Date().toISOString()
+            },
             extracting_income_statement: {
               status: 'pending',
               message: 'Waiting to start...',
               updated_at: new Date().toISOString()
             },
-            extracting_additional_items: {
+            extracting_shares_outstanding: {
+              status: 'pending',
+              message: 'Waiting to start...',
+              updated_at: new Date().toISOString()
+            },
+            extracting_amortization: {
+              status: 'pending',
+              message: 'Waiting to start...',
+              updated_at: new Date().toISOString()
+            },
+            extracting_organic_growth: {
               status: 'pending',
               message: 'Waiting to start...',
               updated_at: new Date().toISOString()
@@ -448,8 +553,13 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                     {[
                       { key: 'extracting_balance_sheet', label: 'Extracting Balance Sheet' },
                       { key: 'classifying_balance_sheet', label: 'Classifying Balance Sheet' },
+                      { key: 'extracting_other_assets', label: 'Extracting Other Assets' },
+                      { key: 'extracting_other_liabilities', label: 'Extracting Other Liabilities' },
+                      { key: 'classifying_non_operating_items', label: 'Classifying Non-Operating Items' },
                       { key: 'extracting_income_statement', label: 'Extracting Income Statement' },
-                      { key: 'extracting_additional_items', label: 'Extracting Additional Items' },
+                      { key: 'extracting_shares_outstanding', label: 'Extracting Shares Outstanding' },
+                      { key: 'extracting_amortization', label: 'Extracting Amortization' },
+                      { key: 'extracting_organic_growth', label: 'Extracting Organic Growth' },
                       { key: 'classifying_income_statement', label: 'Classifying Income Statement' }
                     ].map((milestone) => {
                       const milestoneData = financialStatementProgress.milestones?.[milestone.key]
@@ -708,14 +818,11 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                           </table>
                         </div>
 
-                        {/* Additional Items Table */}
+                        {/* Revenue Context Table */}
                         {(incomeStatement.revenue_prior_year !== null || 
-                           incomeStatement.revenue_growth_yoy !== null || 
-                           incomeStatement.amortization !== null || 
-                           incomeStatement.basic_shares_outstanding !== null || 
-                           incomeStatement.diluted_shares_outstanding !== null) && (
+                           incomeStatement.revenue_growth_yoy !== null) && (
                           <div style={{ marginTop: '2rem' }}>
-                            <h4>Additional Items</h4>
+                            <h4>Revenue Context</h4>
                             <div className="balance-sheet-table-container">
                               <table className="balance-sheet-table">
                                 <thead>
@@ -740,27 +847,6 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                       <td>—</td>
                                     </tr>
                                   )}
-                                  {incomeStatement.amortization !== null && (
-                                    <tr>
-                                      <td>Amortization</td>
-                                      <td className="text-right">{formatNumber(incomeStatement.amortization, incomeStatement.amortization_unit)}</td>
-                                      <td>{incomeStatement.amortization_unit ? incomeStatement.amortization_unit.replace('_', ' ') : 'N/A'}</td>
-                                    </tr>
-                                  )}
-                                  {incomeStatement.basic_shares_outstanding !== null && (
-                                    <tr>
-                                      <td>Basic Shares Outstanding</td>
-                                      <td className="text-right">{incomeStatement.basic_shares_outstanding.toLocaleString()}</td>
-                                      <td>{incomeStatement.basic_shares_outstanding_unit ? incomeStatement.basic_shares_outstanding_unit.replace('_', ' ') : 'N/A'}</td>
-                                    </tr>
-                                  )}
-                                  {incomeStatement.diluted_shares_outstanding !== null && (
-                                    <tr>
-                                      <td>Diluted Shares Outstanding</td>
-                                      <td className="text-right">{incomeStatement.diluted_shares_outstanding.toLocaleString()}</td>
-                                      <td>{incomeStatement.diluted_shares_outstanding_unit ? incomeStatement.diluted_shares_outstanding_unit.replace('_', ' ') : 'N/A'}</td>
-                                    </tr>
-                                  )}
                                 </tbody>
                               </table>
                             </div>
@@ -770,102 +856,188 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                     </div>
                   )}
 
+                  {/* Shares Outstanding Section */}
+                  {incomeStatement && (
+                    <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
+                      <h3>Shares Outstanding</h3>
+                      <SharesOutstandingTable incomeStatement={incomeStatement} />
+                    </div>
+                  )}
+
+                  {/* Amortization Section */}
+                  {amortization && (
+                    <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
+                      <h3>Amortization</h3>
+                      <AmortizationTable data={amortization} formatNumber={formatNumber} />
+                    </div>
+                  )}
+
+                  {/* Organic Growth Section */}
+                  {organicGrowth && (
+                    <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
+                      <h3>Organic Growth</h3>
+                      <OrganicGrowthTable data={organicGrowth} formatNumber={formatNumber} />
+                    </div>
+                  )}
+
+                  {/* Other Assets Section */}
+                  {otherAssets && (
+                    <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
+                      <h3>Other Assets</h3>
+                      <OtherAssetsTable data={otherAssets} formatNumber={formatNumber} />
+                    </div>
+                  )}
+
+                  {/* Other Liabilities Section */}
+                  {otherLiabilities && (
+                    <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
+                      <h3>Other Liabilities</h3>
+                      <OtherLiabilitiesTable data={otherLiabilities} formatNumber={formatNumber} />
+                    </div>
+                  )}
+
+                  {/* Non-Operating Classification Section */}
+                  {nonOperatingClassification && (
+                    <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
+                      <h3>Non-Operating Classification</h3>
+                      <NonOperatingClassificationTable data={nonOperatingClassification} formatNumber={formatNumber} />
+                    </div>
+                  )}
+
                   {/* Historical Calculations Section */}
                   {historicalCalculations && (
                     <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
                       <h3>Historical Calculations</h3>
-                      <div className="balance-sheet-container">
-                        <div className="balance-sheet-table-container">
-                          <table className="balance-sheet-table">
-                            <thead>
-                              <tr>
-                                <th>Metric</th>
-                                <th className="text-right">Value</th>
-                                <th>Unit</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {historicalCalculations.net_working_capital !== null && (
+
+                      <div style={{ marginTop: '1.5rem' }}>
+                        <h4>Invested Capital</h4>
+                        <p className="placeholder-text">Invested capital adjustments will appear here.</p>
+                      </div>
+
+                      <div style={{ marginTop: '1.5rem' }}>
+                        <h4>Adjusted Tax Rate</h4>
+                        <p className="placeholder-text">Adjusted tax rate breakdown will appear here.</p>
+                      </div>
+
+                      <div style={{ marginTop: '1.5rem' }}>
+                        <h4>EBITA</h4>
+                        <p className="placeholder-text">EBITA adjustments will appear here.</p>
+                      </div>
+
+                      <div style={{ marginTop: '1.5rem' }}>
+                        <h4>NOPAT &amp; ROIC</h4>
+                        <p className="placeholder-text">NOPAT and ROIC calculations will appear here.</p>
+                      </div>
+
+                      <div style={{ marginTop: '2rem' }}>
+                        <h4>Summary Table</h4>
+                        <div className="balance-sheet-container">
+                          <div className="balance-sheet-table-container">
+                            <table className="balance-sheet-table">
+                              <thead>
                                 <tr>
-                                  <td>Net Working Capital</td>
-                                  <td className="text-right">{formatNumber(historicalCalculations.net_working_capital, historicalCalculations.unit)}</td>
-                                  <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
+                                  <th>Metric</th>
+                                  <th className="text-right">Value</th>
+                                  <th>Unit</th>
                                 </tr>
-                              )}
-                              {historicalCalculations.net_long_term_operating_assets !== null && (
-                                <tr>
-                                  <td>Net Long Term Operating Assets</td>
-                                  <td className="text-right">{formatNumber(historicalCalculations.net_long_term_operating_assets, historicalCalculations.unit)}</td>
-                                  <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
-                                </tr>
-                              )}
-                              {historicalCalculations.invested_capital !== null && (
-                                <tr>
-                                  <td>Invested Capital</td>
-                                  <td className="text-right">{formatNumber(historicalCalculations.invested_capital, historicalCalculations.unit)}</td>
-                                  <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
-                                </tr>
-                              )}
-                              {historicalCalculations.capital_turnover !== null && (
-                                <tr>
-                                  <td>Capital Turnover, Annualized</td>
-                                  <td className="text-right">{parseFloat(historicalCalculations.capital_turnover).toFixed(4)}</td>
-                                  <td>—</td>
-                                </tr>
-                              )}
-                              {historicalCalculations.ebita !== null && (
-                                <tr>
-                                  <td>EBITA</td>
-                                  <td className="text-right">{formatNumber(historicalCalculations.ebita, historicalCalculations.unit)}</td>
-                                  <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
-                                </tr>
-                              )}
-                              {historicalCalculations.ebita_margin !== null && (
-                                <tr>
-                                  <td>EBITA Margin</td>
-                                  <td className="text-right">{(parseFloat(historicalCalculations.ebita_margin) * 100).toFixed(2)}%</td>
-                                  <td>—</td>
-                                </tr>
-                              )}
-                              {historicalCalculations.effective_tax_rate !== null && (
-                                <tr>
-                                  <td>Effective Tax Rate</td>
-                                  <td className="text-right">{(parseFloat(historicalCalculations.effective_tax_rate) * 100).toFixed(2)}%</td>
-                                  <td>—</td>
-                                </tr>
-                              )}
-                              {historicalCalculations.adjusted_tax_rate !== null && (
-                                <tr>
-                                  <td>Adjusted Tax Rate</td>
-                                  <td className="text-right">{(parseFloat(historicalCalculations.adjusted_tax_rate) * 100).toFixed(2)}%</td>
-                                  <td>—</td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                        
-                        {/* Calculation Notes */}
-                        {historicalCalculations.calculation_notes && (() => {
-                          try {
-                            const notes = JSON.parse(historicalCalculations.calculation_notes)
-                            if (notes && notes.length > 0) {
-                              return (
-                                <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '4px' }}>
-                                  <h4 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem' }}>Notes:</h4>
-                                  <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
-                                    {notes.map((note, idx) => (
-                                      <li key={idx} style={{ fontSize: '0.85rem', marginBottom: '0.25rem' }}>{note}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )
+                              </thead>
+                              <tbody>
+                                {organicGrowth?.current_period_revenue !== null && (
+                                  <tr>
+                                    <td>Revenue</td>
+                                    <td className="text-right">{formatNumber(organicGrowth.current_period_revenue, organicGrowth.current_period_revenue_unit)}</td>
+                                    <td>{organicGrowth.current_period_revenue_unit ? organicGrowth.current_period_revenue_unit.replace('_', ' ') : 'N/A'}</td>
+                                  </tr>
+                                )}
+                                {incomeStatement?.revenue_growth_yoy !== null && (
+                                  <tr>
+                                    <td>YOY Revenue Growth</td>
+                                    <td className="text-right">{formatPercent(incomeStatement.revenue_growth_yoy, 1)}</td>
+                                    <td>—</td>
+                                  </tr>
+                                )}
+                                {organicGrowth?.organic_revenue_growth !== null && (
+                                  <tr>
+                                    <td>Organic Growth</td>
+                                    <td className="text-right">{formatPercent(organicGrowth.organic_revenue_growth, 1)}</td>
+                                    <td>—</td>
+                                  </tr>
+                                )}
+                                {historicalCalculations.ebita !== null && (
+                                  <tr>
+                                    <td>EBITA</td>
+                                    <td className="text-right">{formatNumber(historicalCalculations.ebita, historicalCalculations.unit)}</td>
+                                    <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
+                                  </tr>
+                                )}
+                                {historicalCalculations.ebita_margin !== null && (
+                                  <tr>
+                                    <td>EBITA Margin</td>
+                                    <td className="text-right">{formatPercent(historicalCalculations.ebita_margin, 100)}</td>
+                                    <td>—</td>
+                                  </tr>
+                                )}
+                                {historicalCalculations.adjusted_tax_rate !== null && (
+                                  <tr>
+                                    <td>Adjusted Tax Rate</td>
+                                    <td className="text-right">{formatPercent(historicalCalculations.adjusted_tax_rate, 100)}</td>
+                                    <td>—</td>
+                                  </tr>
+                                )}
+                                {historicalCalculations.net_working_capital !== null && (
+                                  <tr>
+                                    <td>Net Working Capital</td>
+                                    <td className="text-right">{formatNumber(historicalCalculations.net_working_capital, historicalCalculations.unit)}</td>
+                                    <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
+                                  </tr>
+                                )}
+                                {historicalCalculations.net_long_term_operating_assets !== null && (
+                                  <tr>
+                                    <td>Net Long Term Operating Assets</td>
+                                    <td className="text-right">{formatNumber(historicalCalculations.net_long_term_operating_assets, historicalCalculations.unit)}</td>
+                                    <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
+                                  </tr>
+                                )}
+                                {historicalCalculations.invested_capital !== null && (
+                                  <tr>
+                                    <td>Invested Capital</td>
+                                    <td className="text-right">{formatNumber(historicalCalculations.invested_capital, historicalCalculations.unit)}</td>
+                                    <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
+                                  </tr>
+                                )}
+                                {historicalCalculations.capital_turnover !== null && (
+                                  <tr>
+                                    <td>Capital Turnover, Annualized</td>
+                                    <td className="text-right">{formatDecimal(historicalCalculations.capital_turnover, 4)}</td>
+                                    <td>—</td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          {/* Calculation Notes */}
+                          {historicalCalculations.calculation_notes && (() => {
+                            try {
+                              const notes = JSON.parse(historicalCalculations.calculation_notes)
+                              if (notes && notes.length > 0) {
+                                return (
+                                  <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '4px' }}>
+                                    <h4 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '0.9rem' }}>Notes:</h4>
+                                    <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                                      {notes.map((note, idx) => (
+                                        <li key={idx} style={{ fontSize: '0.85rem', marginBottom: '0.25rem' }}>{note}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )
+                              }
+                            } catch (e) {
+                              return null
                             }
-                          } catch (e) {
                             return null
-                          }
-                          return null
-                        })()}
+                          })()}
+                        </div>
                       </div>
                     </div>
                   )}
