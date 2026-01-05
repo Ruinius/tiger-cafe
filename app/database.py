@@ -5,8 +5,7 @@ Database configuration and session management
 import os
 
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 # SQLite database URL (can be upgraded to PostgreSQL later)
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./tiger_cafe.db")

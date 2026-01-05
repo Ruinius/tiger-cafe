@@ -5,7 +5,7 @@ Balance sheet schemas
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class BalanceSheetLineItemBase(BaseModel):
@@ -21,11 +21,10 @@ class BalanceSheetLineItemCreate(BalanceSheetLineItemBase):
 
 
 class BalanceSheetLineItem(BalanceSheetLineItemBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     balance_sheet_id: str
-
-    class Config:
-        from_attributes = True
 
 
 class BalanceSheetBase(BaseModel):
@@ -40,12 +39,11 @@ class BalanceSheetCreate(BalanceSheetBase):
 
 
 class BalanceSheet(BalanceSheetBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     document_id: str
     is_valid: bool
     validation_errors: str | None = None
     extraction_date: datetime
     line_items: list[BalanceSheetLineItem] = []
-
-    class Config:
-        from_attributes = True

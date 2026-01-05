@@ -4,7 +4,7 @@ Company schemas
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class CompanyBase(BaseModel):
@@ -17,10 +17,9 @@ class CompanyCreate(CompanyBase):
 
 
 class Company(CompanyBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     created_at: datetime
     updated_at: datetime | None = None
     document_count: int | None = None  # Number of documents for this company
-
-    class Config:
-        from_attributes = True

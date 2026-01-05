@@ -4,7 +4,7 @@ Document schemas
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.models.document import DocumentType, ProcessingStatus
 
@@ -33,6 +33,8 @@ class DocumentUpdate(BaseModel):
 
 
 class Document(DocumentBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     user_id: str
     company_id: str
@@ -47,9 +49,6 @@ class Document(DocumentBase):
     duplicate_detected: bool | None = False
     existing_document_id: str | None = None
     uploader_name: str | None = None  # Name of user who uploaded the document
-
-    class Config:
-        from_attributes = True
 
 
 # Upload and classification response schemas

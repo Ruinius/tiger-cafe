@@ -5,7 +5,7 @@ Historical calculation schemas
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class HistoricalCalculationBase(BaseModel):
@@ -28,9 +28,8 @@ class HistoricalCalculationCreate(HistoricalCalculationBase):
 
 
 class HistoricalCalculation(HistoricalCalculationBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     document_id: str
     calculated_at: datetime
-
-    class Config:
-        from_attributes = True

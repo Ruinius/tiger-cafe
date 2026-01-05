@@ -5,7 +5,7 @@ Income statement schemas
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class IncomeStatementLineItemBase(BaseModel):
@@ -21,11 +21,10 @@ class IncomeStatementLineItemCreate(IncomeStatementLineItemBase):
 
 
 class IncomeStatementLineItem(IncomeStatementLineItemBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     income_statement_id: str
-
-    class Config:
-        from_attributes = True
 
 
 class IncomeStatementBase(BaseModel):
@@ -40,6 +39,8 @@ class IncomeStatementCreate(IncomeStatementBase):
 
 
 class IncomeStatement(IncomeStatementBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     document_id: str
     revenue_prior_year: Decimal | None = None
@@ -55,6 +56,3 @@ class IncomeStatement(IncomeStatementBase):
     validation_errors: str | None = None
     extraction_date: datetime
     line_items: list[IncomeStatementLineItem] = []
-
-    class Config:
-        from_attributes = True

@@ -5,7 +5,7 @@ Analysis Result schemas
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class AnalysisResultBase(BaseModel):
@@ -20,9 +20,8 @@ class AnalysisResultCreate(AnalysisResultBase):
 
 
 class AnalysisResult(AnalysisResultBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     company_id: str
     completed_at: datetime
-
-    class Config:
-        from_attributes = True
