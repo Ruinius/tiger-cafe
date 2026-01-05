@@ -44,6 +44,8 @@ def find_balance_sheet_section(
             score_threshold=0.3,
             pages_before=1,  # Include 1 page before the best chunk
             pages_after=1,  # Include 1 page after the best chunk
+            rerank_top_k=5,
+            numeric_density_weight=0.2,
         )
         # Handle both old (2-tuple) and new (3-tuple) return formats for backward compatibility
         if len(result) == 2:
