@@ -31,6 +31,7 @@ Categories:
 - other_financial_liabilities
 - deferred_tax_assets
 - deferred_tax_liabilities
+- common_equity
 - preferred_equity
 - minority_interest
 - goodwill_intangibles

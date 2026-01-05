@@ -15,16 +15,10 @@ class MilestoneStatus(Enum):
 
 
 class FinancialStatementMilestone(Enum):
-    EXTRACTING_BALANCE_SHEET = "extracting_balance_sheet"
-    CLASSIFYING_BALANCE_SHEET = "classifying_balance_sheet"
-    EXTRACTING_OTHER_ASSETS = "extracting_other_assets"
-    EXTRACTING_OTHER_LIABILITIES = "extracting_other_liabilities"
+    BALANCE_SHEET = "balance_sheet"
+    INCOME_STATEMENT = "income_statement"
+    EXTRACTING_ADDITIONAL_ITEMS = "extracting_additional_items"
     CLASSIFYING_NON_OPERATING_ITEMS = "classifying_non_operating_items"
-    EXTRACTING_INCOME_STATEMENT = "extracting_income_statement"
-    EXTRACTING_SHARES_OUTSTANDING = "extracting_shares_outstanding"
-    EXTRACTING_AMORTIZATION = "extracting_amortization"
-    EXTRACTING_ORGANIC_GROWTH = "extracting_organic_growth"
-    CLASSIFYING_INCOME_STATEMENT = "classifying_income_statement"
 
 
 # In-memory progress store (in production, use Redis or database)
@@ -132,61 +126,25 @@ def initialize_progress(document_id: str):
     with _progress_lock:
         _progress_store[document_id] = {
             "milestones": {
-                FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET.value: {
+                FinancialStatementMilestone.BALANCE_SHEET.value: {
                     "status": MilestoneStatus.PENDING.value,
                     "message": None,
                     "logs": [],
                     "updated_at": datetime.utcnow().isoformat(),
                 },
-                FinancialStatementMilestone.CLASSIFYING_BALANCE_SHEET.value: {
+                FinancialStatementMilestone.INCOME_STATEMENT.value: {
                     "status": MilestoneStatus.PENDING.value,
                     "message": None,
                     "logs": [],
                     "updated_at": datetime.utcnow().isoformat(),
                 },
-                FinancialStatementMilestone.EXTRACTING_OTHER_ASSETS.value: {
-                    "status": MilestoneStatus.PENDING.value,
-                    "message": None,
-                    "logs": [],
-                    "updated_at": datetime.utcnow().isoformat(),
-                },
-                FinancialStatementMilestone.EXTRACTING_OTHER_LIABILITIES.value: {
+                FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS.value: {
                     "status": MilestoneStatus.PENDING.value,
                     "message": None,
                     "logs": [],
                     "updated_at": datetime.utcnow().isoformat(),
                 },
                 FinancialStatementMilestone.CLASSIFYING_NON_OPERATING_ITEMS.value: {
-                    "status": MilestoneStatus.PENDING.value,
-                    "message": None,
-                    "logs": [],
-                    "updated_at": datetime.utcnow().isoformat(),
-                },
-                FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT.value: {
-                    "status": MilestoneStatus.PENDING.value,
-                    "message": None,
-                    "logs": [],
-                    "updated_at": datetime.utcnow().isoformat(),
-                },
-                FinancialStatementMilestone.EXTRACTING_SHARES_OUTSTANDING.value: {
-                    "status": MilestoneStatus.PENDING.value,
-                    "message": None,
-                    "logs": [],
-                    "updated_at": datetime.utcnow().isoformat(),
-                },
-                FinancialStatementMilestone.EXTRACTING_AMORTIZATION.value: {
-                    "status": MilestoneStatus.PENDING.value,
-                    "message": None,
-                    "logs": [],
-                    "updated_at": datetime.utcnow().isoformat(),
-                },
-                FinancialStatementMilestone.EXTRACTING_ORGANIC_GROWTH.value: {
-                    "status": MilestoneStatus.PENDING.value,
-                    "message": None,
-                    "logs": [],
-                    "updated_at": datetime.utcnow().isoformat(),
-                },
-                FinancialStatementMilestone.CLASSIFYING_INCOME_STATEMENT.value: {
                     "status": MilestoneStatus.PENDING.value,
                     "message": None,
                     "logs": [],
@@ -209,39 +167,7 @@ def reset_balance_sheet_milestones(document_id: str):
 
         # Only reset balance sheet milestones (don't touch income statement milestones)
         _progress_store[document_id]["milestones"][
-            FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET.value
-        ] = {
-            "status": MilestoneStatus.PENDING.value,
-            "message": None,
-            "logs": [],
-            "updated_at": datetime.utcnow().isoformat(),
-        }
-        _progress_store[document_id]["milestones"][
-            FinancialStatementMilestone.CLASSIFYING_BALANCE_SHEET.value
-        ] = {
-            "status": MilestoneStatus.PENDING.value,
-            "message": None,
-            "logs": [],
-            "updated_at": datetime.utcnow().isoformat(),
-        }
-        _progress_store[document_id]["milestones"][
-            FinancialStatementMilestone.EXTRACTING_OTHER_ASSETS.value
-        ] = {
-            "status": MilestoneStatus.PENDING.value,
-            "message": None,
-            "logs": [],
-            "updated_at": datetime.utcnow().isoformat(),
-        }
-        _progress_store[document_id]["milestones"][
-            FinancialStatementMilestone.EXTRACTING_OTHER_LIABILITIES.value
-        ] = {
-            "status": MilestoneStatus.PENDING.value,
-            "message": None,
-            "logs": [],
-            "updated_at": datetime.utcnow().isoformat(),
-        }
-        _progress_store[document_id]["milestones"][
-            FinancialStatementMilestone.CLASSIFYING_NON_OPERATING_ITEMS.value
+            FinancialStatementMilestone.BALANCE_SHEET.value
         ] = {
             "status": MilestoneStatus.PENDING.value,
             "message": None,
@@ -263,7 +189,7 @@ def reset_income_statement_milestones(document_id: str):
 
         # Only reset income statement milestones (don't touch balance sheet milestones)
         _progress_store[document_id]["milestones"][
-            FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT.value
+            FinancialStatementMilestone.INCOME_STATEMENT.value
         ] = {
             "status": MilestoneStatus.PENDING.value,
             "message": None,
@@ -271,7 +197,7 @@ def reset_income_statement_milestones(document_id: str):
             "updated_at": datetime.utcnow().isoformat(),
         }
         _progress_store[document_id]["milestones"][
-            FinancialStatementMilestone.EXTRACTING_SHARES_OUTSTANDING.value
+            FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS.value
         ] = {
             "status": MilestoneStatus.PENDING.value,
             "message": None,
@@ -279,23 +205,7 @@ def reset_income_statement_milestones(document_id: str):
             "updated_at": datetime.utcnow().isoformat(),
         }
         _progress_store[document_id]["milestones"][
-            FinancialStatementMilestone.EXTRACTING_AMORTIZATION.value
-        ] = {
-            "status": MilestoneStatus.PENDING.value,
-            "message": None,
-            "logs": [],
-            "updated_at": datetime.utcnow().isoformat(),
-        }
-        _progress_store[document_id]["milestones"][
-            FinancialStatementMilestone.EXTRACTING_ORGANIC_GROWTH.value
-        ] = {
-            "status": MilestoneStatus.PENDING.value,
-            "message": None,
-            "logs": [],
-            "updated_at": datetime.utcnow().isoformat(),
-        }
-        _progress_store[document_id]["milestones"][
-            FinancialStatementMilestone.CLASSIFYING_INCOME_STATEMENT.value
+            FinancialStatementMilestone.CLASSIFYING_NON_OPERATING_ITEMS.value
         ] = {
             "status": MilestoneStatus.PENDING.value,
             "message": None,

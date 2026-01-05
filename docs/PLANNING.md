@@ -566,7 +566,7 @@ All calculations are performed for a specific document using the extracted balan
   - Current period adjusted revenue = current period revenue - acquisition revenue impact
   - Organic revenue growth = (adjusted - prior) / prior * 100 (equals simple growth if no acquisition impact)
 - Create router endpoint following pattern from balance sheet/income statement routers. Trigger after income statement extraction completes.
-- Progress tracking: Add milestone `EXTRACTING_ORGANIC_GROWTH` to `FinancialStatementMilestone` enum.
+- Progress tracking: Log organic growth under the consolidated `EXTRACTING_ADDITIONAL_ITEMS` milestone.
 - Frontend: Create component to display organic growth table with all fields, formatted appropriately (percentages as percentages, monetary values with units).
 
 #### 6.4: Amortization Extraction (Refactor from Income Statement) (Complete)
@@ -585,7 +585,7 @@ All calculations are performed for a specific document using the extracted balan
 - Database model in `app/models/amortization.py`: Create `Amortization` (parent) and `AmortizationLineItem` (child) tables. `Amortization` stores `document_id`, `time_period`, `currency`, `chunk_index`, timestamps. `AmortizationLineItem` stores `amortization_id`, `line_name`, `line_value`, `unit`, `is_operating`, `category`, `line_order`.
 - Validation: Deduplicate line items by name (case-insensitive, normalized). If duplicates found, log warning and keep one instance (prefer the one with more complete information).
 - Create router endpoint. Trigger after income statement extraction completes (can run in parallel with organic growth if desired, but sequential is safer for API rate limiting).
-- Progress tracking: Add milestone `EXTRACTING_AMORTIZATION` or reuse existing `EXTRACTING_ADDITIONAL_ITEMS` milestone (to be refactored in 6.2).
+- Progress tracking: Log amortization under the consolidated `EXTRACTING_ADDITIONAL_ITEMS` milestone.
 - Frontend: Create component to display amortization line items table with columns: Line Name, Value, Unit, Type (Operating/Non-operating). Group by type or use visual indicators.
 
 #### 6.5: Other Assets Extraction and Classification (Complete)
@@ -611,7 +611,7 @@ All calculations are performed for a specific document using the extracted balan
   - If sums don't match (within small tolerance, e.g., 0.01% or $1000), retry LLM extraction with error feedback asking it to verify the time period is correct and check for missing line items
 - Database model in `app/models/other_assets.py`: Create `OtherAssets` (parent) and `OtherAssetsLineItem` (child) tables. `OtherAssets` stores `document_id`, `time_period`, `currency`, `chunk_index`, validation flags. `OtherAssetsLineItem` stores `other_assets_id`, `line_name`, `line_value`, `unit`, `is_operating`, `category` ("Current Assets" or "Non-Current Assets"), `line_order`.
 - Create router endpoint. Trigger after balance sheet extraction and classification completes.
-- Progress tracking: Add milestone `EXTRACTING_OTHER_ASSETS`.
+- Progress tracking: Log other assets extraction under the consolidated `EXTRACTING_ADDITIONAL_ITEMS` milestone.
 - Frontend: Create component to display other assets line items table. Show columns: Line Name, Value, Unit, Category (Current/Non-Current), Type (Operating/Non-operating). Allow filtering/grouping by category and type.
 
 #### 6.6: Other Liabilities Extraction and Classification (Complete)
@@ -628,7 +628,7 @@ All calculations are performed for a specific document using the extracted balan
 - Same validation logic: deduplicate, sum validation against balance sheet totals, retry with error feedback if mismatch.
 - Database model in `app/models/other_liabilities.py`: Same structure as other assets, with `category` values "Current Liabilities" or "Non-Current Liabilities".
 - Create router endpoint. Trigger after balance sheet extraction completes (can run in parallel with other assets, but sequential is safer).
-- Progress tracking: Add milestone `EXTRACTING_OTHER_LIABILITIES`.
+- Progress tracking: Log other liabilities extraction under the consolidated `EXTRACTING_ADDITIONAL_ITEMS` milestone.
 - Frontend: Create component similar to other assets component, displaying other liabilities line items with appropriate columns and filtering.
 
 #### 6.7: Shares Outstanding Extraction (Refactor from Income Statement) (Complete)
@@ -645,7 +645,7 @@ All calculations are performed for a specific document using the extracted balan
   - Returns JSON with: `basic_shares_outstanding`, `basic_shares_outstanding_unit`, `diluted_shares_outstanding`, `diluted_shares_outstanding_unit`
 - Database model: Can reuse `IncomeStatement` model fields (since shares outstanding is already stored there), or create new `app/models/shares_outstanding.py` if we want to separate it completely. For now, keeping in income statement model is acceptable, but the extraction logic should be in a separate agent.
 - Create router endpoint or integrate into existing additional items router. Trigger after income statement extraction completes.
-- Progress tracking: Use existing milestone or add `EXTRACTING_SHARES_OUTSTANDING`.
+- Progress tracking: Log shares outstanding extraction under the consolidated `EXTRACTING_ADDITIONAL_ITEMS` milestone.
 - Frontend: Can continue displaying in income statement section, or move to separate additional items section. Display as table with: Metric (Basic/Diluted), Value, Unit.
 
 #### 6.8: Non-Operating Asset Classification (Complete)
@@ -677,7 +677,7 @@ All calculations are performed for a specific document using the extracted balan
   - Returns JSON array with items and their classifications
 - Database model in `app/models/non_operating_classification.py`: Create `NonOperatingClassification` (parent) and `NonOperatingClassificationItem` (child) tables. `NonOperatingClassification` stores `document_id`, `time_period`, timestamps. `NonOperatingClassificationItem` stores `classification_id`, `line_name`, `line_value`, `unit`, `category` (one of the categories above), `source` ("balance_sheet", "other_assets", "other_liabilities"), `line_order`.
 - Create router endpoint. Trigger after balance sheet, other assets, and other liabilities extractions complete.
-- Progress tracking: Add milestone `CLASSIFYING_NON_OPERATING_ITEMS`.
+- Progress tracking: Keep the `CLASSIFYING_NON_OPERATING_ITEMS` milestone for non-operating classification.
 - Frontend: Create component to display non-operating classification table. Show columns: Line Name, Value, Unit, Category, Source. Allow filtering/grouping by category and source. Use color coding or icons for different categories.
 
 #### 6.9: Invested Capital
@@ -786,11 +786,10 @@ For detailed UI/UX specifications and design guidance, see [UI_UX_DESIGN.md](UI_
 **Real-Time Progress Tracking:**
 - Right panel displays real-time progress tracker when viewing a document
 - Milestones tracked:
-  - Extracting balance sheet
-  - Classifying balance sheet
-  - Extracting income statement
-  - Extracting additional items (shares outstanding, amortization)
-  - Classifying income statement
+  - Balance sheet (extraction + classification)
+  - Income statement (extraction + classification)
+  - Extracting additional items (shares outstanding, amortization, organic growth, other assets, other liabilities)
+  - Classifying non-operating items
 - Status values: checking (default), pending (processing), in_progress, completed, error, not_found
 - Progress updates via polling mechanism (every 3 seconds)
 - Progress tracker shows first, financial statements load only when all milestones are terminal

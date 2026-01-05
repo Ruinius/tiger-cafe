@@ -774,6 +774,8 @@ Return this JSON structure:
     "total_current_liabilities_line": "exact line name for total current liabilities (must match a name from the list above, or null if not found)",
     "other_non_current_liabilities_line": "exact line name for other non-current liabilities (must match a name from the list above, or null if not found)",
     "total_liabilities_line": "exact line name for total liabilities (must match a name from the list above, or null if not found)",
+    "common_equity_line": "exact line name for common equity or common stockholders' equity (must match a name from the list above, or null if not found)",
+    "total_equity_line": "exact line name for total equity or total shareholders' equity (must match a name from the list above, or null if not found)",
     "total_shareholder_equity_line": "exact line name for total shareholder's equity or total liabilities and equity (must match a name from the list above, or null if not found)"
 }}
 
@@ -786,7 +788,9 @@ Guidance for matching (but only use names that actually appear in the list above
 - Total current liabilities may be labeled as: Total current liabilities, Current liabilities
 - Other non-current liabilities may be labeled as: Other non-current liabilities, Other long-term liabilities
 - Total liabilities may be labeled as: Total liabilities, Total liabilities
-- Total shareholder equity may be labeled as: Total liabilities and equity, Total stockholders' equity, Total shareholders' equity, Total equity
+- Common equity may be labeled as: Common equity, Common stockholders' equity, Common equity (deficit)
+- Total equity may be labeled as: Total equity, Total stockholders' equity, Total shareholders' equity
+- Total shareholder equity may be labeled as: Total liabilities and equity, Total liabilities and shareholders' equity
 
 Return only JSON with no extra text."""
 
@@ -814,6 +818,8 @@ Return only JSON with no extra text."""
                     "other_non_current_liabilities_line"
                 ),
                 "total_liabilities_line": insights.get("total_liabilities_line"),
+                "common_equity_line": insights.get("common_equity_line"),
+                "total_equity_line": insights.get("total_equity_line"),
                 "total_shareholder_equity_line": insights.get("total_shareholder_equity_line"),
             },
             [],
@@ -847,7 +853,9 @@ def post_process_balance_sheet_line_items(line_items: list[dict]) -> list[dict]:
         "total_current_liabilities_line": "Total Current Liabilities",
         "other_non_current_liabilities_line": "Other Non-Current Liabilities",
         "total_liabilities_line": "Total Liabilities",
-        "total_shareholder_equity_line": "Total Shareholder's Equity",
+        "common_equity_line": "Common Equity",
+        "total_equity_line": "Total Equity",
+        "total_shareholder_equity_line": "Total Equity",
     }
 
     # Step 2: Rename identified line items
@@ -887,6 +895,26 @@ def classify_line_items_llm(line_items: list[dict]) -> list[dict]:
     Returns:
         List of line items with is_operating field added
     """
+
+    def _is_total_or_subtotal(item: dict) -> bool:
+        category = (item.get("line_category") or "").lower()
+        if "total" in category:
+            return True
+        line_name = normalize_line_name(item.get("line_name", ""))
+        total_keywords = [
+            "total current assets",
+            "total assets",
+            "total current liabilities",
+            "total liabilities",
+            "total liabilities and equity",
+            "total liabilities and shareholders equity",
+            "total liabilities and stockholder equity",
+            "total liabilities and stockholders equity",
+            "total equity",
+            "total shareholders equity",
+            "total stockholders equity",
+        ]
+        return any(keyword in line_name for keyword in total_keywords)
     # AUTHORITATIVE_LOOKUP - binding decision table
     AUTHORITATIVE_LOOKUP = {
         "Cash and cash equivalents": "Non-Operating",
@@ -1041,6 +1069,9 @@ Return only valid JSON array, no additional text."""
                 else:
                     item["is_operating"] = True
 
+        for item in line_items:
+            if _is_total_or_subtotal(item):
+                item["is_operating"] = None
         return line_items
 
     except Exception as e:
@@ -1056,6 +1087,9 @@ Return only valid JSON array, no additional text."""
             else:
                 # Default to operating if classification fails
                 item["is_operating"] = True
+        for item in line_items:
+            if _is_total_or_subtotal(item):
+                item["is_operating"] = None
         return line_items
 
 
@@ -1092,7 +1126,7 @@ def extract_balance_sheet(
         try:
             section_msg = f"Stage 1: Finding balance sheet section (rank {section_attempt + 1})"
             print(section_msg)
-            add_log(document_id, FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET, section_msg)
+            add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, section_msg)
 
             # Find balance sheet section using embeddings
             balance_sheet_text, start_page, log_info = find_balance_sheet_section(
@@ -1104,14 +1138,14 @@ def extract_balance_sheet(
                 fallback_msg = "Embedding search failed, extracting full document..."
                 print(fallback_msg)
                 add_log(
-                    document_id, FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET, fallback_msg
+                    document_id, FinancialStatementMilestone.BALANCE_SHEET, fallback_msg
                 )
                 balance_sheet_text, _, _ = extract_text_from_pdf(file_path, max_pages=None)
                 balance_sheet_text = balance_sheet_text[:50000]  # Limit to 50k chars
                 extracted_msg = f"Extracted {len(balance_sheet_text)} characters from full document"
                 print(extracted_msg)
                 add_log(
-                    document_id, FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET, extracted_msg
+                    document_id, FinancialStatementMilestone.BALANCE_SHEET, extracted_msg
                 )
             else:
                 # Log chunk/page information if available
@@ -1120,17 +1154,17 @@ def extract_balance_sheet(
                     chunk_msg = f"Best match{rank_text}: chunk {log_info['best_chunk_index']} (pages {log_info['chunk_start_page']}-{log_info['chunk_end_page']})"
                     print(chunk_msg)
                     add_log(
-                        document_id, FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET, chunk_msg
+                        document_id, FinancialStatementMilestone.BALANCE_SHEET, chunk_msg
                     )
                     pages_msg = f"Found balance sheet section (pages {log_info['start_extract_page']}-{log_info['end_extract_page']})"
                     print(pages_msg)
                     add_log(
-                        document_id, FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET, pages_msg
+                        document_id, FinancialStatementMilestone.BALANCE_SHEET, pages_msg
                     )
                 found_msg = f"Found balance sheet section starting at page {start_page}, extracted {len(balance_sheet_text)} characters"
                 print(found_msg)
                 add_log(
-                    document_id, FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET, found_msg
+                    document_id, FinancialStatementMilestone.BALANCE_SHEET, found_msg
                 )
 
             # Stage 1 validation: Check completeness of chunk text using LLM (before extraction)
@@ -1140,7 +1174,7 @@ def extract_balance_sheet(
             print(completeness_check_msg)
             add_log(
                 document_id,
-                FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+                FinancialStatementMilestone.BALANCE_SHEET,
                 completeness_check_msg,
             )
 
@@ -1151,7 +1185,7 @@ def extract_balance_sheet(
                 print(section_failed_msg)
                 add_log(
                     document_id,
-                    FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+                    FinancialStatementMilestone.BALANCE_SHEET,
                     section_failed_msg,
                 )
                 if section_attempt < max_retries - 1:
@@ -1177,7 +1211,7 @@ def extract_balance_sheet(
             print(extraction_msg)
             add_log(
                 document_id,
-                FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+                FinancialStatementMilestone.BALANCE_SHEET,
                 extraction_msg,
             )
 
@@ -1198,7 +1232,7 @@ def extract_balance_sheet(
             print(extracted_count_msg)
             add_log(
                 document_id,
-                FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+                FinancialStatementMilestone.BALANCE_SHEET,
                 extracted_count_msg,
             )
 
@@ -1213,7 +1247,7 @@ def extract_balance_sheet(
             print(section_valid_msg)
             add_log(
                 document_id,
-                FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+                FinancialStatementMilestone.BALANCE_SHEET,
                 section_valid_msg,
             )
             # Store successful chunk index for income statement extraction
@@ -1262,7 +1296,7 @@ def extract_balance_sheet(
                 print(extraction_msg)
                 add_log(
                     document_id,
-                    FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+                    FinancialStatementMilestone.BALANCE_SHEET,
                     extraction_msg,
                 )
                 # extracted_data is already set from Stage 1
@@ -1271,7 +1305,7 @@ def extract_balance_sheet(
                 retry_msg = f"Stage 2: Retry extraction {extraction_attempt + 1}/{EXTRACTION_MAX_RETRIES} with LLM feedback"
                 print(retry_msg)
                 add_log(
-                    document_id, FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET, retry_msg
+                    document_id, FinancialStatementMilestone.BALANCE_SHEET, retry_msg
                 )
                 # Re-extract with validation error feedback from previous attempt
                 extracted_data = extract_balance_sheet_llm_with_feedback(
@@ -1291,7 +1325,7 @@ def extract_balance_sheet(
                 print(calc_valid_msg)
                 add_log(
                     document_id,
-                    FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+                    FinancialStatementMilestone.BALANCE_SHEET,
                     calc_valid_msg,
                 )
                 # Both stages passed, classify and return
@@ -1308,7 +1342,7 @@ def extract_balance_sheet(
                 print(calc_failed_msg)
                 add_log(
                     document_id,
-                    FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+                    FinancialStatementMilestone.BALANCE_SHEET,
                     calc_failed_msg,
                 )
                 if extraction_attempt < EXTRACTION_MAX_RETRIES - 1:

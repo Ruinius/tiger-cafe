@@ -1153,11 +1153,7 @@ if DEBUG:
         return {"message": "Document and all associated data deleted successfully"}
 
 
-@router.get("/{document_id}/financial-statement-progress")
-async def get_financial_statement_progress(
-    document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
-):
-    """Get financial statement processing progress with milestones"""
+def _build_financial_statement_progress(document_id: str, db: Session) -> dict:
     from app.models.amortization import Amortization
     from app.models.balance_sheet import BalanceSheet
     from app.models.income_statement import IncomeStatement
@@ -1167,11 +1163,15 @@ async def get_financial_statement_progress(
     from app.models.other_liabilities import OtherLiabilities
     from app.utils.financial_statement_progress import get_progress
 
-    document = db.query(Document).filter(Document.id == document_id).first()
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-
     progress = get_progress(document_id)
+
+    def _active_progress_milestone(key: str) -> dict | None:
+        if not progress:
+            return None
+        milestone = progress.get("milestones", {}).get(key)
+        if milestone and milestone.get("status") in ["pending", "in_progress"]:
+            return milestone
+        return None
 
     # Always check database state to determine actual milestone status
     balance_sheet = db.query(BalanceSheet).filter(BalanceSheet.document_id == document_id).first()
@@ -1192,165 +1192,161 @@ async def get_financial_statement_progress(
         .first()
     )
 
-    # Build milestones based on database state
     milestones = {}
 
-    # 1. Extracting Balance Sheet: completed if non-empty balance sheet with validation passed
-    if (
-        balance_sheet
-        and balance_sheet.line_items
-        and len(balance_sheet.line_items) > 0
-        and balance_sheet.is_valid
-    ):
-        milestones["extracting_balance_sheet"] = {
-            "status": "completed",
-            "message": "Balance sheet extracted and validated",
-            "updated_at": balance_sheet.extraction_date.isoformat()
-            if balance_sheet.extraction_date
-            else None,
-        }
-    elif balance_sheet:
-        # Include actual validation errors if available
-        error_message = "Balance sheet extraction failed or validation errors"
-        if balance_sheet.validation_errors:
-            try:
-                validation_errors = json.loads(balance_sheet.validation_errors)
-                if validation_errors:
-                    error_summary = "; ".join(validation_errors[:3])
-                    if len(validation_errors) > 3:
-                        error_summary += f" (+{len(validation_errors) - 3} more)"
-                    error_message = f"Validation failed: {error_summary}"
-            except (json.JSONDecodeError, TypeError):
-                pass  # Use default message if parsing fails
-        milestones["extracting_balance_sheet"] = {
-            "status": "error",
-            "message": error_message,
-            "updated_at": balance_sheet.extraction_date.isoformat()
-            if balance_sheet.extraction_date
-            else None,
-        }
-    elif progress and progress.get("milestones", {}).get("extracting_balance_sheet", {}).get(
-        "status"
-    ) in ["pending", "in_progress"]:
-        # Use in-memory progress if actively processing
-        milestones["extracting_balance_sheet"] = progress["milestones"]["extracting_balance_sheet"]
-    else:
-        # No balance sheet exists - would return 404
-        milestones["extracting_balance_sheet"] = {
-            "status": "not_found",
-            "message": "Balance sheet not found",
-            "updated_at": None,
-        }
-
-    # 2. Classifying Balance Sheet: completed if balance sheet has non-empty Type column (is_operating is not null)
+    # Balance Sheet milestone
     if balance_sheet and balance_sheet.line_items:
         has_classifications = any(
             item.is_operating is not None for item in balance_sheet.line_items
         )
-        if has_classifications:
-            milestones["classifying_balance_sheet"] = {
+        if balance_sheet.is_valid and has_classifications:
+            milestones["balance_sheet"] = {
                 "status": "completed",
-                "message": "Balance sheet classified",
+                "message": "Balance sheet extracted and classified",
                 "updated_at": balance_sheet.extraction_date.isoformat()
                 if balance_sheet.extraction_date
                 else None,
             }
         else:
-            milestones["classifying_balance_sheet"] = {
+            error_message = "Balance sheet processing incomplete"
+            if balance_sheet.validation_errors:
+                try:
+                    validation_errors = json.loads(balance_sheet.validation_errors)
+                    if validation_errors:
+                        error_summary = "; ".join(validation_errors[:3])
+                        if len(validation_errors) > 3:
+                            error_summary += f" (+{len(validation_errors) - 3} more)"
+                        error_message = f"Validation failed: {error_summary}"
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            milestones["balance_sheet"] = {
                 "status": "error",
-                "message": "Balance sheet classification incomplete",
+                "message": error_message,
                 "updated_at": balance_sheet.extraction_date.isoformat()
                 if balance_sheet.extraction_date
                 else None,
             }
-    elif progress and progress.get("milestones", {}).get("classifying_balance_sheet", {}).get(
-        "status"
-    ) in ["pending", "in_progress"]:
-        milestones["classifying_balance_sheet"] = progress["milestones"][
-            "classifying_balance_sheet"
-        ]
-    elif balance_sheet:
-        # Balance sheet exists but no line items - classification not possible
-        milestones["classifying_balance_sheet"] = {
-            "status": "not_found",
-            "message": "Balance sheet not found",
-            "updated_at": None,
-        }
+    elif _active_progress_milestone("balance_sheet"):
+        milestones["balance_sheet"] = _active_progress_milestone("balance_sheet")
     else:
-        # No balance sheet exists - would return 404
-        milestones["classifying_balance_sheet"] = {
+        milestones["balance_sheet"] = {
             "status": "not_found",
             "message": "Balance sheet not found",
             "updated_at": None,
         }
 
-    # 3. Extracting Other Assets
-    if other_assets and other_assets.line_items and len(other_assets.line_items) > 0:
-        if other_assets.is_valid:
-            milestones["extracting_other_assets"] = {
+    # Income Statement milestone
+    if income_statement and income_statement.line_items:
+        has_classifications = any(
+            item.is_operating is not None for item in income_statement.line_items
+        )
+        if income_statement.is_valid and has_classifications:
+            milestones["income_statement"] = {
                 "status": "completed",
-                "message": "Other assets extracted and validated",
-                "updated_at": other_assets.extraction_date.isoformat()
-                if other_assets.extraction_date
+                "message": "Income statement extracted and classified",
+                "updated_at": income_statement.extraction_date.isoformat()
+                if income_statement.extraction_date
                 else None,
             }
         else:
-            error_message = "Other assets extraction failed or validation errors"
-            if other_assets.validation_errors:
-                error_message = other_assets.validation_errors
-            milestones["extracting_other_assets"] = {
+            error_message = "Income statement processing incomplete"
+            if income_statement.validation_errors:
+                try:
+                    validation_errors = json.loads(income_statement.validation_errors)
+                    if validation_errors:
+                        error_summary = "; ".join(validation_errors[:3])
+                        if len(validation_errors) > 3:
+                            error_summary += f" (+{len(validation_errors) - 3} more)"
+                        error_message = f"Validation failed: {error_summary}"
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            milestones["income_statement"] = {
                 "status": "error",
                 "message": error_message,
-                "updated_at": other_assets.extraction_date.isoformat()
-                if other_assets.extraction_date
+                "updated_at": income_statement.extraction_date.isoformat()
+                if income_statement.extraction_date
                 else None,
             }
-    elif progress and progress.get("milestones", {}).get("extracting_other_assets", {}).get(
-        "status"
-    ) in ["pending", "in_progress"]:
-        milestones["extracting_other_assets"] = progress["milestones"]["extracting_other_assets"]
+    elif _active_progress_milestone("income_statement"):
+        milestones["income_statement"] = _active_progress_milestone("income_statement")
     else:
-        milestones["extracting_other_assets"] = {
+        milestones["income_statement"] = {
             "status": "not_found",
-            "message": "Other assets not found",
+            "message": "Income statement not found",
             "updated_at": None,
         }
 
-    # 4. Extracting Other Liabilities
-    if other_liabilities and other_liabilities.line_items and len(other_liabilities.line_items) > 0:
-        if other_liabilities.is_valid:
-            milestones["extracting_other_liabilities"] = {
-                "status": "completed",
-                "message": "Other liabilities extracted and validated",
-                "updated_at": other_liabilities.extraction_date.isoformat()
-                if other_liabilities.extraction_date
-                else None,
-            }
-        else:
-            error_message = "Other liabilities extraction failed or validation errors"
-            if other_liabilities.validation_errors:
-                error_message = other_liabilities.validation_errors
-            milestones["extracting_other_liabilities"] = {
-                "status": "error",
-                "message": error_message,
-                "updated_at": other_liabilities.extraction_date.isoformat()
-                if other_liabilities.extraction_date
-                else None,
-            }
-    elif progress and progress.get("milestones", {}).get("extracting_other_liabilities", {}).get(
-        "status"
-    ) in ["pending", "in_progress"]:
-        milestones["extracting_other_liabilities"] = progress["milestones"][
-            "extracting_other_liabilities"
-        ]
+    # Additional Items milestone
+    additional_item_missing = []
+    additional_item_errors = []
+
+    shares_present = income_statement and (
+        income_statement.basic_shares_outstanding is not None
+        or income_statement.diluted_shares_outstanding is not None
+    )
+    if not shares_present:
+        additional_item_missing.append("shares outstanding")
+
+    if amortization and amortization.line_items:
+        if not amortization.is_valid:
+            additional_item_errors.append("amortization")
     else:
-        milestones["extracting_other_liabilities"] = {
+        additional_item_missing.append("amortization")
+
+    if organic_growth:
+        if not organic_growth.is_valid:
+            additional_item_errors.append("organic growth")
+    else:
+        additional_item_missing.append("organic growth")
+
+    if other_assets and other_assets.line_items:
+        if not other_assets.is_valid:
+            additional_item_errors.append("other assets")
+    else:
+        additional_item_missing.append("other assets")
+
+    if other_liabilities and other_liabilities.line_items:
+        if not other_liabilities.is_valid:
+            additional_item_errors.append("other liabilities")
+    else:
+        additional_item_missing.append("other liabilities")
+
+    if not income_statement and not _active_progress_milestone("extracting_additional_items"):
+        milestones["extracting_additional_items"] = {
             "status": "not_found",
-            "message": "Other liabilities not found",
+            "message": "Additional items not found",
             "updated_at": None,
         }
+    elif not additional_item_missing and not additional_item_errors:
+        milestones["extracting_additional_items"] = {
+            "status": "completed",
+            "message": "Additional items extracted",
+            "updated_at": income_statement.extraction_date.isoformat()
+            if income_statement and income_statement.extraction_date
+            else None,
+        }
+    elif _active_progress_milestone("extracting_additional_items"):
+        milestones["extracting_additional_items"] = _active_progress_milestone(
+            "extracting_additional_items"
+        )
+    elif not additional_item_missing and additional_item_errors:
+        milestones["extracting_additional_items"] = {
+            "status": "error",
+            "message": f"Validation errors for: {', '.join(additional_item_errors)}",
+            "updated_at": income_statement.extraction_date.isoformat()
+            if income_statement and income_statement.extraction_date
+            else None,
+        }
+    else:
+        milestones["extracting_additional_items"] = {
+            "status": "error",
+            "message": f"Missing: {', '.join(additional_item_missing)}",
+            "updated_at": income_statement.extraction_date.isoformat()
+            if income_statement and income_statement.extraction_date
+            else None,
+        }
 
-    # 5. Classifying Non-Operating Items
+    # Non-operating classification milestone
     if non_operating and non_operating.line_items and len(non_operating.line_items) > 0:
         milestones["classifying_non_operating_items"] = {
             "status": "completed",
@@ -1359,12 +1355,10 @@ async def get_financial_statement_progress(
             if non_operating.extraction_date
             else None,
         }
-    elif progress and progress.get("milestones", {}).get(
-        "classifying_non_operating_items", {}
-    ).get("status") in ["pending", "in_progress"]:
-        milestones["classifying_non_operating_items"] = progress["milestones"][
+    elif _active_progress_milestone("classifying_non_operating_items"):
+        milestones["classifying_non_operating_items"] = _active_progress_milestone(
             "classifying_non_operating_items"
-        ]
+        )
     elif non_operating:
         milestones["classifying_non_operating_items"] = {
             "status": "error",
@@ -1380,195 +1374,7 @@ async def get_financial_statement_progress(
             "updated_at": None,
         }
 
-    # 3. Extracting Income Statement: completed if non-empty income statement with validation passed
-    if (
-        income_statement
-        and income_statement.line_items
-        and len(income_statement.line_items) > 0
-        and income_statement.is_valid
-    ):
-        milestones["extracting_income_statement"] = {
-            "status": "completed",
-            "message": "Income statement extracted and validated",
-            "updated_at": income_statement.extraction_date.isoformat()
-            if income_statement.extraction_date
-            else None,
-        }
-    elif income_statement:
-        # Include actual validation errors if available
-        error_message = "Income statement extraction failed or validation errors"
-        if income_statement.validation_errors:
-            try:
-                validation_errors = json.loads(income_statement.validation_errors)
-                if validation_errors:
-                    error_summary = "; ".join(validation_errors[:3])
-                    if len(validation_errors) > 3:
-                        error_summary += f" (+{len(validation_errors) - 3} more)"
-                    error_message = f"Validation failed: {error_summary}"
-            except (json.JSONDecodeError, TypeError):
-                pass  # Use default message if parsing fails
-        milestones["extracting_income_statement"] = {
-            "status": "error",
-            "message": error_message,
-            "updated_at": income_statement.extraction_date.isoformat()
-            if income_statement.extraction_date
-            else None,
-        }
-    elif progress and progress.get("milestones", {}).get("extracting_income_statement", {}).get(
-        "status"
-    ) in ["pending", "in_progress"]:
-        milestones["extracting_income_statement"] = progress["milestones"][
-            "extracting_income_statement"
-        ]
-    else:
-        # No income statement exists - would return 404
-        milestones["extracting_income_statement"] = {
-            "status": "not_found",
-            "message": "Income statement not found",
-            "updated_at": None,
-        }
-
-    # 6. Extracting Shares Outstanding
-    if income_statement:
-        has_shares = (
-            income_statement.basic_shares_outstanding is not None
-            or income_statement.diluted_shares_outstanding is not None
-        )
-        if has_shares:
-            milestones["extracting_shares_outstanding"] = {
-                "status": "completed",
-                "message": "Shares outstanding extracted",
-                "updated_at": income_statement.extraction_date.isoformat()
-                if income_statement.extraction_date
-                else None,
-            }
-        else:
-            milestones["extracting_shares_outstanding"] = {
-                "status": "error",
-                "message": "Shares outstanding not found",
-                "updated_at": income_statement.extraction_date.isoformat()
-                if income_statement.extraction_date
-                else None,
-            }
-    elif progress and progress.get("milestones", {}).get(
-        "extracting_shares_outstanding", {}
-    ).get("status") in ["pending", "in_progress"]:
-        milestones["extracting_shares_outstanding"] = progress["milestones"][
-            "extracting_shares_outstanding"
-        ]
-    else:
-        milestones["extracting_shares_outstanding"] = {
-            "status": "not_found",
-            "message": "Shares outstanding not found",
-            "updated_at": None,
-        }
-
-    # 7. Extracting Amortization
-    if amortization and amortization.line_items and len(amortization.line_items) > 0:
-        if amortization.is_valid:
-            milestones["extracting_amortization"] = {
-                "status": "completed",
-                "message": "Amortization extracted and validated",
-                "updated_at": amortization.extraction_date.isoformat()
-                if amortization.extraction_date
-                else None,
-            }
-        else:
-            milestones["extracting_amortization"] = {
-                "status": "error",
-                "message": amortization.validation_errors
-                or "Amortization extraction failed or validation errors",
-                "updated_at": amortization.extraction_date.isoformat()
-                if amortization.extraction_date
-                else None,
-            }
-    elif progress and progress.get("milestones", {}).get("extracting_amortization", {}).get(
-        "status"
-    ) in ["pending", "in_progress"]:
-        milestones["extracting_amortization"] = progress["milestones"]["extracting_amortization"]
-    else:
-        milestones["extracting_amortization"] = {
-            "status": "not_found",
-            "message": "Amortization not found",
-            "updated_at": None,
-        }
-
-    # 8. Extracting Organic Growth
-    if organic_growth:
-        if organic_growth.is_valid:
-            milestones["extracting_organic_growth"] = {
-                "status": "completed",
-                "message": "Organic growth extracted",
-                "updated_at": organic_growth.extraction_date.isoformat()
-                if organic_growth.extraction_date
-                else None,
-            }
-        else:
-            milestones["extracting_organic_growth"] = {
-                "status": "error",
-                "message": organic_growth.validation_errors
-                or "Organic growth extraction failed or validation errors",
-                "updated_at": organic_growth.extraction_date.isoformat()
-                if organic_growth.extraction_date
-                else None,
-            }
-    elif progress and progress.get("milestones", {}).get("extracting_organic_growth", {}).get(
-        "status"
-    ) in ["pending", "in_progress"]:
-        milestones["extracting_organic_growth"] = progress["milestones"][
-            "extracting_organic_growth"
-        ]
-    else:
-        milestones["extracting_organic_growth"] = {
-            "status": "not_found",
-            "message": "Organic growth not found",
-            "updated_at": None,
-        }
-
-    # 9. Classifying Income Statement: completed if income statement has non-empty Type column (is_operating is not null)
-    if income_statement and income_statement.line_items:
-        has_classifications = any(
-            item.is_operating is not None for item in income_statement.line_items
-        )
-        if has_classifications:
-            milestones["classifying_income_statement"] = {
-                "status": "completed",
-                "message": "Income statement classified",
-                "updated_at": income_statement.extraction_date.isoformat()
-                if income_statement.extraction_date
-                else None,
-            }
-        else:
-            milestones["classifying_income_statement"] = {
-                "status": "error",
-                "message": "Income statement classification incomplete",
-                "updated_at": income_statement.extraction_date.isoformat()
-                if income_statement.extraction_date
-                else None,
-            }
-    elif progress and progress.get("milestones", {}).get("classifying_income_statement", {}).get(
-        "status"
-    ) in ["pending", "in_progress"]:
-        milestones["classifying_income_statement"] = progress["milestones"][
-            "classifying_income_statement"
-        ]
-    elif income_statement:
-        # Income statement exists but no line items - classification not possible
-        milestones["classifying_income_statement"] = {
-            "status": "not_found",
-            "message": "Income statement not found",
-            "updated_at": None,
-        }
-    else:
-        # No income statement exists - would return 404
-        milestones["classifying_income_statement"] = {
-            "status": "not_found",
-            "message": "Income statement not found",
-            "updated_at": None,
-        }
-
     # Determine overall status
-    # If progress exists in memory and has active processing, use that status
     if progress:
         has_in_progress = any(m.get("status") == "in_progress" for m in milestones.values())
         has_pending = any(m.get("status") == "pending" for m in milestones.values())
@@ -1587,7 +1393,6 @@ async def get_financial_statement_progress(
             else:
                 status = "checking"
     else:
-        # No progress in memory - determine from database state
         has_error = any(m.get("status") == "error" for m in milestones.values())
         all_completed = all(m.get("status") == "completed" for m in milestones.values())
         has_not_found = any(m.get("status") == "not_found" for m in milestones.values())
@@ -1608,6 +1413,18 @@ async def get_financial_statement_progress(
     }
 
 
+@router.get("/{document_id}/financial-statement-progress")
+async def get_financial_statement_progress(
+    document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    """Get financial statement processing progress with milestones"""
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    return _build_financial_statement_progress(document_id, db)
+
+
 @router.get("/{document_id}/status", response_model=DocumentSchema)
 async def get_document_status(
     document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
@@ -1626,400 +1443,11 @@ if DEBUG:
         document_id: str, db: Session = Depends(get_db)
     ):
         """TEST ENDPOINT: Get financial statement processing progress without authentication"""
-        # Use the same logic as the authenticated endpoint
-        from app.models.balance_sheet import BalanceSheet
-        from app.models.income_statement import IncomeStatement
-        from app.utils.financial_statement_progress import get_progress
-
         document = db.query(Document).filter(Document.id == document_id).first()
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
+        return _build_financial_statement_progress(document_id, db)
 
-        progress = get_progress(document_id)
-
-        # Always check database state to determine actual milestone status
-        balance_sheet = (
-            db.query(BalanceSheet).filter(BalanceSheet.document_id == document_id).first()
-        )
-        income_statement = (
-            db.query(IncomeStatement).filter(IncomeStatement.document_id == document_id).first()
-        )
-        other_assets = (
-            db.query(OtherAssets).filter(OtherAssets.document_id == document_id).first()
-        )
-        other_liabilities = (
-            db.query(OtherLiabilities).filter(OtherLiabilities.document_id == document_id).first()
-        )
-        amortization = (
-            db.query(Amortization).filter(Amortization.document_id == document_id).first()
-        )
-        organic_growth = (
-            db.query(OrganicGrowth).filter(OrganicGrowth.document_id == document_id).first()
-        )
-        non_operating = (
-            db.query(NonOperatingClassification)
-            .filter(NonOperatingClassification.document_id == document_id)
-            .first()
-        )
-
-        # Build milestones based on database state (same logic as authenticated endpoint)
-        milestones = {}
-
-        # 1. Extracting Balance Sheet
-        if (
-            balance_sheet
-            and balance_sheet.line_items
-            and len(balance_sheet.line_items) > 0
-            and balance_sheet.is_valid
-        ):
-            milestones["extracting_balance_sheet"] = {
-                "status": "completed",
-                "message": "Balance sheet extracted and validated",
-                "updated_at": balance_sheet.extraction_date.isoformat()
-                if balance_sheet.extraction_date
-                else None,
-            }
-        elif balance_sheet:
-            milestones["extracting_balance_sheet"] = {
-                "status": "error",
-                "message": "Balance sheet extraction failed or validation errors",
-                "updated_at": balance_sheet.extraction_date.isoformat()
-                if balance_sheet.extraction_date
-                else None,
-            }
-        elif progress and progress.get("milestones", {}).get("extracting_balance_sheet", {}).get(
-            "status"
-        ) in ["pending", "in_progress"]:
-            milestones["extracting_balance_sheet"] = progress["milestones"][
-                "extracting_balance_sheet"
-            ]
-        else:
-            # No balance sheet exists - would return 404
-            milestones["extracting_balance_sheet"] = {
-                "status": "not_found",
-                "message": "Balance sheet not found",
-                "updated_at": None,
-            }
-
-        # 2. Classifying Balance Sheet
-        if balance_sheet and balance_sheet.line_items:
-            has_classifications = any(
-                item.is_operating is not None for item in balance_sheet.line_items
-            )
-            if has_classifications:
-                milestones["classifying_balance_sheet"] = {
-                    "status": "completed",
-                    "message": "Balance sheet classified",
-                    "updated_at": balance_sheet.extraction_date.isoformat()
-                    if balance_sheet.extraction_date
-                    else None,
-                }
-            else:
-                milestones["classifying_balance_sheet"] = {
-                    "status": "error",
-                    "message": "Balance sheet classification incomplete",
-                    "updated_at": balance_sheet.extraction_date.isoformat()
-                    if balance_sheet.extraction_date
-                    else None,
-                }
-        elif progress and progress.get("milestones", {}).get("classifying_balance_sheet", {}).get(
-            "status"
-        ) in ["pending", "in_progress"]:
-            milestones["classifying_balance_sheet"] = progress["milestones"][
-                "classifying_balance_sheet"
-            ]
-        elif balance_sheet:
-            # Balance sheet exists but no line items - would return 404
-            milestones["classifying_balance_sheet"] = {
-                "status": "not_found",
-                "message": "Balance sheet not found",
-                "updated_at": None,
-            }
-        else:
-            # No balance sheet exists - would return 404
-            milestones["classifying_balance_sheet"] = {
-                "status": "not_found",
-                "message": "Balance sheet not found",
-                "updated_at": None,
-            }
-
-        # 3. Extracting Other Assets
-        if other_assets and other_assets.line_items and len(other_assets.line_items) > 0:
-            status = "completed" if other_assets.is_valid else "error"
-            milestones["extracting_other_assets"] = {
-                "status": status,
-                "message": "Other assets extracted"
-                if status == "completed"
-                else "Other assets extraction failed",
-                "updated_at": other_assets.extraction_date.isoformat()
-                if other_assets.extraction_date
-                else None,
-            }
-        elif progress and progress.get("milestones", {}).get("extracting_other_assets", {}).get(
-            "status"
-        ) in ["pending", "in_progress"]:
-            milestones["extracting_other_assets"] = progress["milestones"][
-                "extracting_other_assets"
-            ]
-        else:
-            milestones["extracting_other_assets"] = {
-                "status": "not_found",
-                "message": "Other assets not found",
-                "updated_at": None,
-            }
-
-        # 4. Extracting Other Liabilities
-        if other_liabilities and other_liabilities.line_items and len(other_liabilities.line_items) > 0:
-            status = "completed" if other_liabilities.is_valid else "error"
-            milestones["extracting_other_liabilities"] = {
-                "status": status,
-                "message": "Other liabilities extracted"
-                if status == "completed"
-                else "Other liabilities extraction failed",
-                "updated_at": other_liabilities.extraction_date.isoformat()
-                if other_liabilities.extraction_date
-                else None,
-            }
-        elif progress and progress.get("milestones", {}).get(
-            "extracting_other_liabilities", {}
-        ).get("status") in ["pending", "in_progress"]:
-            milestones["extracting_other_liabilities"] = progress["milestones"][
-                "extracting_other_liabilities"
-            ]
-        else:
-            milestones["extracting_other_liabilities"] = {
-                "status": "not_found",
-                "message": "Other liabilities not found",
-                "updated_at": None,
-            }
-
-        # 5. Classifying Non-Operating Items
-        if non_operating and non_operating.line_items and len(non_operating.line_items) > 0:
-            milestones["classifying_non_operating_items"] = {
-                "status": "completed",
-                "message": "Non-operating items classified",
-                "updated_at": non_operating.extraction_date.isoformat()
-                if non_operating.extraction_date
-                else None,
-            }
-        elif progress and progress.get("milestones", {}).get(
-            "classifying_non_operating_items", {}
-        ).get("status") in ["pending", "in_progress"]:
-            milestones["classifying_non_operating_items"] = progress["milestones"][
-                "classifying_non_operating_items"
-            ]
-        elif non_operating:
-            milestones["classifying_non_operating_items"] = {
-                "status": "error",
-                "message": "Non-operating classification incomplete",
-                "updated_at": non_operating.extraction_date.isoformat()
-                if non_operating.extraction_date
-                else None,
-            }
-        else:
-            milestones["classifying_non_operating_items"] = {
-                "status": "not_found",
-                "message": "Non-operating classification not found",
-                "updated_at": None,
-            }
-
-        # 3. Extracting Income Statement
-        if (
-            income_statement
-            and income_statement.line_items
-            and len(income_statement.line_items) > 0
-            and income_statement.is_valid
-        ):
-            milestones["extracting_income_statement"] = {
-                "status": "completed",
-                "message": "Income statement extracted and validated",
-                "updated_at": income_statement.extraction_date.isoformat()
-                if income_statement.extraction_date
-                else None,
-            }
-        elif income_statement:
-            milestones["extracting_income_statement"] = {
-                "status": "error",
-                "message": "Income statement extraction failed or validation errors",
-                "updated_at": income_statement.extraction_date.isoformat()
-                if income_statement.extraction_date
-                else None,
-            }
-        elif progress and progress.get("milestones", {}).get("extracting_income_statement", {}).get(
-            "status"
-        ) in ["pending", "in_progress"]:
-            milestones["extracting_income_statement"] = progress["milestones"][
-                "extracting_income_statement"
-            ]
-        else:
-            # No income statement exists - would return 404
-            milestones["extracting_income_statement"] = {
-                "status": "not_found",
-                "message": "Income statement not found",
-                "updated_at": None,
-            }
-
-        # 6. Extracting Shares Outstanding
-        if income_statement:
-            has_shares = (
-                income_statement.basic_shares_outstanding is not None
-                or income_statement.diluted_shares_outstanding is not None
-            )
-            if has_shares:
-                milestones["extracting_shares_outstanding"] = {
-                    "status": "completed",
-                    "message": "Shares outstanding extracted",
-                    "updated_at": income_statement.extraction_date.isoformat()
-                    if income_statement.extraction_date
-                    else None,
-                }
-            else:
-                milestones["extracting_shares_outstanding"] = {
-                    "status": "error",
-                    "message": "Shares outstanding not found",
-                    "updated_at": income_statement.extraction_date.isoformat()
-                    if income_statement.extraction_date
-                    else None,
-                }
-        elif progress and progress.get("milestones", {}).get(
-            "extracting_shares_outstanding", {}
-        ).get("status") in ["pending", "in_progress"]:
-            milestones["extracting_shares_outstanding"] = progress["milestones"][
-                "extracting_shares_outstanding"
-            ]
-        else:
-            milestones["extracting_shares_outstanding"] = {
-                "status": "not_found",
-                "message": "Shares outstanding not found",
-                "updated_at": None,
-            }
-
-        # 7. Extracting Amortization
-        if amortization and amortization.line_items and len(amortization.line_items) > 0:
-            status = "completed" if amortization.is_valid else "error"
-            milestones["extracting_amortization"] = {
-                "status": status,
-                "message": "Amortization extracted"
-                if status == "completed"
-                else "Amortization extraction failed",
-                "updated_at": amortization.extraction_date.isoformat()
-                if amortization.extraction_date
-                else None,
-            }
-        elif progress and progress.get("milestones", {}).get("extracting_amortization", {}).get(
-            "status"
-        ) in ["pending", "in_progress"]:
-            milestones["extracting_amortization"] = progress["milestones"][
-                "extracting_amortization"
-            ]
-        else:
-            milestones["extracting_amortization"] = {
-                "status": "not_found",
-                "message": "Amortization not found",
-                "updated_at": None,
-            }
-
-        # 8. Extracting Organic Growth
-        if organic_growth:
-            status = "completed" if organic_growth.is_valid else "error"
-            milestones["extracting_organic_growth"] = {
-                "status": status,
-                "message": "Organic growth extracted"
-                if status == "completed"
-                else "Organic growth extraction failed",
-                "updated_at": organic_growth.extraction_date.isoformat()
-                if organic_growth.extraction_date
-                else None,
-            }
-        elif progress and progress.get("milestones", {}).get("extracting_organic_growth", {}).get(
-            "status"
-        ) in ["pending", "in_progress"]:
-            milestones["extracting_organic_growth"] = progress["milestones"][
-                "extracting_organic_growth"
-            ]
-        else:
-            milestones["extracting_organic_growth"] = {
-                "status": "not_found",
-                "message": "Organic growth not found",
-                "updated_at": None,
-            }
-
-        # 9. Classifying Income Statement
-        if income_statement and income_statement.line_items:
-            has_classifications = any(
-                item.is_operating is not None for item in income_statement.line_items
-            )
-            if has_classifications:
-                milestones["classifying_income_statement"] = {
-                    "status": "completed",
-                    "message": "Income statement classified",
-                    "updated_at": income_statement.extraction_date.isoformat()
-                    if income_statement.extraction_date
-                    else None,
-                }
-            else:
-                milestones["classifying_income_statement"] = {
-                    "status": "error",
-                    "message": "Income statement classification incomplete",
-                    "updated_at": income_statement.extraction_date.isoformat()
-                    if income_statement.extraction_date
-                    else None,
-                }
-        elif progress and progress.get("milestones", {}).get(
-            "classifying_income_statement", {}
-        ).get("status") in ["pending", "in_progress"]:
-            milestones["classifying_income_statement"] = progress["milestones"][
-                "classifying_income_statement"
-            ]
-        elif income_statement:
-            # Income statement exists but no line items - classification not possible
-            milestones["classifying_income_statement"] = {
-                "status": "not_found",
-                "message": "Income statement not found",
-                "updated_at": None,
-            }
-        else:
-            # No income statement exists - would return 404
-            milestones["classifying_income_statement"] = {
-                "status": "not_found",
-                "message": "Income statement not found",
-                "updated_at": None,
-            }
-
-        # Determine overall status
-        if progress:
-            has_in_progress = any(m.get("status") == "in_progress" for m in milestones.values())
-            has_pending = any(m.get("status") == "pending" for m in milestones.values())
-            if has_in_progress or has_pending:
-                status = "processing"
-            else:
-                has_error = any(m.get("status") == "error" for m in milestones.values())
-                all_completed = all(m.get("status") == "completed" for m in milestones.values())
-                if has_error:
-                    status = "error"
-                elif all_completed:
-                    status = "completed"
-                else:
-                    status = "checking"
-        else:
-            has_error = any(m.get("status") == "error" for m in milestones.values())
-            all_completed = all(m.get("status") == "completed" for m in milestones.values())
-            has_checking = any(m.get("status") == "checking" for m in milestones.values())
-
-            if has_error:
-                status = "error"
-            elif all_completed:
-                status = "completed"
-            elif has_checking:
-                status = "checking"
-            else:
-                status = "not_started"
-
-        return {
-            "status": status,
-            "milestones": milestones,
-            "last_updated": progress.get("last_updated") if progress else None,
-        }
 
     @router.get("/{document_id}/status-test", response_model=DocumentSchema)
     async def get_document_status_test(document_id: str, db: Session = Depends(get_db)):

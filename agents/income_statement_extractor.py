@@ -1268,7 +1268,7 @@ def extract_income_statement(
             section_msg = f"Stage 1: Finding income statement section (attempt {section_attempt + 1}: {'before' if section_attempt == 0 else 'after' if section_attempt == 1 else '2 after'} balance sheet)"
             print(section_msg)
             add_log(
-                document_id, FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT, section_msg
+                document_id, FinancialStatementMilestone.INCOME_STATEMENT, section_msg
             )
 
             # Find income statement section near balance sheet
@@ -1287,7 +1287,7 @@ def extract_income_statement(
                 print(fallback_msg)
                 add_log(
                     document_id,
-                    FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                    FinancialStatementMilestone.INCOME_STATEMENT,
                     fallback_msg,
                 )
                 income_statement_text, _, _ = extract_text_from_pdf(file_path, max_pages=None)
@@ -1298,7 +1298,7 @@ def extract_income_statement(
                 print(extracted_msg)
                 add_log(
                     document_id,
-                    FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                    FinancialStatementMilestone.INCOME_STATEMENT,
                     extracted_msg,
                 )
             else:
@@ -1312,20 +1312,20 @@ def extract_income_statement(
                     print(chunk_msg)
                     add_log(
                         document_id,
-                        FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                        FinancialStatementMilestone.INCOME_STATEMENT,
                         chunk_msg,
                     )
                     pages_msg = f"Found income statement section (pages {log_info['start_extract_page']}-{log_info['end_extract_page']})"
                     print(pages_msg)
                     add_log(
                         document_id,
-                        FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                        FinancialStatementMilestone.INCOME_STATEMENT,
                         pages_msg,
                     )
                 found_msg = f"Found income statement section starting at page {start_page}, extracted {len(income_statement_text)} characters"
                 print(found_msg)
                 add_log(
-                    document_id, FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT, found_msg
+                    document_id, FinancialStatementMilestone.INCOME_STATEMENT, found_msg
                 )
 
             # Stage 1 validation: Check completeness of chunk text using LLM (before extraction)
@@ -1335,7 +1335,7 @@ def extract_income_statement(
             print(completeness_check_msg)
             add_log(
                 document_id,
-                FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                FinancialStatementMilestone.INCOME_STATEMENT,
                 completeness_check_msg,
             )
 
@@ -1348,7 +1348,7 @@ def extract_income_statement(
                 print(section_failed_msg)
                 add_log(
                     document_id,
-                    FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                    FinancialStatementMilestone.INCOME_STATEMENT,
                     section_failed_msg,
                 )
                 if section_attempt < max_retries - 1:
@@ -1375,7 +1375,7 @@ def extract_income_statement(
             print(extraction_msg)
             add_log(
                 document_id,
-                FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                FinancialStatementMilestone.INCOME_STATEMENT,
                 extraction_msg,
             )
 
@@ -1386,7 +1386,7 @@ def extract_income_statement(
             print(extracted_count_msg)
             add_log(
                 document_id,
-                FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                FinancialStatementMilestone.INCOME_STATEMENT,
                 extracted_count_msg,
             )
 
@@ -1396,7 +1396,7 @@ def extract_income_statement(
             print(section_valid_msg)
             add_log(
                 document_id,
-                FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                FinancialStatementMilestone.INCOME_STATEMENT,
                 section_valid_msg,
             )
             # Store successful chunk index
@@ -1440,7 +1440,7 @@ def extract_income_statement(
                 print(extraction_msg)
                 add_log(
                     document_id,
-                    FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                    FinancialStatementMilestone.INCOME_STATEMENT,
                     extraction_msg,
                 )
                 # extracted_data is already set from Stage 1
@@ -1450,7 +1450,7 @@ def extract_income_statement(
                 print(retry_msg)
                 add_log(
                     document_id,
-                    FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                    FinancialStatementMilestone.INCOME_STATEMENT,
                     retry_msg,
                 )
                 # Re-extract with validation error feedback
@@ -1475,7 +1475,7 @@ def extract_income_statement(
                 print(calc_valid_msg)
                 add_log(
                     document_id,
-                    FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                    FinancialStatementMilestone.INCOME_STATEMENT,
                     calc_valid_msg,
                 )
                 # Both stages passed, classify and return
@@ -1533,7 +1533,7 @@ def extract_income_statement(
                 print(calc_failed_msg)
                 add_log(
                     document_id,
-                    FinancialStatementMilestone.EXTRACTING_INCOME_STATEMENT,
+                    FinancialStatementMilestone.INCOME_STATEMENT,
                     calc_failed_msg,
                 )
                 if extraction_attempt < EXTRACTION_MAX_RETRIES - 1:

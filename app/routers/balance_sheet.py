@@ -4,57 +4,19 @@ Balance sheet processing routes
 
 import json
 import uuid
-from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from agents.balance_sheet_extractor import extract_balance_sheet
-from agents.non_operating_classifier import classify_non_operating_items
-from agents.other_assets_extractor import (
-    extract_original_name_from_standardized as extract_other_assets_label,
-    extract_other_assets,
-)
-from agents.other_liabilities_extractor import (
-    extract_original_name_from_standardized as extract_other_liabilities_label,
-    extract_other_liabilities,
-)
 from app.database import get_db
 from app.models.balance_sheet import BalanceSheet, BalanceSheetLineItem
 from app.models.document import Document, DocumentType, ProcessingStatus
-from app.models.non_operating_classification import (
-    NonOperatingClassification,
-    NonOperatingClassificationItem,
-)
-from app.models.other_assets import OtherAssets, OtherAssetsLineItem
-from app.models.other_liabilities import OtherLiabilities, OtherLiabilitiesLineItem
 from app.models.user import User
 from app.routers.auth import get_current_user
 from app.schemas.balance_sheet import BalanceSheet as BalanceSheetSchema
 
 router = APIRouter()
-
-
-def _find_standardized_line_item(line_items: list[BalanceSheetLineItem], label: str):
-    for item in line_items:
-        if label.lower() in (item.line_name or "").lower():
-            return item
-    return None
-
-
-def _extract_balance_sheet_terms(
-    balance_sheet: BalanceSheet,
-    label: str,
-) -> tuple[list[str], float | None]:
-    item = _find_standardized_line_item(balance_sheet.line_items, label)
-    if not item:
-        return [], None
-
-    original = extract_other_assets_label(item.line_name) or extract_other_liabilities_label(
-        item.line_name
-    )
-    terms = [original] if original else [item.line_name]
-    return terms, float(item.line_value) if item.line_value is not None else None
 
 
 def process_balance_sheet_async(document_id: str, db: Session):
@@ -125,12 +87,17 @@ def process_balance_sheet_async(document_id: str, db: Session):
             db_session.commit()
             print(f"Deleted existing balance sheet for document {document_id} before re-extraction")
 
-        # Update milestone: extracting balance sheet
+        # Update milestone: balance sheet processing
         update_milestone(
             document_id,
-            FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+            FinancialStatementMilestone.BALANCE_SHEET,
             MilestoneStatus.IN_PROGRESS,
             "Extracting balance sheet data...",
+        )
+        add_log(
+            document_id,
+            FinancialStatementMilestone.BALANCE_SHEET,
+            "Started balance sheet extraction",
         )
 
         # Extract balance sheet
@@ -165,16 +132,9 @@ def process_balance_sheet_async(document_id: str, db: Session):
             print(f"Error: {error_msg}")
             update_milestone(
                 document_id,
-                FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
+                FinancialStatementMilestone.BALANCE_SHEET,
                 MilestoneStatus.ERROR,
                 error_msg,
-            )
-            # Mark classification milestone as ERROR as well since we can't proceed
-            update_milestone(
-                document_id,
-                FinancialStatementMilestone.CLASSIFYING_BALANCE_SHEET,
-                MilestoneStatus.ERROR,
-                "Cannot classify: extraction failed",
             )
             document.analysis_status = ProcessingStatus.ERROR
             db_session.commit()
@@ -194,27 +154,17 @@ def process_balance_sheet_async(document_id: str, db: Session):
             else:
                 extraction_message = "Validation failed"
             # Set status to ERROR instead of COMPLETED when validation fails
-            update_milestone(
+            add_log(
                 document_id,
-                FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
-                MilestoneStatus.ERROR,
-                extraction_message,
+                FinancialStatementMilestone.BALANCE_SHEET,
+                f"Validation failed: {extraction_message}",
             )
         else:
-            update_milestone(
+            add_log(
                 document_id,
-                FinancialStatementMilestone.EXTRACTING_BALANCE_SHEET,
-                MilestoneStatus.COMPLETED,
+                FinancialStatementMilestone.BALANCE_SHEET,
                 "Balance sheet extraction completed",
             )
-
-        # Update milestone: classifying balance sheet
-        update_milestone(
-            document_id,
-            FinancialStatementMilestone.CLASSIFYING_BALANCE_SHEET,
-            MilestoneStatus.IN_PROGRESS,
-            "Classifying balance sheet line items...",
-        )
 
         try:
             # Create new balance sheet (existing one was already deleted before extraction)
@@ -262,305 +212,40 @@ def process_balance_sheet_async(document_id: str, db: Session):
 
             db_session.commit()
 
-            # Add log for classification completion
             classified_count = len(line_items)
             add_log(
                 document_id,
-                FinancialStatementMilestone.CLASSIFYING_BALANCE_SHEET,
+                FinancialStatementMilestone.BALANCE_SHEET,
                 f"Classified {classified_count} line items as operating/non-operating",
             )
 
-            # Update milestone: classifying balance sheet completed
-            classification_message = "Balance sheet classification completed"
             if not extracted_data.get("is_valid", False):
-                classification_message += " (data invalid but classified)"
-            update_milestone(
-                document_id,
-                FinancialStatementMilestone.CLASSIFYING_BALANCE_SHEET,
-                MilestoneStatus.COMPLETED,
-                classification_message,
-            )
+                update_milestone(
+                    document_id,
+                    FinancialStatementMilestone.BALANCE_SHEET,
+                    MilestoneStatus.ERROR,
+                    "Balance sheet processed with validation errors",
+                )
+            else:
+                update_milestone(
+                    document_id,
+                    FinancialStatementMilestone.BALANCE_SHEET,
+                    MilestoneStatus.COMPLETED,
+                    "Balance sheet processing completed",
+                )
         except Exception as classification_error:
             # If classification/saving fails, mark it as error
             print(f"Error during balance sheet classification/saving: {str(classification_error)}")
             update_milestone(
                 document_id,
-                FinancialStatementMilestone.CLASSIFYING_BALANCE_SHEET,
+                FinancialStatementMilestone.BALANCE_SHEET,
                 MilestoneStatus.ERROR,
                 f"Classification error: {str(classification_error)}",
             )
             raise  # Re-raise to be caught by outer exception handler
 
-        # Extract other assets
-        update_milestone(
-            document_id,
-            FinancialStatementMilestone.EXTRACTING_OTHER_ASSETS,
-            MilestoneStatus.IN_PROGRESS,
-            "Extracting other assets line items...",
-        )
-        other_assets_result = None
-        if balance_sheet and balance_sheet.line_items:
-            current_terms, current_total = _extract_balance_sheet_terms(
-                balance_sheet, "Other Current Assets"
-            )
-            non_current_terms, non_current_total = _extract_balance_sheet_terms(
-                balance_sheet, "Other Non-Current Assets"
-            )
-            query_terms = current_terms + non_current_terms
-            other_assets_result = extract_other_assets(
-                document_id=document_id,
-                file_path=document.file_path,
-                time_period=time_period,
-                query_terms=query_terms,
-                expected_current_total=current_total,
-                expected_non_current_total=non_current_total,
-            )
-
-        if other_assets_result and other_assets_result.get("line_items"):
-            existing_other_assets = (
-                db_session.query(OtherAssets).filter(OtherAssets.document_id == document_id).first()
-            )
-            if existing_other_assets:
-                db_session.query(OtherAssetsLineItem).filter(
-                    OtherAssetsLineItem.other_assets_id == existing_other_assets.id
-                ).delete()
-                db_session.delete(existing_other_assets)
-                db_session.commit()
-
-            other_assets = OtherAssets(
-                id=str(uuid.uuid4()),
-                document_id=document_id,
-                time_period=time_period,
-                currency=balance_sheet.currency,
-                chunk_index=other_assets_result.get("chunk_index"),
-                is_valid=other_assets_result.get("is_valid", False),
-                validation_errors=json.dumps(other_assets_result.get("validation_errors", []))
-                if other_assets_result.get("validation_errors")
-                else None,
-            )
-            db_session.add(other_assets)
-            db_session.commit()
-            db_session.refresh(other_assets)
-
-            for idx, item in enumerate(other_assets_result.get("line_items", [])):
-                db_session.add(
-                    OtherAssetsLineItem(
-                        id=str(uuid.uuid4()),
-                        other_assets_id=other_assets.id,
-                        line_name=item.get("line_name"),
-                        line_value=item.get("line_value"),
-                        unit=item.get("unit"),
-                        is_operating=item.get("is_operating"),
-                        category=item.get("category"),
-                        line_order=idx,
-                    )
-                )
-            db_session.commit()
-
-            update_milestone(
-                document_id,
-                FinancialStatementMilestone.EXTRACTING_OTHER_ASSETS,
-                MilestoneStatus.COMPLETED,
-                "Other assets extraction completed",
-            )
-        else:
-            update_milestone(
-                document_id,
-                FinancialStatementMilestone.EXTRACTING_OTHER_ASSETS,
-                MilestoneStatus.ERROR,
-                "Other assets extraction failed or no line items found",
-            )
-
-        # Extract other liabilities
-        update_milestone(
-            document_id,
-            FinancialStatementMilestone.EXTRACTING_OTHER_LIABILITIES,
-            MilestoneStatus.IN_PROGRESS,
-            "Extracting other liabilities line items...",
-        )
-        other_liabilities_result = None
-        if balance_sheet and balance_sheet.line_items:
-            current_terms, current_total = _extract_balance_sheet_terms(
-                balance_sheet, "Other Current Liabilities"
-            )
-            non_current_terms, non_current_total = _extract_balance_sheet_terms(
-                balance_sheet, "Other Non-Current Liabilities"
-            )
-            query_terms = current_terms + non_current_terms
-            other_liabilities_result = extract_other_liabilities(
-                document_id=document_id,
-                file_path=document.file_path,
-                time_period=time_period,
-                query_terms=query_terms,
-                expected_current_total=current_total,
-                expected_non_current_total=non_current_total,
-            )
-
-        if other_liabilities_result and other_liabilities_result.get("line_items"):
-            existing_other_liabilities = (
-                db_session.query(OtherLiabilities)
-                .filter(OtherLiabilities.document_id == document_id)
-                .first()
-            )
-            if existing_other_liabilities:
-                db_session.query(OtherLiabilitiesLineItem).filter(
-                    OtherLiabilitiesLineItem.other_liabilities_id == existing_other_liabilities.id
-                ).delete()
-                db_session.delete(existing_other_liabilities)
-                db_session.commit()
-
-            other_liabilities = OtherLiabilities(
-                id=str(uuid.uuid4()),
-                document_id=document_id,
-                time_period=time_period,
-                currency=balance_sheet.currency,
-                chunk_index=other_liabilities_result.get("chunk_index"),
-                is_valid=other_liabilities_result.get("is_valid", False),
-                validation_errors=json.dumps(other_liabilities_result.get("validation_errors", []))
-                if other_liabilities_result.get("validation_errors")
-                else None,
-            )
-            db_session.add(other_liabilities)
-            db_session.commit()
-            db_session.refresh(other_liabilities)
-
-            for idx, item in enumerate(other_liabilities_result.get("line_items", [])):
-                db_session.add(
-                    OtherLiabilitiesLineItem(
-                        id=str(uuid.uuid4()),
-                        other_liabilities_id=other_liabilities.id,
-                        line_name=item.get("line_name"),
-                        line_value=item.get("line_value"),
-                        unit=item.get("unit"),
-                        is_operating=item.get("is_operating"),
-                        category=item.get("category"),
-                        line_order=idx,
-                    )
-                )
-            db_session.commit()
-
-            update_milestone(
-                document_id,
-                FinancialStatementMilestone.EXTRACTING_OTHER_LIABILITIES,
-                MilestoneStatus.COMPLETED,
-                "Other liabilities extraction completed",
-            )
-        else:
-            update_milestone(
-                document_id,
-                FinancialStatementMilestone.EXTRACTING_OTHER_LIABILITIES,
-                MilestoneStatus.ERROR,
-                "Other liabilities extraction failed or no line items found",
-            )
-
-        # Classify non-operating items
-        update_milestone(
-            document_id,
-            FinancialStatementMilestone.CLASSIFYING_NON_OPERATING_ITEMS,
-            MilestoneStatus.IN_PROGRESS,
-            "Classifying non-operating items...",
-        )
-        non_operating_items = []
-        if balance_sheet and balance_sheet.line_items:
-            for item in balance_sheet.line_items:
-                if item.is_operating is False:
-                    non_operating_items.append(
-                        {
-                            "line_name": item.line_name,
-                            "line_value": float(item.line_value) if item.line_value is not None else None,
-                            "unit": balance_sheet.unit,
-                            "source": "balance_sheet",
-                        }
-                    )
-
-        other_assets = (
-            db_session.query(OtherAssets).filter(OtherAssets.document_id == document_id).first()
-        )
-        if other_assets and other_assets.line_items:
-            for item in other_assets.line_items:
-                if item.is_operating is False:
-                    non_operating_items.append(
-                        {
-                            "line_name": item.line_name,
-                            "line_value": float(item.line_value) if item.line_value is not None else None,
-                            "unit": item.unit,
-                            "source": "other_assets",
-                        }
-                    )
-
-        other_liabilities = (
-            db_session.query(OtherLiabilities)
-            .filter(OtherLiabilities.document_id == document_id)
-            .first()
-        )
-        if other_liabilities and other_liabilities.line_items:
-            for item in other_liabilities.line_items:
-                if item.is_operating is False:
-                    non_operating_items.append(
-                        {
-                            "line_name": item.line_name,
-                            "line_value": float(item.line_value) if item.line_value is not None else None,
-                            "unit": item.unit,
-                            "source": "other_liabilities",
-                        }
-                    )
-
-        classified_items = classify_non_operating_items(non_operating_items)
-        if classified_items:
-            existing_classification = (
-                db_session.query(NonOperatingClassification)
-                .filter(NonOperatingClassification.document_id == document_id)
-                .first()
-            )
-            if existing_classification:
-                db_session.query(NonOperatingClassificationItem).filter(
-                    NonOperatingClassificationItem.classification_id
-                    == existing_classification.id
-                ).delete()
-                db_session.delete(existing_classification)
-                db_session.commit()
-
-            classification = NonOperatingClassification(
-                id=str(uuid.uuid4()),
-                document_id=document_id,
-                time_period=time_period,
-            )
-            db_session.add(classification)
-            db_session.commit()
-            db_session.refresh(classification)
-
-            for idx, item in enumerate(classified_items):
-                db_session.add(
-                    NonOperatingClassificationItem(
-                        id=str(uuid.uuid4()),
-                        classification_id=classification.id,
-                        line_name=item.get("line_name"),
-                        line_value=item.get("line_value"),
-                        unit=item.get("unit"),
-                        category=item.get("category"),
-                        source=item.get("source"),
-                        line_order=idx,
-                    )
-                )
-            db_session.commit()
-
-            update_milestone(
-                document_id,
-                FinancialStatementMilestone.CLASSIFYING_NON_OPERATING_ITEMS,
-                MilestoneStatus.COMPLETED,
-                "Non-operating items classification completed",
-            )
-        else:
-            update_milestone(
-                document_id,
-                FinancialStatementMilestone.CLASSIFYING_NON_OPERATING_ITEMS,
-                MilestoneStatus.ERROR,
-                "No non-operating items found to classify",
-            )
-
-        # Update document status
-        document.analysis_status = ProcessingStatus.PROCESSED
-        document.processed_at = datetime.utcnow()
+        # Keep document status as processing; income statement completes the pipeline.
+        document.analysis_status = ProcessingStatus.PROCESSING
         db_session.commit()
 
     except Exception as e:

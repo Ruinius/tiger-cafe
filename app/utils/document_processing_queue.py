@@ -57,7 +57,8 @@ def _process_document_with_service(document_id: str, mode: DocumentProcessingMod
 def _process_financial_statements(document_id: str, db_session: SessionLocal):
     """
     Process financial statements for an indexed document.
-    Balance sheet is processed first, then income statement (which uses balance sheet location).
+    Balance sheet is processed first, then income statement (which uses balance sheet location and
+    triggers additional items + non-operating classification).
     """
     document = db_session.query(Document).filter(Document.id == document_id).first()
     if not document:
