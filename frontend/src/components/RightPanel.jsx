@@ -770,15 +770,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                       className={isKeyTotal ? 'key-total-row' : ''}
                                     >
                                       <td className={isKeyTotal ? 'bold-text' : ''}>{item.line_name}</td>
-                                      <td>
-                                        {item.line_category ? (
-                                          <span className={`type-badge ${item.line_category.toLowerCase() === 'one-time' ? 'non-operating' : 'operating'}`}>
-                                            {item.line_category}
-                                          </span>
-                                        ) : (
-                                          'N/A'
-                                        )}
-                                      </td>
+                                      <td className="col-category">{item.line_category || 'N/A'}</td>
                                       <td className={`text-right ${isKeyTotal ? 'bold-text' : ''}`}>{formatNumber(item.line_value, incomeStatement.unit)}</td>
                                       <td>
                                         {item.is_operating === null || item.is_operating === undefined ? (
@@ -813,10 +805,10 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                     </div>
                   )}
 
-                  {/* Amortization Section */}
+                  {/* Non-GAAP Reconciliation Section */}
                   {amortization && (
                     <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
-                      <h3>Amortization</h3>
+                      <h3>Non-GAAP Reconciliation</h3>
                       <AmortizationTable data={amortization} formatNumber={formatNumber} />
                     </div>
                   )}
@@ -849,7 +841,20 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                   {nonOperatingClassification && (
                     <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
                       <h3>Non-Operating Classification</h3>
-                      <NonOperatingClassificationTable data={nonOperatingClassification} formatNumber={formatNumber} />
+                      {nonOperatingClassification.line_items && nonOperatingClassification.line_items.length > 0 ? (
+                        <NonOperatingClassificationTable 
+                          data={nonOperatingClassification} 
+                          formatNumber={formatNumber}
+                          balanceSheet={balanceSheet}
+                          incomeStatement={incomeStatement}
+                        />
+                      ) : (
+                        <div className="info-section">
+                          <p className="info-text" style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                            No non-operating items found to classify.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -858,20 +863,387 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                     <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
                       <h3>Historical Calculations</h3>
 
-                      <div style={{ marginTop: '1.5rem' }}>
-                        <h4>Invested Capital</h4>
-                        <p className="placeholder-text">Invested capital adjustments will appear here.</p>
-                      </div>
+                      {/* Invested Capital Breakdown */}
+                      {historicalCalculations.invested_capital != null && balanceSheet && (
+                        <div style={{ marginTop: '1.5rem' }}>
+                          <h4>Invested Capital</h4>
+                          {(() => {
+                            // Use breakdown from backend if available, otherwise calculate from balance sheet
+                            let currentAssetsOperating = []
+                            let currentLiabilitiesOperating = []
+                            let currentAssetsTotal = 0
+                            let currentLiabilitiesTotal = 0
+                            let netWorkingCapital = 0
+
+                            if (historicalCalculations?.net_working_capital_breakdown) {
+                              // Use breakdown from backend
+                              const breakdown = historicalCalculations.net_working_capital_breakdown
+                              currentAssetsOperating = breakdown.current_assets || []
+                              currentLiabilitiesOperating = breakdown.current_liabilities || []
+                              currentAssetsTotal = breakdown.current_assets_total || 0
+                              currentLiabilitiesTotal = breakdown.current_liabilities_total || 0
+                              netWorkingCapital = breakdown.total || 0
+                            } else if (balanceSheet?.line_items) {
+                              // Fallback: calculate from balance sheet
+                              balanceSheet.line_items.forEach(item => {
+                                const categoryLower = (item.line_category || '').toLowerCase()
+                                
+                                // Check for non-current first (to avoid matching "non-current" when checking for "current")
+                                const isNonCurrent = categoryLower.includes('non-current') || 
+                                                     (categoryLower.includes('long') && categoryLower.includes('term'))
+                                const isCurrent = !isNonCurrent && categoryLower.includes('current')
+                                const isAsset = categoryLower.includes('asset')
+                                const isLiability = categoryLower.includes('liability')
+                                const isTotal = categoryLower.includes('total')
+                                
+                                const isCurrentAsset = isCurrent && isAsset && !isTotal
+                                const isCurrentLiability = isCurrent && isLiability && !isTotal
+
+                                if (isCurrentAsset && item.is_operating === true) {
+                                  currentAssetsOperating.push({
+                                    line_name: item.line_name,
+                                    line_value: item.line_value,
+                                    line_category: item.line_category,
+                                    is_operating: item.is_operating
+                                  })
+                                } else if (isCurrentLiability && item.is_operating === true) {
+                                  currentLiabilitiesOperating.push({
+                                    line_name: item.line_name,
+                                    line_value: item.line_value,
+                                    line_category: item.line_category,
+                                    is_operating: item.is_operating
+                                  })
+                                }
+                              })
+                              
+                              currentAssetsTotal = currentAssetsOperating.reduce((sum, item) => sum + parseFloat(item.line_value || 0), 0)
+                              currentLiabilitiesTotal = currentLiabilitiesOperating.reduce((sum, item) => sum + parseFloat(item.line_value || 0), 0)
+                              netWorkingCapital = currentAssetsTotal - currentLiabilitiesTotal
+                            }
+
+                            // Extract line items for net long term operating assets calculation
+                            const nonCurrentAssetsOperating = []
+                            const nonCurrentLiabilitiesOperating = []
+
+                            if (balanceSheet?.line_items) {
+                              balanceSheet.line_items.forEach(item => {
+                                const categoryLower = (item.line_category || '').toLowerCase()
+                                
+                                // Check for non-current first (to avoid matching "non-current" when checking for "current")
+                                const isNonCurrent = categoryLower.includes('non-current') || 
+                                                     (categoryLower.includes('long') && categoryLower.includes('term'))
+                                const isAsset = categoryLower.includes('asset')
+                                const isLiability = categoryLower.includes('liability')
+                                const isTotal = categoryLower.includes('total')
+                                
+                                const isNonCurrentAsset = isNonCurrent && isAsset && !isTotal
+                                const isNonCurrentLiability = isNonCurrent && isLiability && !isTotal
+
+                                if (isNonCurrentAsset && item.is_operating === true) {
+                                  nonCurrentAssetsOperating.push(item)
+                                } else if (isNonCurrentLiability && item.is_operating === true) {
+                                  nonCurrentLiabilitiesOperating.push(item)
+                                }
+                              })
+                            }
+
+                            const netLongTerm = nonCurrentAssetsOperating.reduce((sum, item) => sum + parseFloat(item.line_value || 0), 0) -
+                              nonCurrentLiabilitiesOperating.reduce((sum, item) => sum + parseFloat(item.line_value || 0), 0)
+
+                            return (
+                              <div className="balance-sheet-container" style={{ marginTop: '1rem' }}>
+                                <div style={{ marginBottom: '1.5rem' }}>
+                                  <h5 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.75rem' }}>Net Working Capital</h5>
+                                  <div className="balance-sheet-table-container">
+                                    <table className="balance-sheet-table">
+                                      <thead>
+                                        <tr>
+                                          <th className="col-name">Line Item</th>
+                                          <th className="col-category">Category</th>
+                                          <th className="col-type">Type</th>
+                                          <th className="text-right col-value">Amount</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        <tr>
+                                          <td colSpan="3" style={{ fontWeight: 600, paddingLeft: '1rem' }}>Current Assets (Operating)</td>
+                                          <td className="text-right col-value"></td>
+                                        </tr>
+                                        {currentAssetsOperating.length > 0 ? currentAssetsOperating.map((item, idx) => (
+                                          <tr key={`ca-${idx}`}>
+                                            <td className="col-name" style={{ paddingLeft: '2rem' }}>{item.line_name}</td>
+                                            <td className="col-category">{item.line_category || 'N/A'}</td>
+                                            <td className="col-type">
+                                              {item.is_operating === true ? (
+                                                <span className="type-badge operating">Operating</span>
+                                              ) : item.is_operating === false ? (
+                                                <span className="type-badge non-operating">Non-Operating</span>
+                                              ) : (
+                                                <span className="text-muted">—</span>
+                                              )}
+                                            </td>
+                                            <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet?.unit || historicalCalculations?.unit)}</td>
+                                          </tr>
+                                        )) : (
+                                          <tr>
+                                            <td colSpan="4" style={{ paddingLeft: '2rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>No operating current assets found</td>
+                                          </tr>
+                                        )}
+                                        <tr>
+                                          <td colSpan="3" style={{ fontWeight: 600, paddingLeft: '1rem' }}>Current Liabilities (Operating)</td>
+                                          <td className="text-right col-value"></td>
+                                        </tr>
+                                        {currentLiabilitiesOperating.length > 0 ? currentLiabilitiesOperating.map((item, idx) => (
+                                          <tr key={`cl-${idx}`}>
+                                            <td className="col-name" style={{ paddingLeft: '2rem' }}>{item.line_name}</td>
+                                            <td className="col-category">{item.line_category || 'N/A'}</td>
+                                            <td className="col-type">
+                                              {item.is_operating === true ? (
+                                                <span className="type-badge operating">Operating</span>
+                                              ) : item.is_operating === false ? (
+                                                <span className="type-badge non-operating">Non-Operating</span>
+                                              ) : (
+                                                <span className="text-muted">—</span>
+                                              )}
+                                            </td>
+                                            <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet?.unit || historicalCalculations?.unit)}</td>
+                                          </tr>
+                                        )) : (
+                                          <tr>
+                                            <td colSpan="4" style={{ paddingLeft: '2rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>No operating current liabilities found</td>
+                                          </tr>
+                                        )}
+                                        <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 600 }}>
+                                          <td colSpan="3" className="col-name">Total Current Assets (Operating)</td>
+                                          <td className="text-right col-value">{formatNumber(currentAssetsTotal, balanceSheet?.unit || historicalCalculations?.unit)}</td>
+                                        </tr>
+                                        <tr style={{ fontWeight: 600 }}>
+                                          <td colSpan="3" className="col-name">Total Current Liabilities (Operating)</td>
+                                          <td className="text-right col-value">{formatNumber(currentLiabilitiesTotal, balanceSheet?.unit || historicalCalculations?.unit)}</td>
+                                        </tr>
+                                        <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700, fontSize: '1.05rem' }}>
+                                          <td colSpan="3" className="col-name">Net Working Capital</td>
+                                          <td className="text-right col-value">{formatNumber(netWorkingCapital, balanceSheet?.unit || historicalCalculations?.unit)}</td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+
+                                <div style={{ marginBottom: '1.5rem' }}>
+                                  <h5 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.75rem' }}>Net Long Term Operating Assets</h5>
+                                  <div className="balance-sheet-table-container">
+                                    <table className="balance-sheet-table">
+                                      <thead>
+                                        <tr>
+                                          <th className="col-name">Line Item</th>
+                                          <th className="col-category">Category</th>
+                                          <th className="col-type">Type</th>
+                                          <th className="text-right col-value">Amount</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        <tr>
+                                          <td colSpan="3" style={{ fontWeight: 600, paddingLeft: '1rem' }}>Non-Current Assets (Operating)</td>
+                                          <td className="text-right col-value"></td>
+                                        </tr>
+                                        {nonCurrentAssetsOperating.length > 0 ? nonCurrentAssetsOperating.map((item, idx) => (
+                                          <tr key={`nca-${idx}`}>
+                                            <td className="col-name" style={{ paddingLeft: '2rem' }}>{item.line_name}</td>
+                                            <td className="col-category">{item.line_category || 'N/A'}</td>
+                                            <td className="col-type">{item.is_operating === true ? 'Operating' : item.is_operating === false ? 'Non-Operating' : 'N/A'}</td>
+                                            <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet.unit)}</td>
+                                          </tr>
+                                        )) : (
+                                          <tr>
+                                            <td colSpan="4" style={{ paddingLeft: '2rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>No operating non-current assets found</td>
+                                          </tr>
+                                        )}
+                                        <tr>
+                                          <td colSpan="3" style={{ fontWeight: 600, paddingLeft: '1rem' }}>Non-Current Liabilities (Operating)</td>
+                                          <td className="text-right col-value"></td>
+                                        </tr>
+                                        {nonCurrentLiabilitiesOperating.length > 0 ? nonCurrentLiabilitiesOperating.map((item, idx) => (
+                                          <tr key={`ncl-${idx}`}>
+                                            <td className="col-name" style={{ paddingLeft: '2rem' }}>{item.line_name}</td>
+                                            <td className="col-category">{item.line_category || 'N/A'}</td>
+                                            <td className="col-type">{item.is_operating === true ? 'Operating' : item.is_operating === false ? 'Non-Operating' : 'N/A'}</td>
+                                            <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet.unit)}</td>
+                                          </tr>
+                                        )) : (
+                                          <tr>
+                                            <td colSpan="4" style={{ paddingLeft: '2rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>No operating non-current liabilities found</td>
+                                          </tr>
+                                        )}
+                                        <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 600 }}>
+                                          <td colSpan="3" className="col-name">Net Long Term Operating Assets</td>
+                                          <td className="text-right col-value">{formatNumber(netLongTerm, balanceSheet.unit)}</td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+
+                                <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '2px solid var(--border)' }}>
+                                  <div className="balance-sheet-table-container">
+                                    <table className="balance-sheet-table">
+                                      <tbody>
+                                        <tr style={{ fontWeight: 600 }}>
+                                          <td className="col-name">Net Working Capital</td>
+                                          <td className="text-right col-value">{formatNumber(netWorkingCapital, balanceSheet?.unit || historicalCalculations?.unit)}</td>
+                                        </tr>
+                                        <tr style={{ fontWeight: 600 }}>
+                                          <td className="col-name">+ Net Long Term Operating Assets</td>
+                                          <td className="text-right col-value">{formatNumber(netLongTerm, balanceSheet?.unit || historicalCalculations?.unit)}</td>
+                                        </tr>
+                                        <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700, fontSize: '1.05rem' }}>
+                                          <td className="col-name">= Invested Capital</td>
+                                          <td className="text-right col-value">{formatNumber(historicalCalculations.invested_capital, historicalCalculations.unit)}</td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })()}
+                        </div>
+                      )}
 
                       <div style={{ marginTop: '1.5rem' }}>
                         <h4>Adjusted Tax Rate</h4>
                         <p className="placeholder-text">Adjusted tax rate breakdown will appear here.</p>
                       </div>
 
-                      <div style={{ marginTop: '1.5rem' }}>
-                        <h4>EBITA</h4>
-                        <p className="placeholder-text">EBITA adjustments will appear here.</p>
-                      </div>
+                      {/* EBITA Breakdown */}
+                      {historicalCalculations.ebita != null && incomeStatement && (
+                        <div style={{ marginTop: '1.5rem' }}>
+                          <h4>EBITA</h4>
+                          {(() => {
+                            // Find operating income
+                            let operatingIncome = null
+                            let operatingIncomeItem = null
+                            if (incomeStatement.line_items) {
+                              for (const item of incomeStatement.line_items) {
+                                if (item.line_name.includes('Operating Income (')) {
+                                  operatingIncome = parseFloat(item.line_value || 0)
+                                  operatingIncomeItem = item
+                                  break
+                                }
+                              }
+                              // Fallback search
+                              if (operatingIncome === null) {
+                                for (const item of incomeStatement.line_items) {
+                                  const nameLower = item.line_name.toLowerCase()
+                                  if ((nameLower.includes('operating income') || nameLower.includes('income from operations') || nameLower.includes('operating profit')) &&
+                                    !nameLower.includes('total') && !nameLower.includes('subtotal')) {
+                                    operatingIncome = parseFloat(item.line_value || 0)
+                                    operatingIncomeItem = item
+                                    break
+                                  }
+                                }
+                              }
+                            }
+
+                            // Find revenue item
+                            let revenueItem = null
+                            if (incomeStatement.line_items) {
+                              for (const item of incomeStatement.line_items) {
+                                if (item.line_name.includes('Total Net Revenue')) {
+                                  revenueItem = item
+                                  break
+                                }
+                              }
+                              if (!revenueItem) {
+                                for (const item of incomeStatement.line_items) {
+                                  const nameLower = item.line_name.toLowerCase()
+                                  if ((nameLower.includes('revenue') || nameLower.includes('sales') || nameLower.includes('net sales')) && item.line_value > 0) {
+                                    revenueItem = item
+                                    break
+                                  }
+                                }
+                              }
+                            }
+
+                            // Find non-operating items between revenue and operating income
+                            const nonOperatingItems = []
+                            if (incomeStatement.line_items && revenueItem && operatingIncomeItem) {
+                              const sortedItems = [...incomeStatement.line_items].sort((a, b) => a.line_order - b.line_order)
+                              for (const item of sortedItems) {
+                                if (item.line_order > revenueItem.line_order && item.line_order < operatingIncomeItem.line_order) {
+                                  if (item.is_operating === false) {
+                                    nonOperatingItems.push(item)
+                                  }
+                                }
+                              }
+                            }
+
+                            // Get amortization
+                            const amortizationValue = incomeStatement.amortization ? parseFloat(incomeStatement.amortization) : null
+
+                            const nonOperatingSum = nonOperatingItems.reduce((sum, item) => sum - parseFloat(item.line_value || 0), 0)
+                            const ebitaCalc = operatingIncome + nonOperatingSum + (amortizationValue || 0)
+
+                            return (
+                              <div className="balance-sheet-container" style={{ marginTop: '1rem' }}>
+                                <div className="balance-sheet-table-container">
+                                  <table className="balance-sheet-table">
+                                    <thead>
+                                      <tr>
+                                        <th className="col-name">Line Item</th>
+                                        <th className="col-category">Category</th>
+                                        <th className="col-type">Type</th>
+                                        <th className="text-right col-value">Amount</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {operatingIncomeItem && (
+                                        <tr>
+                                          <td className="col-name">{operatingIncomeItem.line_name}</td>
+                                          <td className="col-category">{operatingIncomeItem.line_category || 'N/A'}</td>
+                                          <td className="col-type">{operatingIncomeItem.is_operating === true ? 'Operating' : operatingIncomeItem.is_operating === false ? 'Non-Operating' : 'N/A'}</td>
+                                          <td className="text-right col-value">{formatNumber(operatingIncome, incomeStatement.unit)}</td>
+                                        </tr>
+                                      )}
+                                      {nonOperatingItems.length > 0 && (
+                                        <>
+                                          <tr>
+                                            <td colSpan="4" style={{ fontWeight: 600, paddingLeft: '1rem', paddingTop: '0.5rem' }}>Non-Operating Items (between Revenue and Operating Income)</td>
+                                          </tr>
+                                          {nonOperatingItems.map((item, idx) => (
+                                            <tr key={`no-${idx}`}>
+                                              <td className="col-name" style={{ paddingLeft: '2rem' }}>{item.line_name}</td>
+                                              <td className="col-category">{item.line_category || 'N/A'}</td>
+                                              <td className="col-type">{item.is_operating === false ? 'Non-Operating' : 'N/A'}</td>
+                                              <td className="text-right col-value">{formatNumber(-item.line_value, incomeStatement.unit)}</td>
+                                            </tr>
+                                          ))}
+                                          <tr>
+                                            <td colSpan="3" style={{ paddingLeft: '2rem', fontStyle: 'italic' }}>Sum of Non-Operating Items</td>
+                                            <td className="text-right col-value">{formatNumber(nonOperatingSum, incomeStatement.unit)}</td>
+                                          </tr>
+                                        </>
+                                      )}
+                                      {amortizationValue !== null && (
+                                        <tr>
+                                          <td className="col-name">Amortization</td>
+                                          <td className="col-category">N/A</td>
+                                          <td className="col-type">N/A</td>
+                                          <td className="text-right col-value">{formatNumber(amortizationValue, incomeStatement.amortization_unit || incomeStatement.unit)}</td>
+                                        </tr>
+                                      )}
+                                      <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700, fontSize: '1.05rem' }}>
+                                        <td colSpan="3" className="col-name">= EBITA</td>
+                                        <td className="text-right col-value">{formatNumber(historicalCalculations.ebita, historicalCalculations.unit)}</td>
+                                      </tr>
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )
+                          })()}
+                        </div>
+                      )}
 
                       <div style={{ marginTop: '1.5rem' }}>
                         <h4>NOPAT &amp; ROIC</h4>
@@ -886,7 +1258,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                               <thead>
                                 <tr>
                                   <th>Metric</th>
-                                  <th className="text-right">Value</th>
+                                  <th className="text-right">Amount</th>
                                   <th>Unit</th>
                                 </tr>
                               </thead>

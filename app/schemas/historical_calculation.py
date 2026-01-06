@@ -13,6 +13,7 @@ class HistoricalCalculationBase(BaseModel):
     currency: str | None = None
     unit: str | None = None  # "ones", "thousands", "millions", "billions", or "ten_thousands"
     net_working_capital: Decimal | None = None
+    net_working_capital_breakdown: dict | None = None  # Breakdown of current assets and liabilities
     net_long_term_operating_assets: Decimal | None = None
     invested_capital: Decimal | None = None
     capital_turnover: Decimal | None = None

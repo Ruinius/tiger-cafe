@@ -8,11 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.amortization import Amortization
 from app.models.balance_sheet import BalanceSheet
 from app.models.document import Document
 from app.models.historical_calculation import HistoricalCalculation
 from app.models.income_statement import IncomeStatement
-from app.models.amortization import Amortization
 from app.models.user import User
 from app.routers.auth import get_current_user
 from app.schemas.historical_calculation import HistoricalCalculation as HistoricalCalculationSchema
@@ -44,9 +44,7 @@ def calculate_and_save_historical_calculations(
     if not income_statement:
         raise HTTPException(status_code=404, detail="Income statement not found for this document")
 
-    amortization = (
-        db.query(Amortization).filter(Amortization.document_id == document_id).first()
-    )
+    amortization = db.query(Amortization).filter(Amortization.document_id == document_id).first()
     amortization_value = None
     if amortization and amortization.line_items:
         amortization_value = sum(item.line_value for item in amortization.line_items)
@@ -63,6 +61,13 @@ def calculate_and_save_historical_calculations(
         json.dumps(results["calculation_notes"]) if results["calculation_notes"] else None
     )
 
+    # Convert net working capital breakdown to JSON string for storage
+    net_working_capital_breakdown_json = (
+        json.dumps(results["net_working_capital_breakdown"])
+        if results.get("net_working_capital_breakdown")
+        else None
+    )
+
     # Check if historical calculation already exists
     existing_calc = (
         db.query(HistoricalCalculation)
@@ -73,6 +78,7 @@ def calculate_and_save_historical_calculations(
     if existing_calc:
         # Update existing
         existing_calc.net_working_capital = results["net_working_capital"]
+        existing_calc.net_working_capital_breakdown = net_working_capital_breakdown_json
         existing_calc.net_long_term_operating_assets = results["net_long_term_operating_assets"]
         existing_calc.invested_capital = results["invested_capital"]
         existing_calc.capital_turnover = results["capital_turnover"]
@@ -93,6 +99,7 @@ def calculate_and_save_historical_calculations(
             id=str(uuid.uuid4()),
             document_id=document_id,
             net_working_capital=results["net_working_capital"],
+            net_working_capital_breakdown=net_working_capital_breakdown_json,
             net_long_term_operating_assets=results["net_long_term_operating_assets"],
             invested_capital=results["invested_capital"],
             capital_turnover=results["capital_turnover"],
@@ -118,6 +125,8 @@ def get_historical_calculations(
     """
     Get historical calculations for a document.
     """
+    import json
+
     # Check if document exists
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
@@ -135,7 +144,29 @@ def get_historical_calculations(
             status_code=404, detail="Historical calculations not found for this document"
         )
 
-    return calc
+    # Parse breakdown JSON if it exists
+    result_dict = {
+        "id": calc.id,
+        "document_id": calc.document_id,
+        "time_period": calc.time_period,
+        "currency": calc.currency,
+        "unit": calc.unit,
+        "net_working_capital": calc.net_working_capital,
+        "net_working_capital_breakdown": json.loads(calc.net_working_capital_breakdown)
+        if calc.net_working_capital_breakdown
+        else None,
+        "net_long_term_operating_assets": calc.net_long_term_operating_assets,
+        "invested_capital": calc.invested_capital,
+        "capital_turnover": calc.capital_turnover,
+        "ebita": calc.ebita,
+        "ebita_margin": calc.ebita_margin,
+        "effective_tax_rate": calc.effective_tax_rate,
+        "adjusted_tax_rate": calc.adjusted_tax_rate,
+        "calculation_notes": calc.calculation_notes,
+        "calculated_at": calc.calculated_at,
+    }
+
+    return result_dict
 
 
 @router.post(
@@ -147,9 +178,34 @@ def recalculate_historical_calculations(
     """
     Recalculate historical calculations for a document.
     """
+    import json
+
     try:
         calc = calculate_and_save_historical_calculations(document_id, db)
-        return calc
+
+        # Convert model to dict with parsed JSON fields
+        result_dict = {
+            "id": calc.id,
+            "document_id": calc.document_id,
+            "time_period": calc.time_period,
+            "currency": calc.currency,
+            "unit": calc.unit,
+            "net_working_capital": calc.net_working_capital,
+            "net_working_capital_breakdown": json.loads(calc.net_working_capital_breakdown)
+            if calc.net_working_capital_breakdown
+            else None,
+            "net_long_term_operating_assets": calc.net_long_term_operating_assets,
+            "invested_capital": calc.invested_capital,
+            "capital_turnover": calc.capital_turnover,
+            "ebita": calc.ebita,
+            "ebita_margin": calc.ebita_margin,
+            "effective_tax_rate": calc.effective_tax_rate,
+            "adjusted_tax_rate": calc.adjusted_tax_rate,
+            "calculation_notes": calc.calculation_notes,
+            "calculated_at": calc.calculated_at,
+        }
+
+        return result_dict
     except HTTPException:
         raise
     except Exception as e:
@@ -166,6 +222,8 @@ def get_historical_calculations_test(document_id: str, db: Session = Depends(get
     """
     Test endpoint: Get historical calculations for a document (no auth required).
     """
+    import json
+
     # Check if document exists
     document = db.query(Document).filter(Document.id == document_id).first()
     if not document:
@@ -183,7 +241,29 @@ def get_historical_calculations_test(document_id: str, db: Session = Depends(get
             status_code=404, detail="Historical calculations not found for this document"
         )
 
-    return calc
+    # Parse breakdown JSON if it exists
+    result_dict = {
+        "id": calc.id,
+        "document_id": calc.document_id,
+        "time_period": calc.time_period,
+        "currency": calc.currency,
+        "unit": calc.unit,
+        "net_working_capital": calc.net_working_capital,
+        "net_working_capital_breakdown": json.loads(calc.net_working_capital_breakdown)
+        if calc.net_working_capital_breakdown
+        else None,
+        "net_long_term_operating_assets": calc.net_long_term_operating_assets,
+        "invested_capital": calc.invested_capital,
+        "capital_turnover": calc.capital_turnover,
+        "ebita": calc.ebita,
+        "ebita_margin": calc.ebita_margin,
+        "effective_tax_rate": calc.effective_tax_rate,
+        "adjusted_tax_rate": calc.adjusted_tax_rate,
+        "calculation_notes": calc.calculation_notes,
+        "calculated_at": calc.calculated_at,
+    }
+
+    return result_dict
 
 
 @router.post(

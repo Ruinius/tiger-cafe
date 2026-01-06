@@ -65,10 +65,9 @@ def _process_financial_statements(document_id: str, db_session: SessionLocal):
         print(f"Document {document_id} not found for financial statement processing")
         return
 
+    # Only process earnings announcements
     eligible_types = [
         DocumentType.EARNINGS_ANNOUNCEMENT,
-        DocumentType.QUARTERLY_FILING,
-        DocumentType.ANNUAL_FILING,
     ]
 
     if document.document_type in eligible_types:
@@ -137,10 +136,9 @@ def _process_document_worker():
 
                         # If document is now indexed and eligible, queue financial statement processing
                         if document.indexing_status == ProcessingStatus.INDEXED:
+                            # Only process earnings announcements
                             eligible_types = [
                                 DocumentType.EARNINGS_ANNOUNCEMENT,
-                                DocumentType.QUARTERLY_FILING,
-                                DocumentType.ANNUAL_FILING,
                             ]
 
                             if document.document_type in eligible_types:
@@ -160,10 +158,9 @@ def _process_document_worker():
                         # 1. Document is eligible for financial statements
                         # 2. Financial statements haven't been processed yet (not a re-index)
                         # We check analysis_status to distinguish between initial indexing and re-indexing
+                        # Only process earnings announcements
                         eligible_types = [
                             DocumentType.EARNINGS_ANNOUNCEMENT,
-                            DocumentType.QUARTERLY_FILING,
-                            DocumentType.ANNUAL_FILING,
                         ]
 
                         if (

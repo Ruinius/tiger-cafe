@@ -26,6 +26,7 @@ class ProcessingStatus(enum.Enum):
     PENDING = "pending"
     UPLOADING = "uploading"
     CLASSIFYING = "classifying"
+    CLASSIFIED = "classified"
     INDEXING = "indexing"
     INDEXED = "indexed"
     PROCESSING = "processing"

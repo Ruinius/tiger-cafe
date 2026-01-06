@@ -41,6 +41,9 @@ class HistoricalCalculation(Base):
 
     # Calculation notes/errors
     calculation_notes = Column(Text, nullable=True)  # JSON string for any notes or warnings
+    net_working_capital_breakdown = Column(
+        Text, nullable=True
+    )  # JSON string for net working capital breakdown
 
     # Relationships
     document = relationship("Document", back_populates="historical_calculation")

@@ -1174,6 +1174,13 @@ def _build_financial_statement_progress(document_id: str, db: Session) -> dict:
         return None
 
     # Always check database state to determine actual milestone status
+    from app.models.document import Document
+
+    document = db.query(Document).filter(Document.id == document_id).first()
+    is_earnings_announcement = (
+        document and document.document_type == DocumentType.EARNINGS_ANNOUNCEMENT
+    )
+
     balance_sheet = db.query(BalanceSheet).filter(BalanceSheet.document_id == document_id).first()
     income_statement = (
         db.query(IncomeStatement).filter(IncomeStatement.document_id == document_id).first()
@@ -1287,11 +1294,14 @@ def _build_financial_statement_progress(document_id: str, db: Session) -> dict:
     if not shares_present:
         additional_item_missing.append("shares outstanding")
 
+    # Use appropriate label based on document type (document already queried above)
+    reconciliation_label = "Non-GAAP reconciliation" if is_earnings_announcement else "amortization"
+
     if amortization and amortization.line_items:
         if not amortization.is_valid:
-            additional_item_errors.append("amortization")
+            additional_item_errors.append(reconciliation_label)
     else:
-        additional_item_missing.append("amortization")
+        additional_item_missing.append(reconciliation_label)
 
     if organic_growth:
         if not organic_growth.is_valid:
@@ -1299,11 +1309,7 @@ def _build_financial_statement_progress(document_id: str, db: Session) -> dict:
     else:
         additional_item_missing.append("organic growth")
 
-    # Check document type - earnings announcements skip other assets/liabilities
-    document = db.query(Document).filter(Document.id == document_id).first()
-    is_earnings_announcement = (
-        document and document.document_type == DocumentType.EARNINGS_ANNOUNCEMENT
-    )
+    # Note: document type already checked above for earnings announcement
 
     if not is_earnings_announcement:
         # Only check for other assets/liabilities for non-earnings announcements

@@ -41,38 +41,72 @@ def _match_line_item(
     return None
 
 
-def calculate_net_working_capital(balance_sheet: BalanceSheet) -> Decimal | None:
+def calculate_net_working_capital(balance_sheet: BalanceSheet) -> dict[str, Any] | None:
     """
     Calculate net working capital by summing all Current Assets labeled as Operating
     and subtracting the sum of all Current Liabilities labeled as Operating.
+
+    Returns a dictionary with:
+    - total: The net working capital value
+    - current_assets: List of current asset items used
+    - current_liabilities: List of current liability items used
+    - current_assets_total: Sum of current assets
+    - current_liabilities_total: Sum of current liabilities
     """
     if not balance_sheet or not balance_sheet.line_items:
         return None
 
     current_assets_operating = Decimal("0")
     current_liabilities_operating = Decimal("0")
+    current_assets_items = []
+    current_liabilities_items = []
 
     for item in balance_sheet.line_items:
         # Check if it's a current asset
-        if (
-            item.line_category
-            and "current" in item.line_category.lower()
-            and "asset" in item.line_category.lower()
-        ):
+        category_lower = item.line_category.lower() if item.line_category else ""
+        is_non_current = "non-current" in category_lower or (
+            "long" in category_lower and "term" in category_lower
+        )
+        is_current = not is_non_current and "current" in category_lower
+
+        if is_current and "asset" in category_lower:
             if item.is_operating:
                 current_assets_operating += item.line_value
+                current_assets_items.append(
+                    {
+                        "line_name": item.line_name,
+                        "line_value": float(item.line_value),
+                        "line_category": item.line_category,
+                        "is_operating": item.is_operating,
+                    }
+                )
 
         # Check if it's a current liability
-        elif (
-            item.line_category
-            and "current" in item.line_category.lower()
-            and "liability" in item.line_category.lower()
-        ):
+        elif is_current and "liability" in category_lower:
             if item.is_operating:
                 current_liabilities_operating += item.line_value
+                current_liabilities_items.append(
+                    {
+                        "line_name": item.line_name,
+                        "line_value": float(item.line_value),
+                        "line_category": item.line_category,
+                        "is_operating": item.is_operating,
+                    }
+                )
 
     net_working_capital = current_assets_operating - current_liabilities_operating
-    return net_working_capital.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    return {
+        "total": float(net_working_capital.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+        "current_assets": current_assets_items,
+        "current_liabilities": current_liabilities_items,
+        "current_assets_total": float(
+            current_assets_operating.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        ),
+        "current_liabilities_total": float(
+            current_liabilities_operating.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        ),
+    }
 
 
 def calculate_net_long_term_operating_assets(balance_sheet: BalanceSheet) -> Decimal | None:
@@ -485,7 +519,10 @@ def calculate_all_historical_metrics(
     )
 
     # Calculate metrics
-    net_working_capital = calculate_net_working_capital(balance_sheet)
+    net_working_capital_result = calculate_net_working_capital(balance_sheet)
+    net_working_capital = (
+        Decimal(str(net_working_capital_result["total"])) if net_working_capital_result else None
+    )
     net_long_term = calculate_net_long_term_operating_assets(balance_sheet)
     invested_capital = calculate_invested_capital(net_working_capital, net_long_term)
     capital_turnover = calculate_capital_turnover(
@@ -538,6 +575,7 @@ def calculate_all_historical_metrics(
 
     return {
         "net_working_capital": net_working_capital,
+        "net_working_capital_breakdown": net_working_capital_result,
         "net_long_term_operating_assets": net_long_term,
         "invested_capital": invested_capital,
         "capital_turnover": capital_turnover,

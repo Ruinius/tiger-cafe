@@ -9,7 +9,6 @@ import re
 
 from app.utils.document_section_helpers import collect_top_chunk_texts
 from app.utils.gemini_client import generate_content_safe
-from app.utils.line_item_utils import extract_original_name_from_standardized
 
 
 def _normalize_line_name(line_name: str) -> str:
@@ -30,9 +29,7 @@ def _deduplicate_line_items(line_items: list[dict]) -> tuple[list[dict], list[st
                 if existing.get(field) is not None
             )
             new_score = sum(
-                1
-                for field in ("unit", "is_operating", "category")
-                if item.get(field) is not None
+                1 for field in ("unit", "is_operating", "category") if item.get(field) is not None
             )
             if new_score > existing_score:
                 seen[normalized] = item
@@ -239,13 +236,57 @@ def extract_other_liabilities(
                 f"Other Non-Current Liabilities total mismatch: expected {expected_non_current_total}, got {non_current_sum}"
             )
 
-    is_valid = not validation_errors and bool(line_items)
+    # Calculate residuals and add them to line_items
+    final_line_items = []
 
-    if not line_items:
-        validation_errors.append("No other liabilities line items extracted")
+    # Process Current Liabilities
+    current_items = [item for item in line_items if item.get("category") == "Current Liabilities"]
+    current_sum = _sum_line_items(current_items, "Current Liabilities")
+    if expected_current_total is not None:
+        residual_value = expected_current_total - current_sum
+        if abs(residual_value) > 0.01:
+            final_line_items.extend(current_items)
+            final_line_items.append(
+                {
+                    "line_name": "Residual (Operating)",
+                    "line_value": residual_value,
+                    "unit": current_items[0].get("unit") if current_items else None,
+                    "category": "Current Liabilities",
+                    "is_operating": True,
+                }
+            )
+        else:
+            final_line_items.extend(current_items)
+    else:
+        final_line_items.extend(current_items)
+
+    # Process Non-Current Liabilities
+    non_current_items = [
+        item for item in line_items if item.get("category") == "Non-Current Liabilities"
+    ]
+    non_current_sum = _sum_line_items(non_current_items, "Non-Current Liabilities")
+    if expected_non_current_total is not None:
+        residual_value = expected_non_current_total - non_current_sum
+        if abs(residual_value) > 0.01:
+            final_line_items.extend(non_current_items)
+            final_line_items.append(
+                {
+                    "line_name": "Residual (Operating)",
+                    "line_value": residual_value,
+                    "unit": non_current_items[0].get("unit") if non_current_items else None,
+                    "category": "Non-Current Liabilities",
+                    "is_operating": True,
+                }
+            )
+        else:
+            final_line_items.extend(non_current_items)
+    else:
+        final_line_items.extend(non_current_items)
+
+    is_valid = bool(final_line_items)
 
     return {
-        "line_items": line_items,
+        "line_items": final_line_items,
         "chunk_index": chunk_index,
         "is_valid": is_valid,
         "validation_errors": validation_errors,

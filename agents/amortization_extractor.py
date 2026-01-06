@@ -1,5 +1,7 @@
 """
-Amortization extraction agent using Gemini LLM and embeddings
+Amortization extraction agent using Gemini LLM and embeddings.
+Used for quarterly filings and annual filings only.
+Earnings announcements use the separate GAAP reconciliation extractor.
 """
 
 from __future__ import annotations
@@ -25,7 +27,9 @@ def _deduplicate_line_items(line_items: list[dict]) -> tuple[list[dict], list[st
         if normalized in seen:
             existing = seen[normalized]
             existing_score = sum(
-                1 for field in ("unit", "is_operating", "category") if existing.get(field) is not None
+                1
+                for field in ("unit", "is_operating", "category")
+                if existing.get(field) is not None
             )
             new_score = sum(
                 1 for field in ("unit", "is_operating", "category") if item.get(field) is not None
@@ -37,35 +41,6 @@ def _deduplicate_line_items(line_items: list[dict]) -> tuple[list[dict], list[st
             seen[normalized] = item
 
     return list(seen.values()), warnings
-
-
-def check_amortization_completeness_llm(text: str, time_period: str) -> bool:
-    if "amort" not in text.lower():
-        return False
-
-    prompt = f"""Determine if the following document text contains amortization line items for {time_period}.
-
-Return a JSON object with:
-{{
-  "is_complete": true or false
-}}
-
-Document text:
-{text[:10000]}
-
-Return only valid JSON."""
-
-    try:
-        response_text = generate_content_safe(prompt, temperature=0.0)
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
-        result = json.loads(response_text)
-        return bool(result.get("is_complete"))
-    except Exception:
-        return False
 
 
 def extract_amortization_llm(text: str, time_period: str) -> dict:
@@ -161,7 +136,23 @@ def extract_amortization(
     time_period: str,
     max_retries: int = 2,
 ) -> dict:
-    query_texts = ["amortize", "amortization"]
+    """
+    Extract amortization line items from document.
+
+    This extractor is used for quarterly filings and annual filings only.
+    Earnings announcements use the separate GAAP reconciliation extractor.
+
+    Args:
+        document_id: Document ID
+        file_path: Path to PDF file
+        time_period: Time period (e.g., "Q3 2024")
+        max_retries: Maximum number of retry attempts
+
+    Returns:
+        Dictionary with extraction results
+    """
+    # Use general amortization search approach
+    query_texts = ["amortize", "amortization", "reconciliation"]
     text, chunk_index, _ = collect_top_chunk_texts(
         document_id=document_id,
         file_path=file_path,
@@ -181,14 +172,6 @@ def extract_amortization(
             "validation_errors": ["No amortization section found"],
         }
 
-    if not check_amortization_completeness_llm(text, time_period):
-        return {
-            "line_items": [],
-            "chunk_index": chunk_index,
-            "is_valid": False,
-            "validation_errors": ["Amortization section incomplete or not found"],
-        }
-
     validation_errors: list[str] = []
     extraction = extract_amortization_llm(text, time_period)
     line_items = extraction.get("line_items", []) if isinstance(extraction, dict) else []
@@ -199,8 +182,12 @@ def extract_amortization(
     retries = 0
     while retries < max_retries and not line_items:
         retries += 1
-        retry_extraction = extract_amortization_llm_with_feedback(text, time_period, validation_errors)
-        line_items = retry_extraction.get("line_items", []) if isinstance(retry_extraction, dict) else []
+        retry_extraction = extract_amortization_llm_with_feedback(
+            text, time_period, validation_errors
+        )
+        line_items = (
+            retry_extraction.get("line_items", []) if isinstance(retry_extraction, dict) else []
+        )
         line_items, dedup_warnings = _deduplicate_line_items(line_items)
         validation_errors.extend(dedup_warnings)
 

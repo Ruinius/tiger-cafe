@@ -6,12 +6,22 @@ from __future__ import annotations
 
 import json
 
-from app.utils.document_section_helpers import collect_top_chunk_texts
+from app.utils.document_section_finder import find_document_section
 from app.utils.gemini_client import generate_content_safe
 
 
 def extract_shares_outstanding_llm(text: str, time_period: str) -> dict:
     prompt = f"""Extract basic and diluted shares outstanding from the following document text for the time period: {time_period}.
+
+IMPORTANT GUIDANCE ON LABELING:
+- Basic and diluted shares outstanding may not be explicitly labeled as "basic shares outstanding" or "diluted shares outstanding"
+- Look for alternative labels such as:
+  - "shares used to calculate basic EPS" or "basic EPS shares"
+  - "shares used to calculate diluted EPS" or "diluted EPS shares"
+  - "weighted average basic shares" or "weighted average diluted shares"
+  - "basic weighted average shares" or "diluted weighted average shares"
+  - Any table or section that shows share counts used for EPS calculations
+- The values may appear in EPS (earnings per share) calculation tables or footnotes
 
 CRITICAL ANTI-HALLUCINATION RULES:
 - ONLY extract values that are EXPLICITLY shown in the document text below
@@ -47,49 +57,57 @@ def extract_shares_outstanding(
     max_retries: int = 1,
 ) -> dict:
     query_texts = ["weighted average", "shares", "basic", "diluted"]
-    text, chunk_index, _ = collect_top_chunk_texts(
-        document_id=document_id,
-        file_path=file_path,
-        query_texts=query_texts,
-        pages_before=0,
-        pages_after=0,
-        rerank_top_k=3,
-        top_k=3,
-        score_threshold=0.25,
-    )
 
-    if not text:
-        return {
-            "basic_shares_outstanding": None,
-            "basic_shares_outstanding_unit": None,
-            "diluted_shares_outstanding": None,
-            "diluted_shares_outstanding_unit": None,
-            "chunk_index": None,
-            "is_valid": False,
-            "validation_errors": ["Shares outstanding section not found"],
-        }
+    # Try ranks 0, 1, 2 in sequence (top 3 ranking chunks)
+    # Each attempt uses 1 chunk with 1 page before and 1 page after
+    for rank in [0, 1, 2]:
+        text, chunk_index, log_info = find_document_section(
+            document_id=document_id,
+            file_path=file_path,
+            query_texts=query_texts,
+            pages_before=1,
+            pages_after=1,
+            rerank_top_k=3,
+            score_threshold=0.25,
+            chunk_rank=rank,
+        )
 
-    extraction = extract_shares_outstanding_llm(text, time_period)
-    retries = 0
-    while retries < max_retries and not extraction:
-        retries += 1
+        if not text:
+            continue
+
+        # Try extraction from this chunk
         extraction = extract_shares_outstanding_llm(text, time_period)
+        retries = 0
+        while retries < max_retries and not extraction:
+            retries += 1
+            extraction = extract_shares_outstanding_llm(text, time_period)
 
-    is_valid = any(
-        extraction.get(field) is not None
-        for field in ("basic_shares_outstanding", "diluted_shares_outstanding")
-    )
+        is_valid = any(
+            extraction.get(field) is not None
+            for field in ("basic_shares_outstanding", "diluted_shares_outstanding")
+        )
 
-    validation_errors = []
-    if not is_valid:
-        validation_errors.append("No shares outstanding values extracted")
+        # If extraction was successful, return the result
+        if is_valid:
+            return {
+                "basic_shares_outstanding": extraction.get("basic_shares_outstanding"),
+                "basic_shares_outstanding_unit": extraction.get("basic_shares_outstanding_unit"),
+                "diluted_shares_outstanding": extraction.get("diluted_shares_outstanding"),
+                "diluted_shares_outstanding_unit": extraction.get(
+                    "diluted_shares_outstanding_unit"
+                ),
+                "chunk_index": chunk_index,
+                "is_valid": is_valid,
+                "validation_errors": [],
+            }
 
+    # If all attempts failed, return error
     return {
-        "basic_shares_outstanding": extraction.get("basic_shares_outstanding"),
-        "basic_shares_outstanding_unit": extraction.get("basic_shares_outstanding_unit"),
-        "diluted_shares_outstanding": extraction.get("diluted_shares_outstanding"),
-        "diluted_shares_outstanding_unit": extraction.get("diluted_shares_outstanding_unit"),
-        "chunk_index": chunk_index,
-        "is_valid": is_valid,
-        "validation_errors": validation_errors,
+        "basic_shares_outstanding": None,
+        "basic_shares_outstanding_unit": None,
+        "diluted_shares_outstanding": None,
+        "diluted_shares_outstanding_unit": None,
+        "chunk_index": None,
+        "is_valid": False,
+        "validation_errors": ["Shares outstanding section not found"],
     }

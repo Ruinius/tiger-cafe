@@ -224,6 +224,16 @@
   color: var(--text-secondary);
 }
 
+.status-classifying {
+  background-color: rgba(76, 139, 247, 0.2);
+  color: var(--info);
+}
+
+.status-classified {
+  background-color: rgba(245, 166, 35, 0.15);
+  color: var(--warning);
+}
+
 .status-indexing {
   background-color: rgba(76, 139, 247, 0.2);
   color: var(--info);

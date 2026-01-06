@@ -55,7 +55,7 @@ Stores uploaded document metadata and processing status.
 - `document_type` (Enum): `earnings_announcement`, `quarterly_filing`, `annual_filing`, `press_release`, `analyst_report`, `news_article`, `transcript`, `other`
 - `time_period` (String, Nullable): Time period (e.g., “Q3 2023”)
 - `unique_id` (String, Nullable, Indexed): Dedupe identifier
-- `indexing_status` (Enum): `pending`, `uploading`, `classifying`, `indexing`, `indexed`, `error`
+- `indexing_status` (Enum): `pending`, `uploading`, `classifying`, `classified`, `indexing`, `indexed`, `error`
 - `analysis_status` (Enum): `pending`, `processing`, `processed`, `error`
 - `duplicate_detected` (Boolean): Duplicate flag
 - `existing_document_id` (String, Nullable): Duplicate reference
@@ -94,6 +94,29 @@ Stores analysis results (valuation, sensitivity, etc.).
 - `results` (JSON): Calculation results
 - `summary` (Text, Nullable): LLM-generated summary
 
+### `historical_calculations`
+Stores calculated historical financial metrics for documents.
+
+- `id` (String, Primary Key): Unique calculation identifier
+- `document_id` (String, Foreign Key → `documents.id`, Indexed, Unique): Associated document
+- `time_period` (String, Nullable): Time period (e.g., "Q3 2023", "FY 2023")
+- `currency` (String, Nullable): Currency code (e.g., "USD", "EUR")
+- `unit` (String, Nullable): Unit of measurement ("ones", "thousands", "millions", "billions", or "ten_thousands")
+- `calculated_at` (DateTime): Calculation timestamp
+- `net_working_capital` (Numeric(20, 2), Nullable): Calculated net working capital
+- `net_working_capital_breakdown` (Text, Nullable): JSON string containing detailed breakdown of current assets and liabilities used in net working capital calculation
+- `net_long_term_operating_assets` (Numeric(20, 2), Nullable): Calculated net long-term operating assets
+- `invested_capital` (Numeric(20, 2), Nullable): Calculated invested capital
+- `capital_turnover` (Numeric(10, 4), Nullable): Calculated capital turnover ratio
+- `ebita` (Numeric(20, 2), Nullable): Calculated EBITA (Earnings Before Interest, Taxes, and Amortization)
+- `ebita_margin` (Numeric(10, 4), Nullable): Calculated EBITA margin (stored as decimal, e.g., 0.15 for 15%)
+- `effective_tax_rate` (Numeric(10, 4), Nullable): Effective tax rate (stored as decimal, e.g., 0.25 for 25%)
+- `adjusted_tax_rate` (Numeric(10, 4), Nullable): Adjusted tax rate (stored as decimal, e.g., 0.25 for 25%)
+- `calculation_notes` (Text, Nullable): JSON string for any calculation notes or warnings
+
+**Relationships:**
+- One-to-one with `documents`
+
 ## Enums
 
 ### `DocumentType`
@@ -110,6 +133,7 @@ Stores analysis results (valuation, sensitivity, etc.).
 - `pending`
 - `uploading`
 - `classifying`
+- `classified` - Terminal state for documents that have been classified but indexing was skipped (non-earnings announcements)
 - `indexing`
 - `indexed`
 - `processing`
@@ -127,6 +151,7 @@ Stores analysis results (valuation, sensitivity, etc.).
 - `financial_metrics.metric_name`: Index for metric type queries
 - `financial_metrics.period`: Index for time period queries
 - `analysis_results.company_id`: Index for company analysis queries
+- `historical_calculations.document_id`: Unique index for document calculation queries
 
 ## Notes
 

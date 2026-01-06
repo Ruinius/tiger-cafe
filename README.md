@@ -153,14 +153,27 @@ Tiger-Cafe provides three main user journey epics:
 ### Document Management
 - Multi-file drag-and-drop upload (up to 10 files)
 - Automatic document classification (earnings announcements, quarterly/annual filings, press releases, etc.)
+- **Document type-based processing:**
+  - **Earnings Announcements**: Full processing (indexing + financial statement extraction with default other assets/liabilities classifications) → Status: `INDEXED`
+  - **Quarterly Filings & Annual Filings**: Currently classification only → Status: `CLASSIFIED` (indexing and financial statement extraction not yet implemented)
+  - **Other Document Types** (press releases, analyst reports, news articles, transcripts, etc.): Classification only → Status: `CLASSIFIED` (no indexing or financial statement extraction)
 - Content-based duplicate detection
 - Real-time upload progress tracking with milestones
-- Chunk-based document indexing with Gemini embeddings (1-page chunks, persisted for reuse)
+- Chunk-based document indexing with Gemini embeddings (2-page chunks, persisted for reuse)
 - Priority-based processing queue (classification/indexing prioritized over financial statement extraction)
 
 ### Financial Statement Processing (Phase 5.1 & 5.2 - Complete)
-- Automatic balance sheet and income statement extraction from earnings announcements, quarterly filings, and annual reports
-- Chunk-based embedding search using persisted 1-page chunk embeddings (2-page chunks for indexing)
+- Automatic balance sheet and income statement extraction from **earnings announcements only** (quarterly/annual filings not yet implemented)
+- **Document type-specific processing:**
+  - **Earnings Announcements**: 
+    - Other assets/liabilities use default classifications (operating for assets, non-operating for liabilities) without LLM extraction
+    - GAAP/EBITDA reconciliation extraction uses dedicated extractor with chunk-based embedding search (similar to balance sheet finding workflow)
+    - **Does not use** the amortization extractor
+  - **Quarterly/Annual Filings**: 
+    - Other assets/liabilities use full LLM-based extraction with detailed line item classification
+    - Amortization extraction uses general amortization search approach
+    - **Does not use** the GAAP reconciliation extractor
+- Chunk-based embedding search using persisted 2-page chunk embeddings
 - LLM-based line-by-line extraction with currency and unit detection
 - Unit support: Extracts and displays units (ones, thousands, millions, billions, or ten_thousands) for balance sheets, income statements, and additional items
 - Two-stage validation with retry mechanism:

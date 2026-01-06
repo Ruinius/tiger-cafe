@@ -111,9 +111,10 @@ def process_balance_sheet_async(document_id: str, db: Session):
         )
 
         # Store successful balance sheet chunk index in progress for income statement extraction
+        # IMPORTANT: Progress store is keyed by document_id, ensuring chunk indices are scoped to the specific document
         balance_sheet_chunk_index = extracted_data.get("balance_sheet_chunk_index")
         if balance_sheet_chunk_index is not None:
-            # Store in progress with thread safety
+            # Store in progress with thread safety (progress store is scoped by document_id)
             from app.utils.financial_statement_progress import _progress_lock, _progress_store
 
             with _progress_lock:
@@ -358,9 +359,9 @@ async def rerun_financial_statements(
         )
 
     # Delete existing financial statements and historical calculations before re-run
+    from app.models.amortization import Amortization, AmortizationLineItem
     from app.models.historical_calculation import HistoricalCalculation
     from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
-    from app.models.amortization import Amortization, AmortizationLineItem
     from app.models.non_operating_classification import (
         NonOperatingClassification,
         NonOperatingClassificationItem,
@@ -499,9 +500,9 @@ async def rerun_financial_statements_test(
         )
 
     # Delete existing financial statements and historical calculations before re-run
+    from app.models.amortization import Amortization, AmortizationLineItem
     from app.models.historical_calculation import HistoricalCalculation
     from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
-    from app.models.amortization import Amortization, AmortizationLineItem
     from app.models.non_operating_classification import (
         NonOperatingClassification,
         NonOperatingClassificationItem,

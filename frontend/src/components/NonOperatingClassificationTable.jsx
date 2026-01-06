@@ -9,8 +9,47 @@ const formatLabel = (value) => {
     .join(' ')
 }
 
-export default function NonOperatingClassificationTable({ data, formatNumber }) {
+export default function NonOperatingClassificationTable({ data, formatNumber, balanceSheet, incomeStatement }) {
   if (!data || !data.line_items || data.line_items.length === 0) return null
+
+  // Helper function to find the original line item category
+  const getOriginalCategory = (item) => {
+    const source = item.source ? item.source.toLowerCase() : ''
+    const lineName = item.line_name
+
+    // Try to find in balance sheet if source indicates balance sheet
+    if (balanceSheet && balanceSheet.line_items && (source.includes('balance') || source.includes('balance_sheet'))) {
+      const bsItem = balanceSheet.line_items.find(bs => bs.line_name === lineName)
+      if (bsItem && bsItem.line_category) {
+        return bsItem.line_category
+      }
+    }
+
+    // Try to find in income statement if source indicates income statement
+    if (incomeStatement && incomeStatement.line_items && (source.includes('income') || source.includes('income_statement'))) {
+      const isItem = incomeStatement.line_items.find(is => is.line_name === lineName)
+      if (isItem && isItem.line_category) {
+        return isItem.line_category
+      }
+    }
+
+    // Fallback: try both if source is unknown
+    if (balanceSheet && balanceSheet.line_items) {
+      const bsItem = balanceSheet.line_items.find(bs => bs.line_name === lineName)
+      if (bsItem && bsItem.line_category) {
+        return bsItem.line_category
+      }
+    }
+
+    if (incomeStatement && incomeStatement.line_items) {
+      const isItem = incomeStatement.line_items.find(is => is.line_name === lineName)
+      if (isItem && isItem.line_category) {
+        return isItem.line_category
+      }
+    }
+
+    return null
+  }
 
   return (
     <div className="balance-sheet-container">
@@ -18,38 +57,31 @@ export default function NonOperatingClassificationTable({ data, formatNumber }) 
         <table className="balance-sheet-table">
           <thead>
             <tr>
-              <th>Line Item</th>
-              <th className="text-right">Value</th>
-              <th>Unit</th>
-              <th>Category</th>
-              <th>Source</th>
+              <th className="col-name">Line Item</th>
+              <th className="col-category">Category</th>
+              <th className="text-right col-value">Amount</th>
+              <th className="col-unit">Unit</th>
+              <th className="col-type">Type</th>
             </tr>
           </thead>
           <tbody>
             {data.line_items.map((item, index) => {
-              const categoryLabel = formatLabel(item.category)
-              const sourceLabel = formatLabel(item.source)
+              const originalCategory = getOriginalCategory(item)
               return (
                 <tr key={`${item.line_name}-${index}`}>
-                  <td>{item.line_name}</td>
-                  <td className="text-right">{item.line_value !== null ? formatNumber(item.line_value, item.unit) : 'N/A'}</td>
-                  <td>{item.unit ? item.unit.replace('_', ' ') : 'N/A'}</td>
-                  <td>
-                    <span className="classification-pill category" title={categoryLabel}>
-                      {categoryLabel}
-                    </span>
-                  </td>
-                  <td>
-                    <span className="classification-pill source" title={sourceLabel}>
-                      {sourceLabel}
-                    </span>
+                  <td className="col-name">{item.line_name}</td>
+                  <td className="col-category">{originalCategory || 'N/A'}</td>
+                  <td className="text-right col-value">{item.line_value !== null ? formatNumber(item.line_value, item.unit) : 'N/A'}</td>
+                  <td className="col-unit">{item.unit ? item.unit.replace('_', ' ') : 'N/A'}</td>
+                  <td className="col-type">
+                    <span className="type-badge non-operating">Non-Operating</span>
                   </td>
                 </tr>
               )
             })}
           </tbody>
         </table>
-      </div>
-    </div>
+      </div >
+    </div >
   )
 }

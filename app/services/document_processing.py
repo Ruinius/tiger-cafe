@@ -13,7 +13,7 @@ from enum import Enum
 from agents.document_classifier import classify_document
 from agents.document_summarizer import generate_document_summary
 from app.models.company import Company
-from app.models.document import Document, ProcessingStatus
+from app.models.document import Document, DocumentType, ProcessingStatus
 from app.utils.document_hash import generate_document_hash
 from app.utils.document_indexer import index_document_chunks
 from app.utils.duplicate_detector import check_duplicate_document
@@ -163,6 +163,26 @@ def process_document(
             character_count=character_count,
             company=company,
         )
+
+    # Check if document is an earnings announcement - only process those
+    if mode != DocumentProcessingMode.PREVIEW and document:
+        if document_type != DocumentType.EARNINGS_ANNOUNCEMENT:
+            # Not an earnings announcement - skip indexing and full processing
+            print(
+                f"Document {document.id} is type {document_type}, not earnings_announcement. Skipping indexing."
+            )
+            document.indexing_status = ProcessingStatus.CLASSIFIED
+            db_session.commit()
+            return DocumentProcessingResult(
+                classification_data=classification_data,
+                duplicate_check=duplicate_check,
+                summary=None,
+                extracted_text_preview=extracted_text_preview,
+                document_hash=document_hash,
+                total_pages=total_pages,
+                character_count=character_count,
+                company=company,
+            )
 
     summary = None
     try:

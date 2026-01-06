@@ -21,7 +21,11 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
   const [isProcessing, setIsProcessing] = useState(false)
   const [isCheckingProcessingStatus, setIsCheckingProcessingStatus] = useState(true) // Default to true to disable buttons until status is checked
   const [hasFinancialStatements, setHasFinancialStatements] = useState(false)
+  const [documentChunks, setDocumentChunks] = useState(null)
+  const [chunksLoading, setChunksLoading] = useState(false)
+  const [expandedChunks, setExpandedChunks] = useState(new Set())
   const { isAuthenticated, token } = useAuth()
+  const processingTriggeredRef = useRef(false)
 
   const loadUploadProgress = useCallback(async () => {
     try {
@@ -30,14 +34,14 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
         headers: isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
       })
       setUploadingDocuments(response.data)
-      
+
       // Check if all documents have finished indexing (no active uploads/processing)
-      const allFinished = response.data.length === 0 || 
+      const allFinished = response.data.length === 0 ||
         response.data.every(doc => {
           const status = doc.indexing_status?.toLowerCase()
           return status === 'indexed' || status === 'error'
         })
-      
+
       // If all documents finished and we're showing progress, automatically redirect
       if (allFinished && showUploadProgress) {
         // Stop polling since all uploads are done
@@ -45,7 +49,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
           clearInterval(progressIntervalRef.current)
           progressIntervalRef.current = null
         }
-        
+
         setShowUploadProgress(false)
         // Clear any selected company/document to ensure we're on companies list
         if (selectedCompany || selectedDocument) {
@@ -61,43 +65,43 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
       console.error('Error loading upload progress:', error)
     }
   }, [isAuthenticated, token, showUploadProgress, selectedCompany, selectedDocument, onBack])
-  
+
   // Check if financial statements exist for the selected document
   const checkFinancialStatements = useCallback(async (documentId) => {
     if (!documentId) {
       setHasFinancialStatements(false)
       return
     }
-    
+
     try {
       const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
-      
+
       // Check both balance sheet and income statement
       const [balanceSheetResponse, incomeStatementResponse] = await Promise.allSettled([
         axios.get(`${API_BASE_URL}/documents/${documentId}/balance-sheet`, { headers }),
         axios.get(`${API_BASE_URL}/documents/${documentId}/income-statement`, { headers })
       ])
-      
+
       // Check if balance sheet exists
       // Must be fulfilled (not rejected), have HTTP status 200, and data.status === 'exists'
       let hasBalanceSheet = false
       if (balanceSheetResponse.status === 'fulfilled') {
         const response = balanceSheetResponse.value
         // Check if it's a successful response (status 200) and has the expected data structure
-        hasBalanceSheet = response.status === 200 && 
-                         response.data?.status === 'exists'
+        hasBalanceSheet = response.status === 200 &&
+          response.data?.status === 'exists'
       }
-      
+
       // Check if income statement exists
       // Must be fulfilled (not rejected), have HTTP status 200, and data.status === 'exists'
       let hasIncomeStatement = false
       if (incomeStatementResponse.status === 'fulfilled') {
         const response = incomeStatementResponse.value
         // Check if it's a successful response (status 200) and has the expected data structure
-        hasIncomeStatement = response.status === 200 && 
-                            response.data?.status === 'exists'
+        hasIncomeStatement = response.status === 200 &&
+          response.data?.status === 'exists'
       }
-      
+
       setHasFinancialStatements(hasBalanceSheet || hasIncomeStatement)
     } catch (error) {
       console.error('Error checking financial statements:', error)
@@ -114,11 +118,11 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
       setHasFinancialStatements(false)
       return
     }
-    
+
     // Set checking state to true to disable buttons while we fetch status
     setIsCheckingProcessingStatus(true)
     setHasFinancialStatements(false) // Reset until we check
-    
+
     // Fetch latest document status to ensure we have current analysis_status
     const fetchLatestStatus = async () => {
       try {
@@ -135,7 +139,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
         }
         // After fetching status, we can enable buttons (they'll still be disabled if processing)
         setIsCheckingProcessingStatus(false)
-        
+
         // Check if financial statements exist (only for eligible document types)
         const eligibleTypes = ['earnings_announcement', 'quarterly_filing', 'annual_filing']
         if (selectedDocument.document_type && eligibleTypes.includes(selectedDocument.document_type)) {
@@ -148,10 +152,10 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
         setHasFinancialStatements(false)
       }
     }
-    
+
     // Fetch immediately when document is selected
     fetchLatestStatus()
-    
+
     // Reset button states based on current status
     // Note: This will be re-evaluated after fetchLatestStatus updates selectedDocument
     if (selectedDocument.analysis_status !== 'processing') {
@@ -166,7 +170,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
   // Poll for selected document indexing status when it's being indexed
   useEffect(() => {
     if (!selectedDocument) return
-    
+
     const isIndexing = selectedDocument.indexing_status === 'indexing' || selectedDocument.indexing_status === 'INDEXING'
     if (!isIndexing) {
       // Reset tracking when not indexing
@@ -192,15 +196,15 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
         if (response.data && onDocumentSelect) {
           const newIndexingStatus = response.data.indexing_status
           const newAnalysisStatus = response.data.analysis_status
-          
+
           // Only update if status actually changed to avoid unnecessary re-renders
-          if (newIndexingStatus !== lastStatusRef.current.indexingStatus || 
-              newAnalysisStatus !== lastStatusRef.current.analysisStatus) {
+          if (newIndexingStatus !== lastStatusRef.current.indexingStatus ||
+            newAnalysisStatus !== lastStatusRef.current.analysisStatus) {
             lastStatusRef.current.indexingStatus = newIndexingStatus
             lastStatusRef.current.analysisStatus = newAnalysisStatus
             onDocumentSelect(response.data)
           }
-          
+
           // If indexing completed, stop polling
           if (newIndexingStatus !== 'indexing' && newIndexingStatus !== 'INDEXING') {
             clearInterval(pollInterval)
@@ -217,7 +221,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
 
   // Track if we're waiting for indexing to complete
   const waitingForIndexingRef = useRef(false)
-  
+
   // Set waiting flag when we trigger re-indexing
   useEffect(() => {
     if (isProcessing && selectedDocument?.indexing_status === 'indexing') {
@@ -227,16 +231,30 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
 
   // Watch for when indexing completes to reset isProcessing state
   useEffect(() => {
+    // If we've started processing and the status is now reflected on the server,
+    // we can clear the manual override flag
+    if (selectedDocument?.analysis_status === 'processing' ||
+      selectedDocument?.indexing_status === 'indexing' ||
+      selectedDocument?.indexing_status === 'INDEXING') {
+      processingTriggeredRef.current = false
+    }
+
     if (selectedDocument && isProcessing && waitingForIndexingRef.current) {
       // Reset isProcessing when indexing completes
       if (selectedDocument.indexing_status === 'indexed' || selectedDocument.indexing_status === 'INDEXED') {
         setIsProcessing(false)
         waitingForIndexingRef.current = false
       }
-    } else if (selectedDocument && isProcessing && 
-               selectedDocument.indexing_status !== 'indexing' && 
-               selectedDocument.indexing_status !== 'INDEXING' &&
-               selectedDocument.analysis_status !== 'processing') {
+    } else if (selectedDocument && isProcessing &&
+      selectedDocument.indexing_status !== 'indexing' &&
+      selectedDocument.indexing_status !== 'INDEXING' &&
+      selectedDocument.analysis_status !== 'processing') {
+      // If we just triggered processing, give it a moment to reach the server
+      // and reflect in analysis_status before we allow auto-reset
+      if (processingTriggeredRef.current) {
+        return
+      }
+
       // Also reset if neither indexing nor analysis is in progress
       setIsProcessing(false)
       waitingForIndexingRef.current = false
@@ -248,9 +266,9 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
     const handleProcessingComplete = () => {
       setIsProcessing(false)
     }
-    
+
     window.addEventListener('financialStatementsProcessingComplete', handleProcessingComplete)
-    
+
     return () => {
       window.removeEventListener('financialStatementsProcessingComplete', handleProcessingComplete)
     }
@@ -340,7 +358,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
       }
       setPdfUrl(null)
     }
-    
+
     // Cleanup: revoke object URL when component unmounts or document changes
     return () => {
       if (pdfUrlRef.current) {
@@ -350,6 +368,123 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
     }
   }, [selectedDocument?.id]) // Only depend on document ID to avoid infinite loops
 
+  // Track loading state to prevent duplicate calls
+  const chunksLoadingRef = useRef(false)
+  const chunksAbortControllerRef = useRef(null)
+
+  // Load document chunks when document is selected and indexed (non-blocking)
+  const loadDocumentChunks = useCallback(async (documentId) => {
+    if (!documentId) {
+      setDocumentChunks(null)
+      return
+    }
+
+    // Only load chunks for indexed documents
+    if (selectedDocument?.indexing_status !== 'indexed' && selectedDocument?.indexing_status !== 'INDEXED') {
+      setDocumentChunks(null)
+      return
+    }
+
+    // Prevent duplicate calls
+    if (chunksLoadingRef.current) {
+      return
+    }
+
+    // Cancel any previous request
+    if (chunksAbortControllerRef.current) {
+      chunksAbortControllerRef.current.abort()
+    }
+
+    chunksLoadingRef.current = true
+    setChunksLoading(true)
+
+    // Create new abort controller for this request
+    const abortController = new AbortController()
+    chunksAbortControllerRef.current = abortController
+
+    // Use setTimeout to ensure this runs asynchronously and doesn't block
+    setTimeout(async () => {
+      try {
+        const endpoint = isAuthenticated ? 'chunks' : 'chunks-test'
+        const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+        const response = await axios.get(
+          `${API_BASE_URL}/documents/${documentId}/${endpoint}`,
+          { 
+            headers,
+            signal: abortController.signal,
+            timeout: 30000 // 30 second timeout
+          }
+        )
+        
+        // Only update state if request wasn't aborted
+        if (!abortController.signal.aborted) {
+          setDocumentChunks(response.data)
+        }
+      } catch (error) {
+        // Ignore abort errors
+        if (error.name === 'AbortError' || error.name === 'CanceledError') {
+          return
+        }
+        console.error('Error loading document chunks:', error)
+        if (!abortController.signal.aborted) {
+          setDocumentChunks(null)
+        }
+      } finally {
+        if (!abortController.signal.aborted) {
+          chunksLoadingRef.current = false
+          setChunksLoading(false)
+        }
+      }
+    }, 0) // Run on next tick to avoid blocking
+  }, [isAuthenticated, token, selectedDocument?.indexing_status])
+
+  useEffect(() => {
+    if (selectedDocument) {
+      // Reset state
+      setExpandedChunks(new Set())
+      // Load chunks asynchronously
+      loadDocumentChunks(selectedDocument.id)
+    } else {
+      // Cancel any pending request
+      if (chunksAbortControllerRef.current) {
+        chunksAbortControllerRef.current.abort()
+      }
+      chunksLoadingRef.current = false
+      setDocumentChunks(null)
+      setExpandedChunks(new Set())
+    }
+
+    // Cleanup: cancel request on unmount or document change
+    return () => {
+      if (chunksAbortControllerRef.current) {
+        chunksAbortControllerRef.current.abort()
+      }
+      chunksLoadingRef.current = false
+    }
+  }, [selectedDocument?.id, loadDocumentChunks])
+
+  const toggleChunk = (chunkIndex) => {
+    setExpandedChunks(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(chunkIndex)) {
+        newSet.delete(chunkIndex)
+      } else {
+        newSet.add(chunkIndex)
+      }
+      return newSet
+    })
+  }
+
+  const expandAllChunks = () => {
+    if (documentChunks && documentChunks.chunks) {
+      setExpandedChunks(new Set(documentChunks.chunks.map((_, index) => index)))
+    }
+  }
+
+  const collapseAllChunks = () => {
+    setExpandedChunks(new Set())
+  }
+
   const loadPdfDocument = async (documentId) => {
     try {
       // Revoke previous URL if exists
@@ -357,11 +492,11 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
         URL.revokeObjectURL(pdfUrlRef.current)
         pdfUrlRef.current = null
       }
-      
+
       // Use test endpoint if not authenticated (for development)
       const endpoint = isAuthenticated ? 'file' : 'file-test'
       const url = `${API_BASE_URL}/documents/${documentId}/${endpoint}`
-      
+
       // Fetch PDF as blob to include authentication headers
       const response = await axios.get(url, {
         responseType: 'blob',
@@ -369,7 +504,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
           'Authorization': `Bearer ${token}`
         } : {}
       })
-      
+
       // Create object URL from blob
       const blob = new Blob([response.data], { type: 'application/pdf' })
       const objectUrl = URL.createObjectURL(blob)
@@ -442,7 +577,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
     if (!window.confirm('Are you sure you want to cancel this upload? The document will be removed.')) {
       return
     }
-    
+
     try {
       const endpoint = isAuthenticated ? '' : '/test'
       await axios.delete(`${API_BASE_URL}/documents/${documentId}${endpoint}`, {
@@ -462,6 +597,8 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
         return 33
       case 'classifying':
         return 66
+      case 'classified':
+        return 66  // Same as classifying since it's the final state for non-earnings announcements
       case 'indexing':
         return 90
       case 'indexed':
@@ -475,18 +612,20 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
     const statusLower = status?.toLowerCase()
     if (milestone === 'uploading') {
       if (statusLower === 'uploading') return 'active'
-      if (['classifying', 'indexing', 'indexed'].includes(statusLower)) return 'completed'
+      if (['classifying', 'classified', 'indexing', 'indexed'].includes(statusLower)) return 'completed'
       return 'pending'
     }
     if (milestone === 'classification') {
       if (statusLower === 'classifying') return 'active'
-      if (['indexing', 'indexed'].includes(statusLower)) return 'completed'
+      if (['classified', 'indexing', 'indexed'].includes(statusLower)) return 'completed'
       if (statusLower === 'uploading') return 'pending'
       return 'pending'
     }
     if (milestone === 'indexing') {
       if (statusLower === 'indexing') return 'active'
       if (statusLower === 'indexed') return 'completed'
+      // For 'classified' status, indexing milestone should be pending (not completed)
+      if (statusLower === 'classified') return 'pending'
       return 'pending'
     }
     return 'pending'
@@ -520,69 +659,69 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
             </div>
           ) : (
             <div className="upload-progress-list">
-            {uploadingDocuments.map(document => (
-              <div key={document.id} className="upload-progress-item">
-                <div className="upload-progress-header">
-                  <div className="upload-progress-filename">{document.filename}</div>
-                  {document.duplicate_detected && (
-                    <div className="duplicate-warning-badge">⚠️ Duplicate</div>
-                  )}
-                </div>
-                <div className="progress-bar-container">
-                  <div 
-                    className="progress-bar"
-                    style={{ width: `${getProgressPercentage(document.indexing_status)}%` }}
-                  />
-                </div>
-                <div className="milestones">
-                  <div className={`milestone ${getMilestoneStatus(document.indexing_status, 'uploading')}`}>
-                    <span className="milestone-icon">
-                      {getMilestoneStatus(document.indexing_status, 'uploading') === 'completed' ? '✓' : 
-                       getMilestoneStatus(document.indexing_status, 'uploading') === 'active' ? <span className="status-spinner" aria-hidden="true" /> : '○'}
-                    </span>
-                    <span className="milestone-label">Uploading</span>
+              {uploadingDocuments.map(document => (
+                <div key={document.id} className="upload-progress-item">
+                  <div className="upload-progress-header">
+                    <div className="upload-progress-filename">{document.filename}</div>
+                    {document.duplicate_detected && (
+                      <div className="duplicate-warning-badge">⚠️ Duplicate</div>
+                    )}
                   </div>
-                  <div className={`milestone ${getMilestoneStatus(document.indexing_status, 'classification')}`}>
-                    <span className="milestone-icon">
-                      {getMilestoneStatus(document.indexing_status, 'classification') === 'completed' ? '✓' : 
-                       getMilestoneStatus(document.indexing_status, 'classification') === 'active' ? <span className="status-spinner" aria-hidden="true" /> : '○'}
-                    </span>
-                    <span className="milestone-label">Classification</span>
+                  <div className="progress-bar-container">
+                    <div
+                      className="progress-bar"
+                      style={{ width: `${getProgressPercentage(document.indexing_status)}%` }}
+                    />
                   </div>
-                  <div className={`milestone ${getMilestoneStatus(document.indexing_status, 'indexing')}`}>
-                    <span className="milestone-icon">
-                      {getMilestoneStatus(document.indexing_status, 'indexing') === 'completed' ? '✓' : 
-                       getMilestoneStatus(document.indexing_status, 'indexing') === 'active' ? <span className="status-spinner" aria-hidden="true" /> : '○'}
-                    </span>
-                    <span className="milestone-label">Indexing</span>
-                  </div>
-                </div>
-                {document.duplicate_detected && 
-                 (document.indexing_status?.toLowerCase() === 'classifying' || 
-                  document.indexing_status === 'CLASSIFYING') && (
-                  <div className="duplicate-action">
-                    <div className="duplicate-warning-text">
-                      <strong>⚠️ Duplicate Document Detected</strong>
-                      <p>This document appears to be a duplicate. Click "Replace & Index" to replace the existing document and proceed with indexing, or "Cancel" to remove this upload.</p>
+                  <div className="milestones">
+                    <div className={`milestone ${getMilestoneStatus(document.indexing_status, 'uploading')}`}>
+                      <span className="milestone-icon">
+                        {getMilestoneStatus(document.indexing_status, 'uploading') === 'completed' ? '✓' :
+                          getMilestoneStatus(document.indexing_status, 'uploading') === 'active' ? <span className="status-spinner" aria-hidden="true" /> : '○'}
+                      </span>
+                      <span className="milestone-label">Uploading</span>
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
-                      <button 
-                        className="button-warning"
-                        onClick={() => handleReplaceAndIndex(document.id)}
-                      >
-                        Replace & Index
-                      </button>
-                      <button 
-                        className="button-secondary"
-                        onClick={() => handleCancelDuplicate(document.id)}
-                      >
-                        Cancel
-                      </button>
+                    <div className={`milestone ${getMilestoneStatus(document.indexing_status, 'classification')}`}>
+                      <span className="milestone-icon">
+                        {getMilestoneStatus(document.indexing_status, 'classification') === 'completed' ? '✓' :
+                          getMilestoneStatus(document.indexing_status, 'classification') === 'active' ? <span className="status-spinner" aria-hidden="true" /> : '○'}
+                      </span>
+                      <span className="milestone-label">Classification</span>
+                    </div>
+                    <div className={`milestone ${getMilestoneStatus(document.indexing_status, 'indexing')}`}>
+                      <span className="milestone-icon">
+                        {getMilestoneStatus(document.indexing_status, 'indexing') === 'completed' ? '✓' :
+                          getMilestoneStatus(document.indexing_status, 'indexing') === 'active' ? <span className="status-spinner" aria-hidden="true" /> : '○'}
+                      </span>
+                      <span className="milestone-label">Indexing</span>
                     </div>
                   </div>
-                )}
-              </div>
-            ))}
+                  {document.duplicate_detected &&
+                    (document.indexing_status?.toLowerCase() === 'classifying' ||
+                      document.indexing_status === 'CLASSIFYING') && (
+                      <div className="duplicate-action">
+                        <div className="duplicate-warning-text">
+                          <strong>⚠️ Duplicate Document Detected</strong>
+                          <p>This document appears to be a duplicate. Click "Replace & Index" to replace the existing document and proceed with indexing, or "Cancel" to remove this upload.</p>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+                          <button
+                            className="button-warning"
+                            onClick={() => handleReplaceAndIndex(document.id)}
+                          >
+                            Replace & Index
+                          </button>
+                          <button
+                            className="button-secondary"
+                            onClick={() => handleCancelDuplicate(document.id)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -628,7 +767,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
               )}
             </div>
           )}
-          <button 
+          <button
             className={`add-document-button ${hasActiveUploads ? 'has-uploads' : ''}`}
             onClick={hasActiveUploads ? () => setShowUploadProgress(true) : handleAddDocument}
           >
@@ -699,7 +838,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
               <div className="empty-state">No documents for this company</div>
             )}
           </div>
-          <button 
+          <button
             className={`add-document-button ${hasActiveUploads ? 'has-uploads' : ''}`}
             onClick={hasActiveUploads ? () => setShowUploadProgress(true) : handleAddDocument}
           >
@@ -719,7 +858,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
         <div className="panel-content">
           <div className="panel-header">
             <div className="breadcrumb">
-              <button className="breadcrumb-link" onClick={() => { 
+              <button className="breadcrumb-link" onClick={() => {
                 // Go back to companies list: need to clear both document and company
                 // Call onBack twice to go back two levels (document -> company -> companies)
                 onBack() // First call clears document
@@ -773,17 +912,18 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                   <p className="summary-text">{selectedDocument.summary}</p>
                 </div>
               )}
-              
+
               {/* Re-run Processing Buttons */}
               {(selectedDocument.indexing_status === 'indexed' || selectedDocument.indexing_status === 'indexing') && (
                 <div className="summary-section" style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
                   <strong>Re-run Processing</strong>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
-                    <button 
+                    <button
                       className="button-secondary"
-                      disabled={isCheckingProcessingStatus || selectedDocument.indexing_status === 'indexing'}
+                      disabled={isCheckingProcessingStatus || isProcessing || selectedDocument.indexing_status === 'indexing' || selectedDocument.analysis_status === 'processing'}
                       onClick={async () => {
                         setIsProcessing(true)
+                        processingTriggeredRef.current = true
                         try {
                           const endpoint = isAuthenticated ? 'rerun-indexing' : 'rerun-indexing-test'
                           const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -816,25 +956,26 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                           setIsProcessing(false)
                         }
                       }}
-                      style={{ width: '100%', textAlign: 'left', opacity: (isCheckingProcessingStatus || selectedDocument.indexing_status === 'indexing') ? 0.6 : 1, cursor: (isCheckingProcessingStatus || selectedDocument.indexing_status === 'indexing') ? 'not-allowed' : 'pointer' }}
+                      style={{ width: '100%', textAlign: 'left', opacity: (isCheckingProcessingStatus || isProcessing || selectedDocument.indexing_status === 'indexing' || selectedDocument.analysis_status === 'processing') ? 0.6 : 1, cursor: (isCheckingProcessingStatus || isProcessing || selectedDocument.indexing_status === 'indexing' || selectedDocument.analysis_status === 'processing') ? 'not-allowed' : 'pointer' }}
                     >
                       Re-run Indexing
                     </button>
                     {/* Always show Extraction button, but disable if not eligible document type */}
-                    <button 
+                    <button
                       className="button-secondary"
                       disabled={
-                        isCheckingProcessingStatus || 
-                        isProcessing || 
+                        isCheckingProcessingStatus ||
+                        isProcessing ||
                         selectedDocument.analysis_status === 'processing' ||
                         !selectedDocument.document_type ||
                         !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)
                       }
                       onClick={async () => {
                         setIsProcessing(true)
+                        processingTriggeredRef.current = true
                         // Immediately set all milestones to PENDING in RightPanel
-                        window.dispatchEvent(new CustomEvent('resetProgressToPending', { 
-                          detail: { documentId: selectedDocument.id } 
+                        window.dispatchEvent(new CustomEvent('resetProgressToPending', {
+                          detail: { documentId: selectedDocument.id }
                         }))
                         // Clear financial statements data in RightPanel
                         window.dispatchEvent(new CustomEvent('clearFinancialStatements'))
@@ -853,33 +994,35 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                           setIsProcessing(false)
                         }
                       }}
-                      style={{ 
-                        width: '100%', 
-                        textAlign: 'left', 
-                        opacity: (isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing' || !selectedDocument.document_type || !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)) ? 0.6 : 1, 
-                        cursor: (isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing' || !selectedDocument.document_type || !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)) ? 'not-allowed' : 'pointer' 
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        opacity: (isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing' || !selectedDocument.document_type || !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)) ? 0.6 : 1,
+                        cursor: (isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing' || !selectedDocument.document_type || !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)) ? 'not-allowed' : 'pointer'
                       }}
                     >
                       Re-run Extraction and Classification
                     </button>
                     {/* Always show Historical Calculations button, but disable if no financial statements */}
-                    <button 
+                    <button
                       className="button-secondary"
                       disabled={
-                        isCheckingProcessingStatus || 
-                        isProcessing || 
+                        isCheckingProcessingStatus ||
+                        isProcessing ||
                         !hasFinancialStatements ||
                         !selectedDocument.document_type ||
                         !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)
                       }
-                      style={{ 
-                        width: '100%', 
+                      style={{
+                        width: '100%',
                         textAlign: 'left',
                         opacity: (isCheckingProcessingStatus || isProcessing || !hasFinancialStatements || !selectedDocument.document_type || !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)) ? 0.6 : 1,
                         cursor: (isCheckingProcessingStatus || isProcessing || !hasFinancialStatements || !selectedDocument.document_type || !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)) ? 'not-allowed' : 'pointer'
                       }}
                       onClick={async () => {
                         if (!hasFinancialStatements) return
+                        setIsProcessing(true)
+                        processingTriggeredRef.current = true
                         try {
                           const endpoint = isAuthenticated ? 'historical-calculations/recalculate' : 'historical-calculations/recalculate/test'
                           const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -892,6 +1035,9 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                           window.dispatchEvent(new CustomEvent('reloadHistoricalCalculations'))
                         } catch (err) {
                           alert(err.response?.data?.detail || 'Failed to recalculate historical calculations')
+                        } finally {
+                          setIsProcessing(false)
+                          processingTriggeredRef.current = false
                         }
                       }}
                     >
@@ -900,28 +1046,29 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                   </div>
                 </div>
               )}
-              
+
               {/* Danger Zone */}
               <div className="summary-section" style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
                 <strong>Danger Zone</strong>
-                <button 
+                <button
                   className="button-secondary"
-                  disabled={!hasFinancialStatements}
-                  style={{ 
-                    width: '100%', 
-                    textAlign: 'left', 
-                    marginTop: '0.75rem', 
-                    backgroundColor: hasFinancialStatements ? 'var(--error-color, #dc3545)' : 'var(--bg-secondary)', 
-                    color: hasFinancialStatements ? 'white' : 'var(--text-secondary)', 
+                  disabled={!hasFinancialStatements || isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing'}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    marginTop: '0.75rem',
+                    backgroundColor: hasFinancialStatements ? 'var(--error-color, #dc3545)' : 'var(--bg-secondary)',
+                    color: hasFinancialStatements ? 'white' : 'var(--text-secondary)',
                     border: 'none',
-                    opacity: hasFinancialStatements ? 1 : 0.6,
-                    cursor: hasFinancialStatements ? 'pointer' : 'not-allowed'
+                    opacity: (hasFinancialStatements && !isProcessing && selectedDocument.analysis_status !== 'processing') ? 1 : 0.6,
+                    cursor: (hasFinancialStatements && !isProcessing && selectedDocument.analysis_status !== 'processing') ? 'pointer' : 'not-allowed'
                   }}
                   onClick={async () => {
                     if (!hasFinancialStatements) return
                     if (!window.confirm('Are you sure you want to delete all financial statements for this document? This action cannot be undone.')) {
                       return
                     }
+                    setIsProcessing(true)
                     try {
                       const endpoint = isAuthenticated ? 'financial-statements' : 'financial-statements/test'
                       const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -947,20 +1094,25 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                       }
                     } catch (err) {
                       alert(err.response?.data?.detail || 'Failed to delete financial statements')
+                    } finally {
+                      setIsProcessing(false)
                     }
                   }}
                 >
                   Delete Financial Statements
                 </button>
-                <button 
+                <button
                   className="button-secondary"
-                  style={{ 
-                    width: '100%', 
-                    textAlign: 'left', 
-                    marginTop: '0.75rem', 
-                    backgroundColor: 'var(--error-color, #dc3545)', 
-                    color: 'white', 
-                    border: 'none'
+                  disabled={isCheckingProcessingStatus || isProcessing || selectedDocument.indexing_status === 'indexing' || selectedDocument.analysis_status === 'processing'}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    marginTop: '0.75rem',
+                    backgroundColor: 'var(--error-color, #dc3545)',
+                    color: 'white',
+                    border: 'none',
+                    opacity: (isCheckingProcessingStatus || isProcessing || selectedDocument.indexing_status === 'indexing' || selectedDocument.analysis_status === 'processing') ? 0.6 : 1,
+                    cursor: (isCheckingProcessingStatus || isProcessing || selectedDocument.indexing_status === 'indexing' || selectedDocument.analysis_status === 'processing') ? 'not-allowed' : 'pointer'
                   }}
                   onClick={async () => {
                     if (!window.confirm(`Are you sure you want to permanently delete "${selectedDocument.filename}"? This will delete the document, all financial statements, and all associated data. This action cannot be undone.`)) {
@@ -1008,6 +1160,106 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
             {!pdfUrl && (
               <div className="info-section">
                 <p>Loading document...</p>
+              </div>
+            )}
+            {/* Raw Document Chunks Section - Only for indexed documents */}
+            {(selectedDocument?.indexing_status === 'indexed' || selectedDocument?.indexing_status === 'INDEXED') && (
+              <div className="info-section raw-document-section">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h3>Raw Document</h3>
+                  {documentChunks && documentChunks.chunks && documentChunks.chunks.length > 0 && (
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        className="button-secondary"
+                        onClick={expandAllChunks}
+                        style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                      >
+                        Expand All
+                      </button>
+                      <button
+                        className="button-secondary"
+                        onClick={collapseAllChunks}
+                        style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                      >
+                        Collapse All
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {chunksLoading ? (
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Loading chunks...</p>
+                ) : documentChunks && documentChunks.chunks ? (
+                  <div className="chunks-container">
+                    {documentChunks.chunks.map((chunk) => {
+                      const isExpanded = expandedChunks.has(chunk.chunk_index)
+                      return (
+                        <div key={chunk.chunk_index} className="chunk-item">
+                          <button
+                            className="chunk-header"
+                            onClick={() => toggleChunk(chunk.chunk_index)}
+                            style={{
+                              width: '100%',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '0.75rem',
+                              background: 'var(--bg-elevated)',
+                              border: '1px solid var(--border)',
+                              borderRadius: 'var(--radius-md)',
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                              marginBottom: '0.5rem'
+                            }}
+                          >
+                            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                              Chunk {chunk.chunk_index} (Pages {chunk.start_page}-{chunk.end_page})
+                            </span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                              {chunk.character_count.toLocaleString()} chars
+                            </span>
+                            <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                              {isExpanded ? '▼' : '▶'}
+                            </span>
+                          </button>
+                          {isExpanded && (
+                            <div
+                              className="chunk-content"
+                              style={{
+                                padding: '1rem',
+                                background: 'var(--bg-surface)',
+                                border: '1px solid var(--border)',
+                                borderRadius: 'var(--radius-md)',
+                                marginBottom: '0.5rem',
+                                maxHeight: '400px',
+                                overflowY: 'auto',
+                                fontSize: '0.875rem',
+                                lineHeight: '1.6',
+                                color: 'var(--text-primary)',
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                                // Use content-visibility for better performance
+                                contentVisibility: 'auto',
+                                containIntrinsicSize: 'auto 400px'
+                              }}
+                            >
+                              {chunk.error ? (
+                                <p style={{ color: 'var(--error)' }}>Error loading chunk: {chunk.error}</p>
+                              ) : chunk.text ? (
+                                chunk.text
+                              ) : (
+                                <p style={{ color: 'var(--text-secondary)' }}>No text available</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                    No chunks available. Document may not be fully indexed.
+                  </p>
+                )}
               </div>
             )}
           </div>
