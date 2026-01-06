@@ -166,8 +166,8 @@ function RightPanel({ selectedCompany, selectedDocument }) {
     const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
 
     // Check if document is earnings announcement
-    const isEarningsAnnouncement = selectedDocument.document_type === 'earnings_announcement' || 
-                                    selectedDocument.document_type === 'EARNINGS_ANNOUNCEMENT'
+    const isEarningsAnnouncement = selectedDocument.document_type === 'earnings_announcement' ||
+      selectedDocument.document_type === 'EARNINGS_ANNOUNCEMENT'
 
     const endpoints = {
       organicGrowth: 'organic-growth',
@@ -518,7 +518,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                 This document type is not yet implemented.
               </p>
               <p className="info-text" style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
-                Financial statement processing is currently only available for earnings announcements. 
+                Financial statement processing is currently only available for earnings announcements.
                 Support for {selectedDocument?.document_type?.replace(/_/g, ' ') || 'this document type'} will be added in a future update.
               </p>
             </div>
@@ -669,7 +669,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                 <th>Line Item</th>
                                 <th>Category</th>
                                 <th className="text-right">Amount</th>
-                                <th>Type</th>
+                                <th className="text-right">Type</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -691,7 +691,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                       <td className={isKeyTotal ? 'bold-text' : ''}>{item.line_name}</td>
                                       <td className={isKeyTotal ? 'bold-text' : ''}>{item.line_category || 'N/A'}</td>
                                       <td className={`text-right ${isKeyTotal ? 'bold-text' : ''}`}>{formatNumber(item.line_value, balanceSheet.unit)}</td>
-                                      <td>
+                                      <td className="text-right">
                                         {item.is_operating === null || item.is_operating === undefined ? (
                                           <span className="text-muted">—</span>
                                         ) : (
@@ -751,7 +751,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                 <th>Line Item</th>
                                 <th>Category</th>
                                 <th className="text-right">Amount</th>
-                                <th>Type</th>
+                                <th className="text-right">Type</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -772,7 +772,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                       <td className={isKeyTotal ? 'bold-text' : ''}>{item.line_name}</td>
                                       <td className="col-category">{item.line_category || 'N/A'}</td>
                                       <td className={`text-right ${isKeyTotal ? 'bold-text' : ''}`}>{formatNumber(item.line_value, incomeStatement.unit)}</td>
-                                      <td>
+                                      <td className="text-right">
                                         {item.is_operating === null || item.is_operating === undefined ? (
                                           <span className="text-muted">—</span>
                                         ) : (
@@ -842,8 +842,8 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                     <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
                       <h3>Non-Operating Classification</h3>
                       {nonOperatingClassification.line_items && nonOperatingClassification.line_items.length > 0 ? (
-                        <NonOperatingClassificationTable 
-                          data={nonOperatingClassification} 
+                        <NonOperatingClassificationTable
+                          data={nonOperatingClassification}
                           formatNumber={formatNumber}
                           balanceSheet={balanceSheet}
                           incomeStatement={incomeStatement}
@@ -887,15 +887,15 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                               // Fallback: calculate from balance sheet
                               balanceSheet.line_items.forEach(item => {
                                 const categoryLower = (item.line_category || '').toLowerCase()
-                                
+
                                 // Check for non-current first (to avoid matching "non-current" when checking for "current")
-                                const isNonCurrent = categoryLower.includes('non-current') || 
-                                                     (categoryLower.includes('long') && categoryLower.includes('term'))
+                                const isNonCurrent = categoryLower.includes('non-current') ||
+                                  (categoryLower.includes('long') && categoryLower.includes('term'))
                                 const isCurrent = !isNonCurrent && categoryLower.includes('current')
                                 const isAsset = categoryLower.includes('asset')
                                 const isLiability = categoryLower.includes('liability')
                                 const isTotal = categoryLower.includes('total')
-                                
+
                                 const isCurrentAsset = isCurrent && isAsset && !isTotal
                                 const isCurrentLiability = isCurrent && isLiability && !isTotal
 
@@ -915,7 +915,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                   })
                                 }
                               })
-                              
+
                               currentAssetsTotal = currentAssetsOperating.reduce((sum, item) => sum + parseFloat(item.line_value || 0), 0)
                               currentLiabilitiesTotal = currentLiabilitiesOperating.reduce((sum, item) => sum + parseFloat(item.line_value || 0), 0)
                               netWorkingCapital = currentAssetsTotal - currentLiabilitiesTotal
@@ -928,14 +928,14 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                             if (balanceSheet?.line_items) {
                               balanceSheet.line_items.forEach(item => {
                                 const categoryLower = (item.line_category || '').toLowerCase()
-                                
+
                                 // Check for non-current first (to avoid matching "non-current" when checking for "current")
-                                const isNonCurrent = categoryLower.includes('non-current') || 
-                                                     (categoryLower.includes('long') && categoryLower.includes('term'))
+                                const isNonCurrent = categoryLower.includes('non-current') ||
+                                  (categoryLower.includes('long') && categoryLower.includes('term'))
                                 const isAsset = categoryLower.includes('asset')
                                 const isLiability = categoryLower.includes('liability')
                                 const isTotal = categoryLower.includes('total')
-                                
+
                                 const isNonCurrentAsset = isNonCurrent && isAsset && !isTotal
                                 const isNonCurrentLiability = isNonCurrent && isLiability && !isTotal
 

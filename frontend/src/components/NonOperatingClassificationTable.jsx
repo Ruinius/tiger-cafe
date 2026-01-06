@@ -61,7 +61,7 @@ export default function NonOperatingClassificationTable({ data, formatNumber, ba
               <th className="col-category">Category</th>
               <th className="text-right col-value">Amount</th>
               <th className="col-unit">Unit</th>
-              <th className="col-type">Type</th>
+              <th className="text-right col-type">Type</th>
             </tr>
           </thead>
           <tbody>
@@ -73,7 +73,7 @@ export default function NonOperatingClassificationTable({ data, formatNumber, ba
                   <td className="col-category">{originalCategory || 'N/A'}</td>
                   <td className="text-right col-value">{item.line_value !== null ? formatNumber(item.line_value, item.unit) : 'N/A'}</td>
                   <td className="col-unit">{item.unit ? item.unit.replace('_', ' ') : 'N/A'}</td>
-                  <td className="col-type">
+                  <td className="text-right col-type">
                     <span className="type-badge non-operating">Non-Operating</span>
                   </td>
                 </tr>

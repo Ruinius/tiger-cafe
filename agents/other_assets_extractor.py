@@ -57,6 +57,13 @@ def _within_tolerance(expected: float | None, actual: float) -> bool:
     return abs(actual - expected) <= tolerance
 
 
+def extract_original_name_from_standardized(standardized_name: str) -> str | None:
+    match = re.search(r"\((.*?)\)$", standardized_name)
+    if match:
+        return match.group(1)
+    return None
+
+
 def extract_other_assets_llm(
     text: str,
     time_period: str,

@@ -26,6 +26,7 @@
   --info: #4C8BF7;
   --border: #E5E7EB;
   --border-strong: #D3D7DE;
+  --border-subtle: #F3F4F6;
   --shadow: rgba(15, 23, 42, 0.08);
   --shadow-strong: rgba(15, 23, 42, 0.16);
   --radius-sm: 8px;
@@ -49,6 +50,7 @@
   --secondary: #F5F7FA;
   --border: #2B313A;
   --border-strong: #3A414D;
+  --border-subtle: #262A33;
   --shadow: rgba(0, 0, 0, 0.4);
   --shadow-strong: rgba(0, 0, 0, 0.6);
 }

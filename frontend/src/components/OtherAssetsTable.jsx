@@ -78,7 +78,7 @@ export default function OtherAssetsTable({ data, balanceSheet, formatNumber }) {
               <th className="col-category">Category</th>
               <th className="text-right col-value">Amount</th>
               <th className="col-unit">Unit</th>
-              <th className="col-type">Type</th>
+              <th className="text-right col-type">Type</th>
             </tr>
           </thead>
           <tbody>
@@ -90,7 +90,7 @@ export default function OtherAssetsTable({ data, balanceSheet, formatNumber }) {
                 <td className="col-category">{reference.category}</td>
                 <td className="col-value text-right bold-text">{formatNumber(balanceSheetItem.line_value, balanceSheet.unit)}</td>
                 <td className="col-unit">{balanceSheet.unit ? balanceSheet.unit.replace('_', ' ') : 'N/A'}</td>
-                <td className="col-type">
+                <td className="text-right col-type">
                   <span className="text-muted">—</span>
                 </td>
               </tr>
@@ -112,7 +112,7 @@ export default function OtherAssetsTable({ data, balanceSheet, formatNumber }) {
                 <td className="col-category">{item.category || 'N/A'}</td>
                 <td className="col-value text-right">{formatNumber(item.line_value, item.unit)}</td>
                 <td className="col-unit">{item.unit ? item.unit.replace('_', ' ') : 'N/A'}</td>
-                <td className="col-type">
+                <td className="text-right col-type">
                   {item.is_operating === null || item.is_operating === undefined ? (
                     <span className="text-muted">—</span>
                   ) : (
