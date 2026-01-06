@@ -7,7 +7,9 @@ from __future__ import annotations
 import re
 
 
-def normalize_line_name(line_name: str) -> str:
+def normalize_line_name(line_name: str | None) -> str:
+    if not line_name:
+        return ""
     normalized = line_name.lower().replace("&", "and")
     return re.sub(r"[^a-z0-9]+", " ", normalized).strip()
 

@@ -7,12 +7,9 @@ from __future__ import annotations
 import json
 import re
 
-from app.utils.document_section_helpers import collect_top_chunk_texts
+from app.utils.document_section_finder import collect_top_chunk_texts
 from app.utils.gemini_client import generate_content_safe
-
-
-def _normalize_line_name(line_name: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", line_name.lower()).strip()
+from app.utils.line_item_utils import normalize_line_name
 
 
 def find_revenue_line_value(line_items: list[dict]) -> float | None:
@@ -25,12 +22,12 @@ def find_revenue_line_value(line_items: list[dict]) -> float | None:
             return float(item.get("line_value")) if item.get("line_value") is not None else None
 
     for item in line_items:
-        name = _normalize_line_name(item.get("line_name", ""))
+        name = normalize_line_name(item.get("line_name", ""))
         if "total" in name and "revenue" in name:
             return float(item.get("line_value")) if item.get("line_value") is not None else None
 
     for item in line_items:
-        name = _normalize_line_name(item.get("line_name", ""))
+        name = normalize_line_name(item.get("line_name", ""))
         if "revenue" in name or "net sales" in name:
             return float(item.get("line_value")) if item.get("line_value") is not None else None
 
