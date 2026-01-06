@@ -51,8 +51,21 @@ export default function NonOperatingClassificationTable({ data, formatNumber, ba
     return null
   }
 
+  // Determine currency and unit from data or source documents
+  const currency = balanceSheet?.currency || incomeStatement?.currency || 'N/A'
+  const unit = balanceSheet?.unit || incomeStatement?.unit || 'N/A'
+
   return (
     <div className="balance-sheet-container">
+      <div className="balance-sheet-header">
+        <div className="balance-sheet-meta">
+          <span><strong>Currency:</strong> {currency}</span>
+          {unit && unit !== 'N/A' && (
+            <span><strong>Unit:</strong> {unit.replace('_', ' ')}</span>
+          )}
+        </div>
+      </div>
+
       <div className="balance-sheet-table-container">
         <table className="balance-sheet-table">
           <thead>
@@ -60,25 +73,20 @@ export default function NonOperatingClassificationTable({ data, formatNumber, ba
               <th className="col-name">Line Item</th>
               <th className="col-category">Category</th>
               <th className="text-right col-value">Amount</th>
-              <th className="col-unit">Unit</th>
               <th className="text-right col-type">Type</th>
             </tr>
           </thead>
           <tbody>
-            {data.line_items.map((item, index) => {
-              const originalCategory = getOriginalCategory(item)
-              return (
-                <tr key={`${item.line_name}-${index}`}>
-                  <td className="col-name">{item.line_name}</td>
-                  <td className="col-category">{originalCategory || 'N/A'}</td>
-                  <td className="text-right col-value">{item.line_value !== null ? formatNumber(item.line_value, item.unit) : 'N/A'}</td>
-                  <td className="col-unit">{item.unit ? item.unit.replace('_', ' ') : 'N/A'}</td>
-                  <td className="text-right col-type">
-                    <span className="type-badge non-operating">Non-Operating</span>
-                  </td>
-                </tr>
-              )
-            })}
+            {data.line_items.map((item, index) => (
+              <tr key={`${item.line_name}-${index}`}>
+                <td className="col-name">{item.line_name}</td>
+                <td className="col-category">{formatLabel(item.category)}</td>
+                <td className="text-right col-value">{item.line_value !== null ? formatNumber(item.line_value, item.unit) : 'N/A'}</td>
+                <td className="text-right col-type">
+                  <span className="type-badge non-operating">Non-Operating</span>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div >

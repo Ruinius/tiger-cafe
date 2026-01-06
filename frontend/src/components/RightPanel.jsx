@@ -863,6 +863,15 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                     <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
                       <h3>Historical Calculations</h3>
 
+                      <div className="balance-sheet-header">
+                        <div className="balance-sheet-meta">
+                          <span><strong>Currency:</strong> {balanceSheet?.currency || incomeStatement?.currency || 'N/A'}</span>
+                          {(balanceSheet?.unit || incomeStatement?.unit) && (
+                            <span><strong>Unit:</strong> {(balanceSheet?.unit || incomeStatement?.unit).replace('_', ' ')}</span>
+                          )}
+                        </div>
+                      </div>
+
                       {/* Invested Capital Breakdown */}
                       {historicalCalculations.invested_capital != null && balanceSheet && (
                         <div style={{ marginTop: '1.5rem' }}>

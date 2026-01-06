@@ -77,7 +77,6 @@ export default function OtherLiabilitiesTable({ data, balanceSheet, formatNumber
               <th className="col-name">Line Item</th>
               <th className="col-category">Category</th>
               <th className="text-right col-value">Amount</th>
-              <th className="col-unit">Unit</th>
               <th className="text-right col-type">Type</th>
             </tr>
           </thead>
@@ -89,7 +88,6 @@ export default function OtherLiabilitiesTable({ data, balanceSheet, formatNumber
                 <td className="col-name bold-text">{balanceSheetItem.line_name}</td>
                 <td className="col-category">{reference.category}</td>
                 <td className="col-value text-right bold-text">{formatNumber(balanceSheetItem.line_value, balanceSheet.unit)}</td>
-                <td className="col-unit">{balanceSheet.unit ? balanceSheet.unit.replace('_', ' ') : 'N/A'}</td>
                 <td className="text-right col-type">
                   <span className="text-muted">—</span>
                 </td>
@@ -100,7 +98,7 @@ export default function OtherLiabilitiesTable({ data, balanceSheet, formatNumber
             {!hasSubItems && (
               <tr>
                 <td className="col-ref text-muted">—</td>
-                <td className="col-name text-muted italic-text" colSpan="5">Nothing found</td>
+                <td className="col-name text-muted italic-text" colSpan="4">Nothing found</td>
               </tr>
             )}
 
@@ -111,7 +109,6 @@ export default function OtherLiabilitiesTable({ data, balanceSheet, formatNumber
                 <td className="col-name">{item.line_name}</td>
                 <td className="col-category">{item.category || 'N/A'}</td>
                 <td className="col-value text-right">{formatNumber(item.line_value, item.unit)}</td>
-                <td className="col-unit">{item.unit ? item.unit.replace('_', ' ') : 'N/A'}</td>
                 <td className="text-right col-type">
                   {item.is_operating === null || item.is_operating === undefined ? (
                     <span className="text-muted">—</span>
@@ -131,6 +128,15 @@ export default function OtherLiabilitiesTable({ data, balanceSheet, formatNumber
 
   return (
     <div className="balance-sheet-container">
+      <div className="balance-sheet-header">
+        <div className="balance-sheet-meta">
+          <span><strong>Currency:</strong> {balanceSheet?.currency || 'N/A'}</span>
+          {balanceSheet?.unit && (
+            <span><strong>Unit:</strong> {balanceSheet.unit.replace('_', ' ')}</span>
+          )}
+        </div>
+      </div>
+
       <div className="standardized-references">
         <div className="standardized-references-title">Standardized References</div>
         <ol>
