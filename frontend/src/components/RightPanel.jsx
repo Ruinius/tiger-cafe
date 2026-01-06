@@ -37,7 +37,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
   const MAX_LOAD_ATTEMPTS = 3
 
   // Check if document is eligible for financial statement processing
-  const isEligibleForFinancialStatements = selectedDocument && 
+  const isEligibleForFinancialStatements = selectedDocument &&
     ['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)
 
   // Check if all milestones are in terminal state (completed or error, not pending, checking, or in_progress)
@@ -45,33 +45,33 @@ function RightPanel({ selectedCompany, selectedDocument }) {
     if (!financialStatementProgress) {
       return false
     }
-    
+
     // If status is "not_started", don't treat as terminal - wait for checking to complete
     if (financialStatementProgress.status === 'not_started') {
       return false
     }
-    
+
     if (!financialStatementProgress.milestones) {
       return false
     }
-    
+
     const milestones = financialStatementProgress.milestones
     const allMilestones = Object.values(milestones)
-    
+
     // If no milestones exist, don't treat as terminal
     if (allMilestones.length === 0) {
       return false
     }
-    
+
     // All milestones must be completed, error, or not_found (not pending, checking, or in_progress)
-    return allMilestones.every((milestone) => 
+    return allMilestones.every((milestone) =>
       milestone.status === 'completed' || milestone.status === 'error' || milestone.status === 'not_found'
     )
   }, [financialStatementProgress])
 
   const loadFinancialStatementProgress = useCallback(async () => {
     if (!selectedDocument || !isEligibleForFinancialStatements) return
-    
+
     try {
       const endpoint = isAuthenticated ? 'financial-statement-progress' : 'financial-statement-progress-test'
       const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -90,7 +90,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
     if (!selectedDocument) return
     if (balanceSheetLoadingRef.current) return // Prevent concurrent calls
     if (balanceSheetAttemptsRef.current >= MAX_LOAD_ATTEMPTS) return // Don't retry if max attempts reached
-    
+
     balanceSheetLoadingRef.current = true
     try {
       const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -98,7 +98,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
         `${API_BASE_URL}/documents/${selectedDocument.id}/balance-sheet`,
         { headers }
       )
-      
+
       if (response.data && response.data.status === 'exists') {
         setBalanceSheet(response.data.data)
         balanceSheetAttemptsRef.current = 0
@@ -127,7 +127,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
     if (!selectedDocument) return
     if (incomeStatementLoadingRef.current) return // Prevent concurrent calls
     if (incomeStatementAttemptsRef.current >= MAX_LOAD_ATTEMPTS) return // Don't retry if max attempts reached
-    
+
     incomeStatementLoadingRef.current = true
     try {
       const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -135,7 +135,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
         `${API_BASE_URL}/documents/${selectedDocument.id}/income-statement`,
         { headers }
       )
-      
+
       if (response.data && response.data.status === 'exists') {
         setIncomeStatement(response.data.data)
         incomeStatementAttemptsRef.current = 0
@@ -165,11 +165,18 @@ function RightPanel({ selectedCompany, selectedDocument }) {
 
     const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
 
+    // Check if document is earnings announcement
+    const isEarningsAnnouncement = selectedDocument.document_type === 'earnings_announcement' || 
+                                    selectedDocument.document_type === 'EARNINGS_ANNOUNCEMENT'
+
     const endpoints = {
       organicGrowth: 'organic-growth',
       amortization: 'amortization',
-      otherAssets: 'other-assets',
-      otherLiabilities: 'other-liabilities',
+      // Skip other-assets and other-liabilities for earnings announcements
+      ...(isEarningsAnnouncement ? {} : {
+        otherAssets: 'other-assets',
+        otherLiabilities: 'other-liabilities',
+      }),
       nonOperatingClassification: 'non-operating-classification'
     }
 
@@ -218,13 +225,13 @@ function RightPanel({ selectedCompany, selectedDocument }) {
     incomeStatementLoadingRef.current = false
     balanceSheetAttemptsRef.current = 0
     incomeStatementAttemptsRef.current = 0
-    
+
     // Clear any existing polling intervals
     if (progressPollingIntervalRef.current) {
       clearInterval(progressPollingIntervalRef.current)
       progressPollingIntervalRef.current = null
     }
-    
+
     if (selectedDocument && isEligibleForFinancialStatements) {
       // Always load progress tracker first
       loadFinancialStatementProgress()
@@ -234,21 +241,21 @@ function RightPanel({ selectedCompany, selectedDocument }) {
   // Poll for progress when there are active milestones
   useEffect(() => {
     if (!selectedDocument || !isEligibleForFinancialStatements) return
-    
+
     // Check if any milestone is in progress or pending
-    const hasActiveMilestones = financialStatementProgress && 
+    const hasActiveMilestones = financialStatementProgress &&
       financialStatementProgress.milestones &&
-      Object.values(financialStatementProgress.milestones).some((milestone) => 
+      Object.values(financialStatementProgress.milestones).some((milestone) =>
         milestone.status === 'in_progress' || milestone.status === 'pending'
       )
-    
+
     if (hasActiveMilestones) {
       const interval = setInterval(() => {
         loadFinancialStatementProgress()
       }, 3000) // Poll every 3 seconds (reduced frequency for better performance)
-      
+
       progressPollingIntervalRef.current = interval
-      
+
       return () => {
         clearInterval(interval)
         progressPollingIntervalRef.current = null
@@ -259,7 +266,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
         clearInterval(progressPollingIntervalRef.current)
         progressPollingIntervalRef.current = null
       }
-      
+
       // Send event to LeftPanel to reset isProcessing when all milestones are terminal
       window.dispatchEvent(new CustomEvent('financialStatementsProcessingComplete'))
     }
@@ -267,7 +274,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
 
   const loadHistoricalCalculations = useCallback(async () => {
     if (!selectedDocument || !isEligibleForFinancialStatements) return
-    
+
     try {
       const endpoint = isAuthenticated ? 'historical-calculations' : 'historical-calculations/test'
       const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -364,7 +371,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
   // Load historical calculations only once when both balance sheet and income statement are loaded
   useEffect(() => {
     if (!selectedDocument || !isEligibleForFinancialStatements) return
-    
+
     // Only load historical calculations once when both are loaded and we haven't attempted yet
     if (areAllMilestonesTerminal() && balanceSheet && incomeStatement && !historicalCalculationsLoadAttempted) {
       setHistoricalCalculationsLoadAttempted(true)
@@ -374,11 +381,11 @@ function RightPanel({ selectedCompany, selectedDocument }) {
 
   const formatNumber = (value, unit = null) => {
     if (value === null || value === undefined) return 'N/A'
-    
+
     // Values are stored in the reported unit (e.g., 100 if unit is "millions" means 100 million)
     // Display them as-is without conversion - the unit column shows the scale
     const displayValue = parseFloat(value)
-    
+
     // Format as number with thousands separators, no currency symbol
     return new Intl.NumberFormat('en-US', {
       minimumFractionDigits: 0,
@@ -504,11 +511,15 @@ function RightPanel({ selectedCompany, selectedDocument }) {
       <div className="right-panel">
         <div className="panel-content">
           <h2>Financial Statements</h2>
-          
+
           {!isEligibleForFinancialStatements && (
             <div className="info-section">
-              <p className="info-text">
-                Financial statement processing is only available for earnings announcements, quarterly filings, and annual reports.
+              <p className="info-text" style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+                This document type is not yet implemented.
+              </p>
+              <p className="info-text" style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
+                Financial statement processing is currently only available for earnings announcements. 
+                Support for {selectedDocument?.document_type?.replace(/_/g, ' ') || 'this document type'} will be added in a future update.
               </p>
             </div>
           )}
@@ -529,51 +540,51 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                       const milestoneData = financialStatementProgress.milestones?.[milestone.key]
                       const status = milestoneData?.status || 'checking'
                       const message = milestoneData?.message
-                      
+
                       return (
-                        <div key={milestone.key} className="progress-milestone-item" style={{ 
+                        <div key={milestone.key} className="progress-milestone-item" style={{
                           marginBottom: '0.75rem',
                           padding: '0.5rem',
                           borderRadius: '4px',
-                          backgroundColor: status === 'in_progress' ? 'var(--accent-light)' : 
-                                         status === 'completed' ? 'var(--success-light)' :
-                                         status === 'error' ? 'var(--error-light)' :
-                                         status === 'checking' ? 'var(--bg-primary)' :
-                                         status === 'not_found' ? 'var(--bg-secondary)' : 'transparent'
+                          backgroundColor: status === 'in_progress' ? 'var(--accent-light)' :
+                            status === 'completed' ? 'var(--success-light)' :
+                              status === 'error' ? 'var(--error-light)' :
+                                status === 'checking' ? 'var(--bg-primary)' :
+                                  status === 'not_found' ? 'var(--bg-secondary)' : 'transparent'
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <span style={{ 
+                            <span style={{
                               fontSize: '1.2rem',
                               color: status === 'completed' ? 'var(--success)' :
-                                     status === 'error' ? 'var(--error)' :
-                                     status === 'in_progress' ? 'var(--accent)' :
-                                     status === 'checking' ? 'var(--text-secondary)' :
-                                     status === 'not_found' ? 'var(--text-secondary)' : 'var(--text-secondary)'
+                                status === 'error' ? 'var(--error)' :
+                                  status === 'in_progress' ? 'var(--accent)' :
+                                    status === 'checking' ? 'var(--text-secondary)' :
+                                      status === 'not_found' ? 'var(--text-secondary)' : 'var(--text-secondary)'
                             }}>
-                              {status === 'completed' ? '✓' : 
-                               status === 'in_progress' ? <span className="status-spinner" aria-hidden="true" /> : 
-                               status === 'error' ? '✗' : 
-                               status === 'checking' ? <span className="status-spinner" aria-hidden="true" /> :
-                               status === 'not_found' ? '○' : '○'}
+                              {status === 'completed' ? '✓' :
+                                status === 'in_progress' ? <span className="status-spinner" aria-hidden="true" /> :
+                                  status === 'error' ? '✗' :
+                                    status === 'checking' ? <span className="status-spinner" aria-hidden="true" /> :
+                                      status === 'not_found' ? '○' : '○'}
                             </span>
                             <span style={{ flex: 1, fontWeight: (status === 'in_progress' || status === 'checking') ? 'bold' : 'normal' }}>
                               {milestone.label}
                             </span>
-                            <span style={{ 
+                            <span style={{
                               fontSize: '0.875rem',
                               color: 'var(--text-secondary)',
                               textTransform: 'capitalize'
                             }}>
                               {status === 'in_progress' ? 'In Progress' :
-                               status === 'completed' ? 'Completed' :
-                               status === 'error' ? 'Error' :
-                               status === 'checking' ? 'Checking...' :
-                               status === 'not_found' ? 'Not Found' : 'Pending'}
+                                status === 'completed' ? 'Completed' :
+                                  status === 'error' ? 'Error' :
+                                    status === 'checking' ? 'Checking...' :
+                                      status === 'not_found' ? 'Not Found' : 'Pending'}
                             </span>
                           </div>
                           {/* Only show message for errors or in-progress, not for completed status */}
                           {message && (status === 'error' || status === 'in_progress' || status === 'checking') && (
-                            <div style={{ 
+                            <div style={{
                               marginTop: '0.25rem',
                               fontSize: '0.875rem',
                               color: 'var(--text-secondary)',
@@ -584,14 +595,14 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                           )}
                           {/* Display log messages if available */}
                           {milestoneData?.logs && milestoneData.logs.length > 0 && (
-                            <div style={{ 
+                            <div style={{
                               marginTop: '0.5rem',
                               marginLeft: '1.75rem',
                               fontSize: '0.8rem',
                               color: 'var(--text-secondary)'
                             }}>
                               {milestoneData.logs.map((log, idx) => (
-                                <div 
+                                <div
                                   key={idx}
                                   style={{
                                     marginBottom: '0.25rem',
@@ -669,11 +680,11 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                   const isTotalLiabilities = lineNameLower.includes('total liabilities') && !lineNameLower.includes('equity') && !lineNameLower.includes('stockholder')
                                   const isTotalEquity = (lineNameLower.includes('total equity') || lineNameLower.includes('total stockholder') || lineNameLower.includes('total shareholders')) && !lineNameLower.includes('liabilities')
                                   const isTotalLiabilitiesEquity = (lineNameLower.includes('total liabilities and equity') || lineNameLower.includes('total liabilities and stockholder') || lineNameLower.includes('total liabilities and shareholder'))
-                                  
+
                                   const isKeyTotal = isTotalAssets || isTotalLiabilities || isTotalEquity || isTotalLiabilitiesEquity
-                                  
+
                                   return (
-                                    <tr 
+                                    <tr
                                       key={item.id}
                                       className={isKeyTotal ? 'key-total-row' : (item.line_category?.toLowerCase().includes('total') ? 'total-row' : '')}
                                     >
@@ -747,14 +758,14 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                               {incomeStatement.line_items && incomeStatement.line_items.length > 0 ? (
                                 incomeStatement.line_items.map((item) => {
                                   const lineNameLower = item.line_name.toLowerCase()
-                                  const isKeyTotal = lineNameLower.includes('total net revenue') || 
-                                                    lineNameLower.includes('gross profit') || 
-                                                    lineNameLower.includes('operating income') || 
-                                                    lineNameLower.includes('pretax income') || 
-                                                    lineNameLower.includes('net income')
-                                  
+                                  const isKeyTotal = lineNameLower.includes('total net revenue') ||
+                                    lineNameLower.includes('gross profit') ||
+                                    lineNameLower.includes('operating income') ||
+                                    lineNameLower.includes('pretax income') ||
+                                    lineNameLower.includes('net income')
+
                                   return (
-                                    <tr 
+                                    <tr
                                       key={item.id}
                                       className={isKeyTotal ? 'key-total-row' : ''}
                                     >
@@ -822,7 +833,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                   {otherAssets && (
                     <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
                       <h3>Other Assets</h3>
-                      <OtherAssetsTable data={otherAssets} formatNumber={formatNumber} />
+                      <OtherAssetsTable data={otherAssets} balanceSheet={balanceSheet} formatNumber={formatNumber} />
                     </div>
                   )}
 
@@ -830,7 +841,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                   {otherLiabilities && (
                     <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
                       <h3>Other Liabilities</h3>
-                      <OtherLiabilitiesTable data={otherLiabilities} formatNumber={formatNumber} />
+                      <OtherLiabilitiesTable data={otherLiabilities} balanceSheet={balanceSheet} formatNumber={formatNumber} />
                     </div>
                   )}
 

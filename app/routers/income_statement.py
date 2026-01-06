@@ -11,15 +11,20 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from agents.amortization_extractor import extract_amortization
+from agents.gaap_reconciliation_extractor import extract_gaap_reconciliation
 from agents.income_statement_extractor import extract_income_statement
 from agents.non_operating_classifier import classify_non_operating_items
 from agents.organic_growth_extractor import extract_organic_growth
 from agents.other_assets_extractor import (
     extract_original_name_from_standardized as extract_other_assets_label,
+)
+from agents.other_assets_extractor import (
     extract_other_assets,
 )
 from agents.other_liabilities_extractor import (
     extract_original_name_from_standardized as extract_other_liabilities_label,
+)
+from agents.other_liabilities_extractor import (
     extract_other_liabilities,
 )
 from agents.shares_outstanding_extractor import extract_shares_outstanding
@@ -137,10 +142,23 @@ def process_income_statement_async(document_id: str, db: Session):
         time_period = document.time_period or "Unknown"
 
         # Try to get balance sheet chunk index from progress logs (stored when balance sheet extraction succeeded)
+        # If not in progress store, check the database (chunk_index is persisted even if validation fails)
+        # IMPORTANT: All chunk indices are scoped to the specific document_id to avoid cross-document confusion.
+        # The progress store is keyed by document_id, and database queries filter by document_id.
         balance_sheet_chunk_index = None
-        progress = get_progress(document_id)
+        progress = get_progress(document_id)  # Progress store is scoped by document_id
         if progress and "balance_sheet_chunk_index" in progress:
             balance_sheet_chunk_index = progress["balance_sheet_chunk_index"]
+        else:
+            # Fallback: get chunk_index from database (persisted after extraction, even if validation failed)
+            # Database query is explicitly filtered by document_id to ensure we only get chunks for this document
+            existing_balance_sheet = (
+                db_session.query(BalanceSheet)
+                .filter(BalanceSheet.document_id == document_id)
+                .first()
+            )
+            if existing_balance_sheet and existing_balance_sheet.chunk_index is not None:
+                balance_sheet_chunk_index = existing_balance_sheet.chunk_index
 
         extracted_data = extract_income_statement(
             document_id=document_id,
@@ -364,82 +382,165 @@ def process_income_statement_async(document_id: str, db: Session):
 
             db_session.commit()
 
-            # Extract amortization
-            add_log(
-                document_id,
-                FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                "Extracting amortization line items",
-            )
-            try:
-                amortization_result = extract_amortization(
-                    document_id=document_id,
-                    file_path=document.file_path,
-                    time_period=time_period,
+            # Extract amortization (or GAAP reconciliation for earnings announcements)
+            if document.document_type == DocumentType.EARNINGS_ANNOUNCEMENT:
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
+                    "Extracting GAAP/EBITDA reconciliation line items",
                 )
-                if amortization_result.get("line_items"):
-                    existing_amortization = (
-                        db_session.query(Amortization)
-                        .filter(Amortization.document_id == document_id)
-                        .first()
+                try:
+                    amortization_result = extract_gaap_reconciliation(
+                        document_id=document_id,
+                        file_path=document.file_path,
+                        time_period=time_period,
+                        document_type=document.document_type,
                     )
-                    if existing_amortization:
-                        db_session.query(AmortizationLineItem).filter(
-                            AmortizationLineItem.amortization_id == existing_amortization.id
-                        ).delete()
-                        db_session.delete(existing_amortization)
+                    if amortization_result.get("line_items"):
+                        existing_amortization = (
+                            db_session.query(Amortization)
+                            .filter(Amortization.document_id == document_id)
+                            .first()
+                        )
+                        if existing_amortization:
+                            db_session.query(AmortizationLineItem).filter(
+                                AmortizationLineItem.amortization_id == existing_amortization.id
+                            ).delete()
+                            db_session.delete(existing_amortization)
+                            db_session.commit()
+
+                        amortization = Amortization(
+                            id=str(uuid.uuid4()),
+                            document_id=document_id,
+                            time_period=time_period,
+                            currency=income_statement.currency,
+                            chunk_index=amortization_result.get("chunk_index"),
+                            is_valid=amortization_result.get("is_valid", False),
+                            validation_errors=json.dumps(
+                                amortization_result.get("validation_errors", [])
+                            )
+                            if amortization_result.get("validation_errors")
+                            else None,
+                        )
+                        db_session.add(amortization)
+                        db_session.commit()
+                        db_session.refresh(amortization)
+
+                        for idx, item in enumerate(amortization_result.get("line_items", [])):
+                            if item.get("line_value") is None:
+                                continue
+                            db_session.add(
+                                AmortizationLineItem(
+                                    id=str(uuid.uuid4()),
+                                    amortization_id=amortization.id,
+                                    line_name=item.get("line_name"),
+                                    line_value=item.get("line_value"),
+                                    unit=item.get("unit"),
+                                    is_operating=item.get("is_operating"),
+                                    category=item.get("category"),
+                                    line_order=idx,
+                                )
+                            )
                         db_session.commit()
 
-                    amortization = Amortization(
-                        id=str(uuid.uuid4()),
-                        document_id=document_id,
-                        time_period=time_period,
-                        currency=income_statement.currency,
-                        chunk_index=amortization_result.get("chunk_index"),
-                        is_valid=amortization_result.get("is_valid", False),
-                        validation_errors=json.dumps(
-                            amortization_result.get("validation_errors", [])
+                        add_log(
+                            document_id,
+                            FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
+                            "GAAP/EBITDA reconciliation extraction completed",
                         )
-                        if amortization_result.get("validation_errors")
-                        else None,
-                    )
-                    db_session.add(amortization)
-                    db_session.commit()
-                    db_session.refresh(amortization)
-
-                    for idx, item in enumerate(amortization_result.get("line_items", [])):
-                        db_session.add(
-                            AmortizationLineItem(
-                                id=str(uuid.uuid4()),
-                                amortization_id=amortization.id,
-                                line_name=item.get("line_name"),
-                                line_value=item.get("line_value"),
-                                unit=item.get("unit"),
-                                is_operating=item.get("is_operating"),
-                                category=item.get("category"),
-                                line_order=idx,
-                            )
+                    else:
+                        additional_item_errors.append("GAAP reconciliation")
+                        add_log(
+                            document_id,
+                            FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
+                            "GAAP/EBITDA reconciliation extraction failed or not found",
                         )
-                    db_session.commit()
-
+                except Exception as extraction_error:
+                    additional_item_errors.append("GAAP reconciliation")
                     add_log(
                         document_id,
                         FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                        "Amortization extraction completed",
+                        f"GAAP/EBITDA reconciliation extraction failed: {str(extraction_error)}",
                     )
-                else:
+            else:
+                # For quarterly/annual filings, use amortization extractor
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
+                    "Extracting amortization line items",
+                )
+                try:
+                    amortization_result = extract_amortization(
+                        document_id=document_id,
+                        file_path=document.file_path,
+                        time_period=time_period,
+                    )
+                    if amortization_result.get("line_items"):
+                        existing_amortization = (
+                            db_session.query(Amortization)
+                            .filter(Amortization.document_id == document_id)
+                            .first()
+                        )
+                        if existing_amortization:
+                            db_session.query(AmortizationLineItem).filter(
+                                AmortizationLineItem.amortization_id == existing_amortization.id
+                            ).delete()
+                            db_session.delete(existing_amortization)
+                            db_session.commit()
+
+                        amortization = Amortization(
+                            id=str(uuid.uuid4()),
+                            document_id=document_id,
+                            time_period=time_period,
+                            currency=income_statement.currency,
+                            chunk_index=amortization_result.get("chunk_index"),
+                            is_valid=amortization_result.get("is_valid", False),
+                            validation_errors=json.dumps(
+                                amortization_result.get("validation_errors", [])
+                            )
+                            if amortization_result.get("validation_errors")
+                            else None,
+                        )
+                        db_session.add(amortization)
+                        db_session.commit()
+                        db_session.refresh(amortization)
+
+                        for idx, item in enumerate(amortization_result.get("line_items", [])):
+                            if item.get("line_value") is None:
+                                continue
+                            db_session.add(
+                                AmortizationLineItem(
+                                    id=str(uuid.uuid4()),
+                                    amortization_id=amortization.id,
+                                    line_name=item.get("line_name"),
+                                    line_value=item.get("line_value"),
+                                    unit=item.get("unit"),
+                                    is_operating=item.get("is_operating"),
+                                    category=item.get("category"),
+                                    line_order=idx,
+                                )
+                            )
+                        db_session.commit()
+
+                        add_log(
+                            document_id,
+                            FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
+                            "Amortization extraction completed",
+                        )
+                    else:
+                        additional_item_errors.append("amortization")
+                        add_log(
+                            document_id,
+                            FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
+                            "Amortization extraction failed or not found",
+                        )
+                except Exception as extraction_error:
                     additional_item_errors.append("amortization")
                     add_log(
                         document_id,
                         FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                        "Amortization extraction failed or not found",
+                        f"Amortization extraction failed: {str(extraction_error)}",
                     )
-            except Exception as amortization_error:
-                additional_item_errors.append("amortization")
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                    f"Amortization extraction failed: {str(amortization_error)}",
-                )
 
             # Extract organic growth
             add_log(
@@ -526,169 +627,192 @@ def process_income_statement_async(document_id: str, db: Session):
                     f"Organic growth extraction failed: {str(organic_error)}",
                 )
 
-            # Extract other assets
-            add_log(
-                document_id,
-                FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                "Extracting other assets line items",
-            )
+            # Query balance sheet once (needed for both earnings and non-earnings announcements)
             balance_sheet = (
                 db_session.query(BalanceSheet)
                 .filter(BalanceSheet.document_id == document_id)
                 .first()
             )
-            other_assets_result = None
-            if balance_sheet and balance_sheet.line_items:
-                current_terms, current_total = _extract_balance_sheet_terms(
-                    balance_sheet, "Other Current Assets"
-                )
-                non_current_terms, non_current_total = _extract_balance_sheet_terms(
-                    balance_sheet, "Other Non-Current Assets"
-                )
-                query_terms = current_terms + non_current_terms
-                other_assets_result = extract_other_assets(
-                    document_id=document_id,
-                    file_path=document.file_path,
-                    time_period=time_period,
-                    query_terms=query_terms,
-                    expected_current_total=current_total,
-                    expected_non_current_total=non_current_total,
-                )
 
-            if other_assets_result and other_assets_result.get("line_items"):
-                existing_other_assets = (
-                    db_session.query(OtherAssets)
-                    .filter(OtherAssets.document_id == document_id)
-                    .first()
+            # Extract other assets (skip for earnings announcements)
+            if document.document_type != DocumentType.EARNINGS_ANNOUNCEMENT:
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
+                    "Extracting other assets line items",
                 )
-                if existing_other_assets:
-                    db_session.query(OtherAssetsLineItem).filter(
-                        OtherAssetsLineItem.other_assets_id == existing_other_assets.id
-                    ).delete()
-                    db_session.delete(existing_other_assets)
-                    db_session.commit()
+                other_assets_result = None
 
-                other_assets = OtherAssets(
-                    id=str(uuid.uuid4()),
-                    document_id=document_id,
-                    time_period=time_period,
-                    currency=balance_sheet.currency if balance_sheet else None,
-                    chunk_index=other_assets_result.get("chunk_index"),
-                    is_valid=other_assets_result.get("is_valid", False),
-                    validation_errors=json.dumps(other_assets_result.get("validation_errors", []))
-                    if other_assets_result.get("validation_errors")
-                    else None,
-                )
-                db_session.add(other_assets)
-                db_session.commit()
-                db_session.refresh(other_assets)
+                # For non-earnings announcements, use the extractor
+                if balance_sheet and balance_sheet.line_items:
+                    current_terms, current_total = _extract_balance_sheet_terms(
+                        balance_sheet, "Other Current Assets"
+                    )
+                    non_current_terms, non_current_total = _extract_balance_sheet_terms(
+                        balance_sheet, "Other Non-Current Assets"
+                    )
+                    query_terms = current_terms + non_current_terms
+                    other_assets_result = extract_other_assets(
+                        document_id=document_id,
+                        file_path=document.file_path,
+                        time_period=time_period,
+                        query_terms=query_terms,
+                        expected_current_total=current_total,
+                        expected_non_current_total=non_current_total,
+                    )
 
-                for idx, item in enumerate(other_assets_result.get("line_items", [])):
-                    db_session.add(
-                        OtherAssetsLineItem(
-                            id=str(uuid.uuid4()),
-                            other_assets_id=other_assets.id,
-                            line_name=item.get("line_name"),
-                            line_value=item.get("line_value"),
-                            unit=item.get("unit"),
-                            is_operating=item.get("is_operating"),
-                            category=item.get("category"),
-                            line_order=idx,
+                if other_assets_result and other_assets_result.get("line_items"):
+                    existing_other_assets = (
+                        db_session.query(OtherAssets)
+                        .filter(OtherAssets.document_id == document_id)
+                        .first()
+                    )
+                    if existing_other_assets:
+                        db_session.query(OtherAssetsLineItem).filter(
+                            OtherAssetsLineItem.other_assets_id == existing_other_assets.id
+                        ).delete()
+                        db_session.delete(existing_other_assets)
+                        db_session.commit()
+
+                    other_assets = OtherAssets(
+                        id=str(uuid.uuid4()),
+                        document_id=document_id,
+                        time_period=time_period,
+                        currency=balance_sheet.currency if balance_sheet else None,
+                        chunk_index=other_assets_result.get("chunk_index"),
+                        is_valid=other_assets_result.get("is_valid", False),
+                        validation_errors=json.dumps(
+                            other_assets_result.get("validation_errors", [])
                         )
+                        if other_assets_result.get("validation_errors")
+                        else None,
                     )
-                db_session.commit()
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                    "Other assets extraction completed",
-                )
-            else:
-                additional_item_errors.append("other assets")
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                    "Other assets extraction failed or no line items found",
-                )
-
-            # Extract other liabilities
-            add_log(
-                document_id,
-                FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                "Extracting other liabilities line items",
-            )
-            other_liabilities_result = None
-            if balance_sheet and balance_sheet.line_items:
-                current_terms, current_total = _extract_balance_sheet_terms(
-                    balance_sheet, "Other Current Liabilities"
-                )
-                non_current_terms, non_current_total = _extract_balance_sheet_terms(
-                    balance_sheet, "Other Non-Current Liabilities"
-                )
-                query_terms = current_terms + non_current_terms
-                other_liabilities_result = extract_other_liabilities(
-                    document_id=document_id,
-                    file_path=document.file_path,
-                    time_period=time_period,
-                    query_terms=query_terms,
-                    expected_current_total=current_total,
-                    expected_non_current_total=non_current_total,
-                )
-
-            if other_liabilities_result and other_liabilities_result.get("line_items"):
-                existing_other_liabilities = (
-                    db_session.query(OtherLiabilities)
-                    .filter(OtherLiabilities.document_id == document_id)
-                    .first()
-                )
-                if existing_other_liabilities:
-                    db_session.query(OtherLiabilitiesLineItem).filter(
-                        OtherLiabilitiesLineItem.other_liabilities_id == existing_other_liabilities.id
-                    ).delete()
-                    db_session.delete(existing_other_liabilities)
+                    db_session.add(other_assets)
                     db_session.commit()
+                    db_session.refresh(other_assets)
 
-                other_liabilities = OtherLiabilities(
-                    id=str(uuid.uuid4()),
-                    document_id=document_id,
-                    time_period=time_period,
-                    currency=balance_sheet.currency if balance_sheet else None,
-                    chunk_index=other_liabilities_result.get("chunk_index"),
-                    is_valid=other_liabilities_result.get("is_valid", False),
-                    validation_errors=json.dumps(
-                        other_liabilities_result.get("validation_errors", [])
-                    )
-                    if other_liabilities_result.get("validation_errors")
-                    else None,
-                )
-                db_session.add(other_liabilities)
-                db_session.commit()
-                db_session.refresh(other_liabilities)
-
-                for idx, item in enumerate(other_liabilities_result.get("line_items", [])):
-                    db_session.add(
-                        OtherLiabilitiesLineItem(
-                            id=str(uuid.uuid4()),
-                            other_liabilities_id=other_liabilities.id,
-                            line_name=item.get("line_name"),
-                            line_value=item.get("line_value"),
-                            unit=item.get("unit"),
-                            is_operating=item.get("is_operating"),
-                            category=item.get("category"),
-                            line_order=idx,
+                    for idx, item in enumerate(other_assets_result.get("line_items", [])):
+                        db_session.add(
+                            OtherAssetsLineItem(
+                                id=str(uuid.uuid4()),
+                                other_assets_id=other_assets.id,
+                                line_name=item.get("line_name"),
+                                line_value=item.get("line_value"),
+                                unit=item.get("unit"),
+                                is_operating=item.get("is_operating"),
+                                category=item.get("category"),
+                                line_order=idx,
+                            )
                         )
+                    db_session.commit()
+                    add_log(
+                        document_id,
+                        FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
+                        "Other assets extraction completed",
                     )
-                db_session.commit()
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                    "Other liabilities extraction completed",
-                )
+                else:
+                    additional_item_errors.append("other assets")
+                    add_log(
+                        document_id,
+                        FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
+                        "Other assets extraction failed or no line items found",
+                    )
             else:
-                additional_item_errors.append("other liabilities")
                 add_log(
                     document_id,
                     FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                    "Other liabilities extraction failed or no line items found",
+                    "Skipping other assets extraction for earnings announcement",
+                )
+
+            # Extract other liabilities (skip for earnings announcements)
+            if document.document_type != DocumentType.EARNINGS_ANNOUNCEMENT:
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
+                    "Extracting other liabilities line items",
+                )
+                other_liabilities_result = None
+
+                # For non-earnings announcements, use the extractor
+                if balance_sheet and balance_sheet.line_items:
+                    current_terms, current_total = _extract_balance_sheet_terms(
+                        balance_sheet, "Other Current Liabilities"
+                    )
+                    non_current_terms, non_current_total = _extract_balance_sheet_terms(
+                        balance_sheet, "Other Non-Current Liabilities"
+                    )
+                    query_terms = current_terms + non_current_terms
+                    other_liabilities_result = extract_other_liabilities(
+                        document_id=document_id,
+                        file_path=document.file_path,
+                        time_period=time_period,
+                        query_terms=query_terms,
+                        expected_current_total=current_total,
+                        expected_non_current_total=non_current_total,
+                    )
+
+                if other_liabilities_result and other_liabilities_result.get("line_items"):
+                    existing_other_liabilities = (
+                        db_session.query(OtherLiabilities)
+                        .filter(OtherLiabilities.document_id == document_id)
+                        .first()
+                    )
+                    if existing_other_liabilities:
+                        db_session.query(OtherLiabilitiesLineItem).filter(
+                            OtherLiabilitiesLineItem.other_liabilities_id
+                            == existing_other_liabilities.id
+                        ).delete()
+                        db_session.delete(existing_other_liabilities)
+                        db_session.commit()
+
+                    other_liabilities = OtherLiabilities(
+                        id=str(uuid.uuid4()),
+                        document_id=document_id,
+                        time_period=time_period,
+                        currency=balance_sheet.currency if balance_sheet else None,
+                        chunk_index=other_liabilities_result.get("chunk_index"),
+                        is_valid=other_liabilities_result.get("is_valid", False),
+                        validation_errors=json.dumps(
+                            other_liabilities_result.get("validation_errors", [])
+                        )
+                        if other_liabilities_result.get("validation_errors")
+                        else None,
+                    )
+                    db_session.add(other_liabilities)
+                    db_session.commit()
+                    db_session.refresh(other_liabilities)
+
+                    for idx, item in enumerate(other_liabilities_result.get("line_items", [])):
+                        db_session.add(
+                            OtherLiabilitiesLineItem(
+                                id=str(uuid.uuid4()),
+                                other_liabilities_id=other_liabilities.id,
+                                line_name=item.get("line_name"),
+                                line_value=item.get("line_value"),
+                                unit=item.get("unit"),
+                                is_operating=item.get("is_operating"),
+                                category=item.get("category"),
+                                line_order=idx,
+                            )
+                        )
+                    db_session.commit()
+                    add_log(
+                        document_id,
+                        FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
+                        "Other liabilities extraction completed",
+                    )
+                else:
+                    additional_item_errors.append("other liabilities")
+                    add_log(
+                        document_id,
+                        FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
+                        "Other liabilities extraction failed or no line items found",
+                    )
+            else:
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
+                    "Skipping other liabilities extraction for earnings announcement",
                 )
 
             if additional_item_errors:
@@ -734,9 +858,7 @@ def process_income_statement_async(document_id: str, db: Session):
                         )
 
             other_assets = (
-                db_session.query(OtherAssets)
-                .filter(OtherAssets.document_id == document_id)
-                .first()
+                db_session.query(OtherAssets).filter(OtherAssets.document_id == document_id).first()
             )
             if other_assets and other_assets.line_items:
                 for item in other_assets.line_items:

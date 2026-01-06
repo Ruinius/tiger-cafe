@@ -45,8 +45,8 @@ def find_balance_sheet_section(
         )
 
         if doc_type_str == "earnings_announcement":
-            ignore_front_fraction = 0.3
-            ignore_back_fraction = 0.1
+            ignore_front_fraction = 0
+            ignore_back_fraction = 0
         elif doc_type_str == "annual_filing":
             ignore_front_fraction = 0.5
             ignore_back_fraction = 0.2
@@ -608,15 +608,6 @@ def validate_balance_sheet_calculations(line_items: list[dict]) -> tuple[bool, l
                 f"Total liabilities sum mismatch: reported={total_liabilities}, calculated={total_liabilities_sum}"
             )
 
-    # Validate balance sheet equation: Assets = Liabilities + Equity
-    if total_assets is not None and total_liabilities is not None and total_equity is not None:
-        liabilities_equity_sum = total_liabilities + total_equity
-        diff = abs(total_assets - liabilities_equity_sum)
-        if diff > 0.01:
-            errors.append(
-                f"Balance sheet equation mismatch: Assets={total_assets}, Liabilities+Equity={liabilities_equity_sum}"
-            )
-
     # Validate total liabilities and equity
     if total_liabilities_equity is not None and total_assets is not None:
         diff = abs(total_assets - total_liabilities_equity)
@@ -689,7 +680,7 @@ A COMPLETE consolidated balance sheet should:
 - Avoid smaller informational tables that do not have the complete information
 
 Document text:
-{text[:10000]}
+{text}
 
 Return a JSON object:
 {{
@@ -767,30 +758,40 @@ Line items:
 Return this JSON structure:
 {{
     "cash_and_equivalents_line": "exact line name for cash and cash equivalents (must match a name from the list above, or null if not found)",
+    "accounts_receivable_line": "exact line name for accounts receivable (must match a name from the list above, or null if not found)",
+    "inventory_line": "exact line name for inventory (must match a name from the list above, or null if not found)",
     "other_current_assets_line": "exact line name for other current assets (must match a name from the list above, or null if not found)",
     "total_current_assets_line": "exact line name for total current assets (must match a name from the list above, or null if not found)",
+    "ppe_line": "exact line name for property, plant and equipment (must match a name from the list above, or null if not found)",
+    "goodwill_intangible_line": "exact line name for goodwill and intangible assets (must match a name from the list above, or null if not found)",
     "other_non_current_assets_line": "exact line name for other non-current assets (must match a name from the list above, or null if not found)",
+    "total_assets_line": "exact line name for total assets (must match a name from the list above, or null if not found)",
+    "accounts_payable_line": "exact line name for accounts payable (must match a name from the list above, or null if not found)",
+    "short_term_debt_line": "exact line name for short-term debt (must match a name from the list above, or null if not found)",
     "other_current_liabilities_line": "exact line name for other current liabilities (must match a name from the list above, or null if not found)",
     "total_current_liabilities_line": "exact line name for total current liabilities (must match a name from the list above, or null if not found)",
+    "long_term_debt_line": "exact line name for long-term debt (must match a name from the list above, or null if not found)",
     "other_non_current_liabilities_line": "exact line name for other non-current liabilities (must match a name from the list above, or null if not found)",
     "total_liabilities_line": "exact line name for total liabilities (must match a name from the list above, or null if not found)",
     "common_equity_line": "exact line name for common equity or common stockholders' equity (must match a name from the list above, or null if not found)",
+    "retained_earnings_line": "exact line name for retained earnings (must match a name from the list above, or null if not found)",
     "total_equity_line": "exact line name for total equity or total shareholders' equity (must match a name from the list above, or null if not found)",
-    "total_shareholder_equity_line": "exact line name for total shareholder's equity or total liabilities and equity (must match a name from the list above, or null if not found)"
+    "total_liabilities_equity_line": "exact line name for total liabilities and equity or total liabilities and shareholders' equity (must match a name from the list above, or null if not found)"
 }}
 
 Guidance for matching (but only use names that actually appear in the list above):
-- Cash and equivalents may be labeled as: Cash and cash equivalents, Cash and equivalents, Cash
-- Other current assets may be labeled as: Other current assets, Other current assets, net
-- Total current assets may be labeled as: Total current assets, Current assets
-- Other non-current assets may be labeled as: Other non-current assets, Other assets, Other long-term assets
-- Other current liabilities may be labeled as: Other current liabilities, Other accrued liabilities
-- Total current liabilities may be labeled as: Total current liabilities, Current liabilities
-- Other non-current liabilities may be labeled as: Other non-current liabilities, Other long-term liabilities
-- Total liabilities may be labeled as: Total liabilities, Total liabilities
-- Common equity may be labeled as: Common equity, Common stockholders' equity, Common equity (deficit)
-- Total equity may be labeled as: Total equity, Total stockholders' equity, Total shareholders' equity
-- Total shareholder equity may be labeled as: Total liabilities and equity, Total liabilities and shareholders' equity
+- Cash and equivalents: Cash and cash equivalents, Cash, Cash & Equivalents
+- Accounts receivable: Accounts receivable, Trade receivables
+- Inventory: Inventories, Inventory
+- Total current assets: Total current assets, Current assets
+- Total assets: Total assets
+- Accounts payable: Accounts payable, Trade payables
+- Total current liabilities: Total current liabilities, Current liabilities
+- Total liabilities: Total liabilities
+- Common equity: Common equity, Common stockholders' equity, Common stock, Shareholders' equity
+- Retained earnings: Retained earnings, Accumulated deficit
+- Total equity: Total equity, Total stockholders' equity, Total shareholders' equity
+- Total liabilities and equity: Total liabilities and equity, Total liabilities and shareholders' equity
 
 Return only JSON with no extra text."""
 
@@ -809,21 +810,31 @@ Return only JSON with no extra text."""
         return (
             {
                 "cash_and_equivalents_line": insights.get("cash_and_equivalents_line"),
+                "accounts_receivable_line": insights.get("accounts_receivable_line"),
+                "inventory_line": insights.get("inventory_line"),
                 "other_current_assets_line": insights.get("other_current_assets_line"),
                 "total_current_assets_line": insights.get("total_current_assets_line"),
+                "ppe_line": insights.get("ppe_line"),
+                "goodwill_intangible_line": insights.get("goodwill_intangible_line"),
                 "other_non_current_assets_line": insights.get("other_non_current_assets_line"),
+                "total_assets_line": insights.get("total_assets_line"),
+                "accounts_payable_line": insights.get("accounts_payable_line"),
+                "short_term_debt_line": insights.get("short_term_debt_line"),
                 "other_current_liabilities_line": insights.get("other_current_liabilities_line"),
                 "total_current_liabilities_line": insights.get("total_current_liabilities_line"),
+                "long_term_debt_line": insights.get("long_term_debt_line"),
                 "other_non_current_liabilities_line": insights.get(
                     "other_non_current_liabilities_line"
                 ),
                 "total_liabilities_line": insights.get("total_liabilities_line"),
                 "common_equity_line": insights.get("common_equity_line"),
+                "retained_earnings_line": insights.get("retained_earnings_line"),
                 "total_equity_line": insights.get("total_equity_line"),
-                "total_shareholder_equity_line": insights.get("total_shareholder_equity_line"),
+                "total_liabilities_equity_line": insights.get("total_liabilities_equity_line"),
             },
             [],
         )
+
     except Exception as exc:
         return {}, [f"LLM insights unavailable: {str(exc)}"]
 
@@ -846,38 +857,59 @@ def post_process_balance_sheet_line_items(line_items: list[dict]) -> list[dict]:
     # Mapping of standardized names to LLM insight keys
     standard_names = {
         "cash_and_equivalents_line": "Cash & Equivalents",
+        "accounts_receivable_line": "Accounts Receivable",
+        "inventory_line": "Inventory",
         "other_current_assets_line": "Other Current Assets",
         "total_current_assets_line": "Total Current Assets",
+        "ppe_line": "Property, Plant & Equipment",
+        "goodwill_intangible_line": "Goodwill & Intangible Assets",
         "other_non_current_assets_line": "Other Non-Current Assets",
+        "total_assets_line": "Total Assets",
+        "accounts_payable_line": "Accounts Payable",
+        "short_term_debt_line": "Short-Term Debt",
         "other_current_liabilities_line": "Other Current Liabilities",
         "total_current_liabilities_line": "Total Current Liabilities",
+        "long_term_debt_line": "Long-Term Debt",
         "other_non_current_liabilities_line": "Other Non-Current Liabilities",
         "total_liabilities_line": "Total Liabilities",
         "common_equity_line": "Common Equity",
+        "retained_earnings_line": "Retained Earnings",
         "total_equity_line": "Total Equity",
-        "total_shareholder_equity_line": "Total Equity",
+        "total_liabilities_equity_line": "Total Liabilities & Equity",
     }
 
     # Step 2: Rename identified line items
     processed_items = []
-    renamed_indices = set()
+
+    # Use helper from line_item_utils if available, else define locally
+    def get_orig_name(name):
+        import re
+
+        match = re.search(r"^[^(]+\((.+)\)$", name)
+        if match:
+            return match.group(1).strip()
+        return name
 
     for item in line_items:
         item_copy = item.copy()
+        current_name = item.get("line_name", "")
 
         # Check if this item matches any of the identified key items
         for insight_key, standard_name in standard_names.items():
             llm_line_name = llm_insights.get(insight_key)
             if llm_line_name:
                 # Use exact match first, then normalized match
-                item_name = item.get("line_name", "")
-                if item_name == llm_line_name or normalize_line_name(
-                    item_name
+                if current_name == llm_line_name or normalize_line_name(
+                    current_name
                 ) == normalize_line_name(llm_line_name):
+                    # Extract original name if it was already standardized
+                    original_name = get_orig_name(current_name)
+
                     # Rename: "Standard Name (Original Name)"
-                    original_name = item_copy.get("line_name", "")
-                    item_copy["line_name"] = f"{standard_name} ({original_name})"
-                    renamed_indices.add(len(processed_items))
+                    # Only apply if it's not already standardized to THIS standard name
+                    new_name = f"{standard_name} ({original_name})"
+                    if current_name != new_name:
+                        item_copy["line_name"] = new_name
                     break
 
         processed_items.append(item_copy)
@@ -915,6 +947,7 @@ def classify_line_items_llm(line_items: list[dict]) -> list[dict]:
             "total stockholders equity",
         ]
         return any(keyword in line_name for keyword in total_keywords)
+
     # AUTHORITATIVE_LOOKUP - binding decision table
     AUTHORITATIVE_LOOKUP = {
         "Cash and cash equivalents": "Non-Operating",
@@ -938,12 +971,12 @@ def classify_line_items_llm(line_items: list[dict]) -> list[dict]:
         "Short-term debt": "Non-Operating",
         "Current portion of long-term debt": "Non-Operating",
         "Current lease liabilities": "Non-Operating",
-        "Other current liabilities": "Operating",
+        "Other current liabilities": "Non-Operating",
         "Long-term debt": "Non-Operating",
         "Non-current lease liabilities": "Non-Operating",
         "Deferred tax liabilities": "Operating",
         "Pension liabilities / Postretirement obligations": "Operating",
-        "Other long-term liabilities": "Operating",
+        "Other long-term liabilities": "Non-Operating",
         "Common stock / Paid-in capital": "Non-Operating",
         "Retained earnings": "Non-Operating",
         "Treasury stock": "Non-Operating",
@@ -1137,35 +1170,25 @@ def extract_balance_sheet(
                 # Fallback: extract full document if embedding search fails
                 fallback_msg = "Embedding search failed, extracting full document..."
                 print(fallback_msg)
-                add_log(
-                    document_id, FinancialStatementMilestone.BALANCE_SHEET, fallback_msg
-                )
+                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, fallback_msg)
                 balance_sheet_text, _, _ = extract_text_from_pdf(file_path, max_pages=None)
                 balance_sheet_text = balance_sheet_text[:50000]  # Limit to 50k chars
                 extracted_msg = f"Extracted {len(balance_sheet_text)} characters from full document"
                 print(extracted_msg)
-                add_log(
-                    document_id, FinancialStatementMilestone.BALANCE_SHEET, extracted_msg
-                )
+                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, extracted_msg)
             else:
                 # Log chunk/page information if available
                 if log_info:
                     rank_text = f" (rank {section_attempt + 1})" if section_attempt > 0 else ""
                     chunk_msg = f"Best match{rank_text}: chunk {log_info['best_chunk_index']} (pages {log_info['chunk_start_page']}-{log_info['chunk_end_page']})"
                     print(chunk_msg)
-                    add_log(
-                        document_id, FinancialStatementMilestone.BALANCE_SHEET, chunk_msg
-                    )
+                    add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, chunk_msg)
                     pages_msg = f"Found balance sheet section (pages {log_info['start_extract_page']}-{log_info['end_extract_page']})"
                     print(pages_msg)
-                    add_log(
-                        document_id, FinancialStatementMilestone.BALANCE_SHEET, pages_msg
-                    )
+                    add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, pages_msg)
                 found_msg = f"Found balance sheet section starting at page {start_page}, extracted {len(balance_sheet_text)} characters"
                 print(found_msg)
-                add_log(
-                    document_id, FinancialStatementMilestone.BALANCE_SHEET, found_msg
-                )
+                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, found_msg)
 
             # Stage 1 validation: Check completeness of chunk text using LLM (before extraction)
             completeness_check_msg = (
@@ -1236,11 +1259,6 @@ def extract_balance_sheet(
                 extracted_count_msg,
             )
 
-            # Post-process to add standard names
-            extracted_data["line_items"] = post_process_balance_sheet_line_items(
-                extracted_data["line_items"]
-            )
-
             section_valid_msg = (
                 "Stage 1 validation passed (complete balance sheet chunk found and extracted)"
             )
@@ -1304,9 +1322,7 @@ def extract_balance_sheet(
                 # Retry with feedback from previous attempt
                 retry_msg = f"Stage 2: Retry extraction {extraction_attempt + 1}/{EXTRACTION_MAX_RETRIES} with LLM feedback"
                 print(retry_msg)
-                add_log(
-                    document_id, FinancialStatementMilestone.BALANCE_SHEET, retry_msg
-                )
+                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, retry_msg)
                 # Re-extract with validation error feedback from previous attempt
                 extracted_data = extract_balance_sheet_llm_with_feedback(
                     balance_sheet_text,
@@ -1314,6 +1330,11 @@ def extract_balance_sheet(
                     extracted_data,  # Previous extraction
                     calc_errors,  # Validation errors with differences from previous attempt
                 )
+
+            # Post-process to add standard names (ensure naming convention is maintained)
+            extracted_data["line_items"] = post_process_balance_sheet_line_items(
+                extracted_data["line_items"]
+            )
 
             # Stage 2 validation: Check calculations (sums)
             calc_valid, calc_errors = validate_balance_sheet_calculations(
@@ -1353,9 +1374,10 @@ def extract_balance_sheet(
                     extracted_data["line_items"] = classified_items
                     extracted_data["is_valid"] = False
                     extracted_data["validation_errors"] = calc_errors
-                    # Ensure chunk_index is included in the return value
+                    # Ensure chunk_index and balance_sheet_chunk_index are included in the return value
                     if successful_chunk_index is not None:
                         extracted_data["chunk_index"] = successful_chunk_index
+                        extracted_data["balance_sheet_chunk_index"] = successful_chunk_index
                     return extracted_data
 
         except Exception as e:

@@ -186,8 +186,8 @@ def find_income_statement_section(
         )
 
         if doc_type_str == "earnings_announcement":
-            ignore_front_fraction = 0.3
-            ignore_back_fraction = 0.1
+            ignore_front_fraction = 0
+            ignore_back_fraction = 0
         elif doc_type_str == "annual_filing":
             ignore_front_fraction = 0.5
             ignore_back_fraction = 0.2
@@ -295,7 +295,10 @@ Return a JSON object with the following structure:
         {{
             "line_name": "exact name as it appears in the document but do not include long notes in parentheses",
             "line_value": numeric value (as number, not string) - MUST match exactly what is shown in the document,
-            "line_category": one of ["Recurring", "One-Time"] - categorize each line item based on whether it represents recurring business operations or one-time events
+            "line_category": one of ["Recurring", "One-Time", "Total"] - categorize each line item:
+              - "Recurring": Normal business operations that occur regularly
+              - "One-Time": Unusual or infrequent items
+              - "Total": Summary/total line items (e.g., "Total Net Revenue", "Total Expenses", "Total Operating Expenses")
         }},
         ...
     ]
@@ -313,9 +316,10 @@ IMPORTANT:
 - Values should be numeric (not strings with commas or currency symbols)
 - For revenue_prior_year, look for the same period in the prior year (e.g., if time_period is "Q3 2023", look for "Q3 2022" revenue) - ONLY if explicitly shown in the document text, otherwise use null
 - Use "ten_thousands" ONLY if the document explicitly states values are in ten thousands
-- Categorize each line item as "Recurring" or "One-Time":
+- Categorize each line item as "Recurring", "One-Time", or "Total":
   - "Recurring": Normal business operations that occur regularly (e.g., Revenue, Cost of Revenue, Operating Expenses, Depreciation, Interest Expense, Taxes)
   - "One-Time": Unusual or infrequent items (e.g., Restructuring Charges, Impairment Charges, Gain/Loss on Sale of Assets, Legal Settlements, Acquisition Costs, Discontinued Operations)
+  - "Total": Summary/total line items (e.g., "Total Net Revenue", "Total Expenses", "Total Operating Expenses", "Total Costs")
 - If you cannot find a specific value in the document text, DO NOT make it up - use null or omit it
 
 Document text:
@@ -401,7 +405,7 @@ Return a JSON object with the following structure:
         {{
             "line_name": "exact name as it appears in the document but do not include long notes in parentheses",
             "line_value": numeric value (as number, not string),
-            "line_category": one of ["Recurring", "One-Time"]
+            "line_category": one of ["Recurring", "One-Time", "Total"]
         }},
         ...
     ]
@@ -464,118 +468,6 @@ Return only valid JSON, no additional text."""
         raise Exception(f"Error extracting income statement: {str(e)}")
 
 
-def find_additional_data_section(document_id: str, file_path: str, time_period: str) -> str | None:
-    """
-    Use document embedding to locate sections containing shares outstanding, diluted shares, and amortization.
-
-    Args:
-        document_id: Document ID
-        file_path: Path to PDF file
-        time_period: Time period to search for (e.g., "Q3 2023")
-
-    Returns:
-        Extracted text containing the relevant sections, or None if not found
-    """
-    try:
-        # Generate query embeddings for various search terms
-        query_texts = [
-            "shares outstanding",
-            "diluted shares",
-            "amortization",
-            "weighted average number of shares",
-            "common shares outstanding",
-            "basic shares",
-        ]
-
-        result = find_document_section(
-            document_id=document_id,
-            file_path=file_path,
-            query_texts=query_texts,
-            chunk_size=None,
-            score_threshold=0.3,
-            pages_before=0,  # Include 0 pages before the best chunk
-            pages_after=0,  # Include 0 pages after the best chunk
-        )
-
-        # Handle both old (2-tuple) and new (3-tuple) return formats for backward compatibility
-        if len(result) == 2:
-            extracted_text = result[0]
-        else:
-            extracted_text = result[0]
-
-        return extracted_text
-
-    except Exception as e:
-        print(f"Error finding additional data section: {str(e)}")
-        return None
-
-
-def extract_additional_data_llm(text: str, time_period: str) -> dict:
-    """
-    Extract additional data: total shares outstanding, diluted shares outstanding, and amortization.
-
-    Args:
-        text: Document text
-        time_period: Time period (e.g., "Q3 2023")
-
-    Returns:
-        Dictionary with additional data
-    """
-    prompt = f"""Extract the following financial data from the document for the time period: {time_period}:
-
-1. Basic shares outstanding (basic weighted average shares outstanding, common shares outstanding)
-2. Diluted shares outstanding (diluted weighted average shares)
-3. Amortization (amortization expense)
-
-CRITICAL ANTI-HALLUCINATION RULES:
-- ONLY extract values that are EXPLICITLY shown in the document text below
-- DO NOT invent, infer, calculate, estimate, or approximate any values
-- If a value is not visible in the document text, use null
-- DO NOT use any external knowledge or assumptions
-
-Return a JSON object with the following structure:
-{{
-    "basic_shares_outstanding": number (as number, not string, null if not EXPLICITLY found in document),
-    "basic_shares_outstanding_unit": unit for basic_shares_outstanding - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract ONLY if explicitly stated, usually "ones", null if basic_shares_outstanding is null),
-    "diluted_shares_outstanding": number (as number, not string, null if not EXPLICITLY found in document),
-    "diluted_shares_outstanding_unit": unit for diluted_shares_outstanding - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract ONLY if explicitly stated, usually "ones", null if diluted_shares_outstanding is null),
-    "amortization": number (as number, not string, null if not EXPLICITLY found in document),
-    "amortization_unit": unit for amortization - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract ONLY if explicitly stated, usually same as income statement unit, null if amortization is null)
-}}
-
-IMPORTANT:
-- Extract values exactly as they appear in the document (no rounding, no estimation)
-- Values should be numeric (not strings with commas)
-- If a value is not found in the document text, use null - do not make it up
-- Look for these values ONLY in the income statement, notes, or financial highlights sections of the document text
-- Extract units ONLY if explicitly stated in the document (shares are usually in "ones", amortization usually matches the income statement unit)
-- Use "ten_thousands" ONLY if the document explicitly states values are in ten thousands
-
-Document text:
-{text[:30000]}  # Limit to 30k characters
-
-Return only valid JSON, no additional text."""
-
-    try:
-        # Use temperature 0.0 for extraction to prevent hallucination
-        response_text = generate_content_safe(prompt, temperature=0.0)
-
-        # Remove markdown code blocks if present
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
-
-        result = json.loads(response_text)
-        return result
-
-    except json.JSONDecodeError as e:
-        raise Exception(f"Failed to parse LLM response as JSON: {str(e)}")
-    except Exception as e:
-        raise Exception(f"Error extracting additional data: {str(e)}")
-
-
 def _parse_llm_json_response(response_text: str) -> dict:
     """Parse LLM JSON response, handling code blocks."""
     import json
@@ -620,7 +512,9 @@ Line items:
 Return this JSON structure:
 {{
     "total_net_revenue_line": "exact line name for total net revenue (must match a name from the list above, or null if not found)",
+    "cost_of_revenue_line": "exact line name for cost of revenue or cost of goods sold (must match a name from the list above, or null if not found)",
     "gross_profit_line": "exact line name for gross profit (must match a name from the list above, or null if not found)",
+    "operating_expenses_line": "exact line name for total operating expenses (must match a name from the list above, or null if not found)",
     "operating_income_line": "exact line name for operating income (must match a name from the list above, or null if not found)",
     "pretax_income_line": "exact line name for income before taxes (must match a name from the list above, or null if not found)",
     "tax_expense_line": "exact line name for tax expense (must match a name from the list above, or null if not found)",
@@ -628,12 +522,14 @@ Return this JSON structure:
 }}
 
 Guidance for matching (but only use names that actually appear in the list above):
-- Total net revenue may be labeled as: Revenue, Total Revenue, Net Sales, Net Revenue, Total Net Revenue
-- Gross profit may be labeled as: Gross Profit, Gross Margin, Gross Income
-- Operating income may be labeled as: Operating Income, Income from Operations, Operating Profit, Operating Earnings
-- Pretax income may be labeled as: Income Before Tax, Earnings Before Income Tax, Profit Before Tax, Income Before Income Tax Expense
-- Tax expense may include: Income Tax Expense, Provision for Income Taxes, Income Taxes, Taxes
-- Net income may be labeled as: Net Income, Net Earnings, Profit After Tax, After Tax Profit
+- Total net revenue: Revenue, Total Revenue, Net Sales, Net Revenue, Total Net Revenue
+- Cost of revenue: Cost of revenue, Cost of goods sold, COGS, Cost of sales
+- Gross profit: Gross Profit, Gross Margin, Gross Income
+- Operating expenses: Total operating expenses, Operating expenses
+- Operating income: Operating Income, Income from Operations, Operating Profit, Operating Earnings
+- Pretax income: Income Before Tax, Earnings Before Income Tax, Profit Before Tax, Income Before Income Tax Expense
+- Tax expense: Income Tax Expense, Provision for Income Taxes, Income Taxes, Taxes
+- Net income: Net Income, Net Earnings, Profit After Tax, After Tax Profit
 
 Return only JSON with no extra text."""
 
@@ -645,7 +541,9 @@ Return only JSON with no extra text."""
         return (
             {
                 "total_net_revenue_line": insights.get("total_net_revenue_line"),
+                "cost_of_revenue_line": insights.get("cost_of_revenue_line"),
                 "gross_profit_line": insights.get("gross_profit_line"),
+                "operating_expenses_line": insights.get("operating_expenses_line"),
                 "operating_income_line": insights.get("operating_income_line"),
                 "pretax_income_line": insights.get("pretax_income_line"),
                 "tax_expense_line": insights.get("tax_expense_line"),
@@ -653,6 +551,7 @@ Return only JSON with no extra text."""
             },
             [],
         )
+
     except Exception as exc:
         return {}, [f"LLM insights unavailable: {str(exc)}"]
 
@@ -689,7 +588,7 @@ A COMPLETE consolidated income statement should:
 - Avoid smaller informational tables that do not have the complete information
 
 Document text:
-{text[:10000]}
+{text}
 
 Return a JSON object:
 {{
@@ -774,7 +673,9 @@ def post_process_income_statement_line_items(
     # Mapping of standardized names to LLM insight keys
     standard_names = {
         "total_net_revenue_line": "Total Net Revenue",
+        "cost_of_revenue_line": "Cost of Revenue",
         "gross_profit_line": "Gross Profit",
+        "operating_expenses_line": "Operating Expenses",
         "operating_income_line": "Operating Income",
         "pretax_income_line": "Pretax Income",
         "tax_expense_line": "Tax Expense",
@@ -782,20 +683,33 @@ def post_process_income_statement_line_items(
     }
 
     # Step 2: Rename identified line items
+    # Helper to extract original name from standardized name "Standard (Original)"
+    def get_orig_name(name):
+        import re
+
+        match = re.search(r"^[^(]+\((.+)\)$", name)
+        if match:
+            return match.group(1).strip()
+        return name
+
     processed_items = []
-    renamed_indices = set()
 
     for item in line_items:
         item_copy = item.copy()
+        current_name = item.get("line_name", "")
 
         # Check if this item matches any of the identified key items
         for insight_key, standard_name in standard_names.items():
             llm_line_name = llm_insights.get(insight_key)
             if llm_line_name and _match_line_item([item], llm_line_name):
+                # Extract original name if it was already standardized
+                original_name = get_orig_name(current_name)
+
                 # Rename: "Standard Name (Original Name)"
-                original_name = item_copy.get("line_name", "")
-                item_copy["line_name"] = f"{standard_name} ({original_name})"
-                renamed_indices.add(len(processed_items))
+                # Only apply if it's not already standardized to THIS standard name
+                new_name = f"{standard_name} ({original_name})"
+                if current_name != new_name:
+                    item_copy["line_name"] = new_name
                 break
 
         processed_items.append(item_copy)
@@ -871,9 +785,19 @@ def post_process_income_statement_line_items(
         if not items_between:
             return None
 
-        # Calculate sums to test both formats
-        sum_between_raw = sum(item.get("line_value", 0) for item in items_between)
-        sum_between_abs = sum(abs(item.get("line_value", 0)) for item in items_between)
+        # Filter out totals to avoid double counting in validation
+        # Totals are identified by line_category == "Total" or line name containing "total"
+        non_total_items = []
+        for item in items_between:
+            line_name_lower = item.get("line_name", "").lower()
+            line_category = item.get("line_category", "").lower()
+            is_total = line_category == "total" or "total" in line_name_lower
+            if not is_total:
+                non_total_items.append(item)
+
+        # Calculate sums to test both formats (excluding totals)
+        sum_between_raw = sum(item.get("line_value", 0) for item in non_total_items)
+        sum_between_abs = sum(abs(item.get("line_value", 0)) for item in non_total_items)
         start_value = start_item[1].get("line_value", 0)
         end_value = end_item[1].get("line_value", 0)
         start_name = start_item[1].get("line_name", "Start")
@@ -890,9 +814,9 @@ def post_process_income_statement_line_items(
         tolerance = max(abs(end_value) * 0.01, 0.01) if end_value != 0 else 0.01
         validation_failed = (diff_with_negative > tolerance) and (diff_with_positive > tolerance)
 
-        # Count negative vs positive items to help decide when there's a tie
-        negative_count = sum(1 for item in items_between if item.get("line_value", 0) < 0)
-        positive_count = sum(1 for item in items_between if item.get("line_value", 0) > 0)
+        # Count negative vs positive items to help decide when there's a tie (excluding totals)
+        negative_count = sum(1 for item in non_total_items if item.get("line_value", 0) < 0)
+        positive_count = sum(1 for item in non_total_items if item.get("line_value", 0) > 0)
         mostly_positive = positive_count > negative_count
 
         # Debug output
@@ -914,7 +838,7 @@ def post_process_income_statement_line_items(
 
         if should_flip:
             print("  Costs detected as positive, flipping signs to make negative...")
-            for item in items_between:
+            for item in non_total_items:  # Only flip non-total items
                 item_value = item.get("line_value", 0)
                 if item_value == 0:
                     continue
@@ -936,14 +860,18 @@ def post_process_income_statement_line_items(
                     print(f"    Skipped benefit/credit: {item.get('line_name')} = {item_value}")
 
         # After normalization, check validation again with updated values
-        # Recalculate with potentially flipped values
+        # Recalculate with potentially flipped values (excluding totals)
         final_diff = diff_with_negative
         final_sum = sum_between_raw
 
         if should_flip:
-            # After flipping, recalculate the sum of all items (now normalized to negative costs)
-            final_sum = sum(item.get("line_value", 0) for item in items_between)
+            # After flipping, recalculate the sum of all items (now normalized to negative costs, excluding totals)
+            final_sum = sum(item.get("line_value", 0) for item in non_total_items)
             final_diff = abs((start_value + final_sum) - end_value)
+        else:
+            # Use the already calculated sum (which excludes totals)
+            final_sum = sum_between_raw
+            final_diff = diff_with_negative
 
         # Return validation error if validation failed (at least one diff was not zero)
         if validation_failed:
@@ -1133,12 +1061,14 @@ def validate_income_statement(
     return validate_income_statement_section(line_items)
 
 
-def classify_line_items_llm(line_items: list[dict]) -> list[dict]:
+def classify_line_items_llm(line_items: list[dict], max_retries: int = 3) -> list[dict]:
     """
     Use LLM to categorize each income statement line item as operating or non-operating.
+    Includes retry logic for transient API errors.
 
     Args:
         line_items: List of income statement line items
+        max_retries: Maximum number of retry attempts (default: 3)
 
     Returns:
         List of line items with is_operating classification added
@@ -1146,7 +1076,7 @@ def classify_line_items_llm(line_items: list[dict]) -> list[dict]:
     # Prepare context for LLM
     items_text = "\n".join([f"- {item['line_name']}" for item in line_items])
 
-    prompt = f"""Classify each income statement line item as operating or non-operating, and as recurring or one-time.
+    prompt = f"""Classify each income statement line item as operating or non-operating, and as recurring, one-time, or total.
 
 Operating items are related to the core business operations:
 - Revenue, Cost of Revenue, Operating Expenses, Operating Income
@@ -1174,6 +1104,10 @@ One-time items are unusual or infrequent events:
 - Legal Settlements, Acquisition Costs, Discontinued Operations
 - Other unusual gains or losses that are not expected to recur
 
+Total items are summary/total line items:
+- "Total Net Revenue", "Total Revenue", "Total Expenses", "Total Operating Expenses", "Total Costs", etc.
+- IMPORTANT: For total items, set is_operating to null (do not provide true or false), EXCEPT for "Total Net Revenue" which should be is_operating: true
+
 Line items:
 {items_text}
 
@@ -1182,8 +1116,8 @@ Return a JSON object with the following structure:
     "classifications": [
         {{
             "line_name": "exact line name as provided",
-            "is_operating": true or false,
-            "line_category": "Recurring" or "One-Time"
+            "is_operating": true, false, or null (null for totals except "Total Net Revenue"),
+            "line_category": "Recurring", "One-Time", or "Total"
         }},
         ...
     ]
@@ -1191,45 +1125,98 @@ Return a JSON object with the following structure:
 
 Return only valid JSON, no additional text."""
 
-    try:
-        # Use temperature 0.0 for extraction to prevent hallucination
-        response_text = generate_content_safe(prompt, temperature=0.0)
+    import time
 
-        # Remove markdown code blocks if present
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
+    for attempt in range(max_retries):
+        try:
+            # Use temperature 0.0 for extraction to prevent hallucination
+            response_text = generate_content_safe(prompt, temperature=0.0)
 
-        result = json.loads(response_text)
-        classifications = {
-            item["line_name"]: {
-                "is_operating": item.get("is_operating"),
-                "line_category": item.get(
-                    "line_category", "Recurring"
-                ),  # Default to Recurring if not specified
+            # Remove markdown code blocks if present
+            if response_text.startswith("```"):
+                response_text = response_text.split("```")[1]
+                if response_text.startswith("json"):
+                    response_text = response_text[4:]
+                response_text = response_text.strip()
+
+            result = json.loads(response_text)
+            classifications = {
+                item["line_name"]: {
+                    "is_operating": item.get("is_operating"),
+                    "line_category": item.get(
+                        "line_category", "Recurring"
+                    ),  # Default to Recurring if not specified
+                }
+                for item in result.get("classifications", [])
             }
-            for item in result.get("classifications", [])
-        }
 
-        # Add classifications to line items
-        classified_items = []
-        for item in line_items:
-            item_copy = item.copy()
-            classification = classifications.get(item["line_name"], {})
-            item_copy["is_operating"] = classification.get("is_operating", None)
-            # Preserve line_category from extraction if available, otherwise use classification
-            if "line_category" not in item_copy or not item_copy.get("line_category"):
-                item_copy["line_category"] = classification.get("line_category", "Recurring")
-            classified_items.append(item_copy)
+            # Add classifications to line items
+            classified_items = []
+            for item in line_items:
+                item_copy = item.copy()
+                classification = classifications.get(item["line_name"], {})
 
-        return classified_items
+                # Handle is_operating: totals should be None (except "Total Net Revenue")
+                line_name_lower = item.get("line_name", "").lower()
+                is_total = (
+                    classification.get("line_category") == "Total" or "total" in line_name_lower
+                )
 
-    except Exception as e:
-        print(f"Error classifying income statement line items: {str(e)}")
-        # Return items without classification if classification fails
-        return line_items
+                if is_total:
+                    # For totals, set is_operating to None (except "Total Net Revenue")
+                    if "total net revenue" in line_name_lower or "total revenue" in line_name_lower:
+                        item_copy["is_operating"] = (
+                            True  # Exception: Total Net Revenue is operating
+                        )
+                    else:
+                        item_copy["is_operating"] = None  # All other totals have no type
+                else:
+                    item_copy["is_operating"] = classification.get("is_operating", None)
+
+                # Preserve line_category from extraction if available, otherwise use classification
+                if "line_category" not in item_copy or not item_copy.get("line_category"):
+                    item_copy["line_category"] = classification.get("line_category", "Recurring")
+                classified_items.append(item_copy)
+
+            return classified_items
+
+        except Exception as e:
+            error_str = str(e).lower()
+            is_api_error = any(
+                keyword in error_str
+                for keyword in [
+                    "rate limit",
+                    "quota",
+                    "429",
+                    "500",
+                    "503",
+                    "internal",
+                    "resource exhausted",
+                    "service unavailable",
+                    "too many requests",
+                ]
+            )
+
+            if is_api_error and attempt < max_retries - 1:
+                # Retry with exponential backoff for API errors
+                wait_time = 2**attempt  # 1s, 2s, 4s
+                print(
+                    f"API error classifying income statement line items (attempt {attempt + 1}/{max_retries}): {str(e)}. Retrying in {wait_time}s..."
+                )
+                time.sleep(wait_time)
+                continue
+            else:
+                # Non-retryable error or max retries reached
+                print(f"Error classifying income statement line items: {str(e)}")
+                if attempt == max_retries - 1:
+                    print(
+                        f"Max retries ({max_retries}) reached for classification. Returning items without classification."
+                    )
+                # Return items without classification if classification fails
+                return line_items
+
+    # Fallback: return items without classification
+    return line_items
 
 
 def extract_income_statement(
@@ -1267,9 +1254,7 @@ def extract_income_statement(
         try:
             section_msg = f"Stage 1: Finding income statement section (attempt {section_attempt + 1}: {'before' if section_attempt == 0 else 'after' if section_attempt == 1 else '2 after'} balance sheet)"
             print(section_msg)
-            add_log(
-                document_id, FinancialStatementMilestone.INCOME_STATEMENT, section_msg
-            )
+            add_log(document_id, FinancialStatementMilestone.INCOME_STATEMENT, section_msg)
 
             # Find income statement section near balance sheet
             income_statement_text, start_page, log_info = find_income_statement_near_balance_sheet(
@@ -1324,9 +1309,7 @@ def extract_income_statement(
                     )
                 found_msg = f"Found income statement section starting at page {start_page}, extracted {len(income_statement_text)} characters"
                 print(found_msg)
-                add_log(
-                    document_id, FinancialStatementMilestone.INCOME_STATEMENT, found_msg
-                )
+                add_log(document_id, FinancialStatementMilestone.INCOME_STATEMENT, found_msg)
 
             # Stage 1 validation: Check completeness of chunk text using LLM (before extraction)
             completeness_check_msg = (

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from agents.document_classifier import classify_document
 from app.database import get_db
 from app.models.company import Company
-from app.models.document import Document, ProcessingStatus
+from app.models.document import Document, DocumentType, ProcessingStatus
 from app.models.user import User
 from app.routers.auth import get_current_user
 from app.schemas.document import (
@@ -28,7 +28,7 @@ from app.schemas.document import (
 from app.schemas.document import Document as DocumentSchema
 from app.services.document_processing import DocumentProcessingMode, process_document
 from app.utils.document_hash import generate_document_hash
-from app.utils.document_indexer import delete_chunk_embeddings
+from app.utils.document_indexer import delete_chunk_embeddings, get_chunk_metadata, get_chunk_text
 from app.utils.pdf_extractor import extract_text_from_pdf
 from config.config import DEBUG, UPLOAD_DIR
 
@@ -975,13 +975,9 @@ async def delete_document_permanent(
     This is a destructive operation that cannot be undone.
     """
     from app.models.amortization import Amortization
-    from app.models.amortization import Amortization
     from app.models.balance_sheet import BalanceSheet
+    from app.models.historical_calculation import HistoricalCalculation
     from app.models.income_statement import IncomeStatement
-    from app.models.non_operating_classification import NonOperatingClassification
-    from app.models.organic_growth import OrganicGrowth
-    from app.models.other_assets import OtherAssets
-    from app.models.other_liabilities import OtherLiabilities
     from app.models.non_operating_classification import NonOperatingClassification
     from app.models.organic_growth import OrganicGrowth
     from app.models.other_assets import OtherAssets
@@ -1014,15 +1010,11 @@ async def delete_document_permanent(
     for amortization in amortizations:
         db.delete(amortization)
 
-    organic_growth_entries = (
-        db.query(OrganicGrowth).filter_by(document_id=target_document_id).all()
-    )
+    organic_growth_entries = db.query(OrganicGrowth).filter_by(document_id=target_document_id).all()
     for organic_growth in organic_growth_entries:
         db.delete(organic_growth)
 
-    other_assets_entries = (
-        db.query(OtherAssets).filter_by(document_id=target_document_id).all()
-    )
+    other_assets_entries = db.query(OtherAssets).filter_by(document_id=target_document_id).all()
     for other_assets in other_assets_entries:
         db.delete(other_assets)
 
@@ -1037,6 +1029,13 @@ async def delete_document_permanent(
     )
     for non_operating in non_operating_entries:
         db.delete(non_operating)
+
+    # Delete historical calculations
+    historical_calculations = (
+        db.query(HistoricalCalculation).filter_by(document_id=target_document_id).all()
+    )
+    for historical_calculation in historical_calculations:
+        db.delete(historical_calculation)
 
     # Commit financial statement deletions before deleting the document
     db.commit()
@@ -1070,13 +1069,9 @@ if DEBUG:
         TEST ENDPOINT: Permanently delete a document without authentication.
         """
         from app.models.amortization import Amortization
-        from app.models.amortization import Amortization
         from app.models.balance_sheet import BalanceSheet
+        from app.models.historical_calculation import HistoricalCalculation
         from app.models.income_statement import IncomeStatement
-        from app.models.non_operating_classification import NonOperatingClassification
-        from app.models.organic_growth import OrganicGrowth
-        from app.models.other_assets import OtherAssets
-        from app.models.other_liabilities import OtherLiabilities
         from app.models.non_operating_classification import NonOperatingClassification
         from app.models.organic_growth import OrganicGrowth
         from app.models.other_assets import OtherAssets
@@ -1112,9 +1107,7 @@ if DEBUG:
         for organic_growth in organic_growth_entries:
             db.delete(organic_growth)
 
-        other_assets_entries = (
-            db.query(OtherAssets).filter_by(document_id=target_document_id).all()
-        )
+        other_assets_entries = db.query(OtherAssets).filter_by(document_id=target_document_id).all()
         for other_assets in other_assets_entries:
             db.delete(other_assets)
 
@@ -1129,6 +1122,13 @@ if DEBUG:
         )
         for non_operating in non_operating_entries:
             db.delete(non_operating)
+
+        # Delete historical calculations
+        historical_calculations = (
+            db.query(HistoricalCalculation).filter_by(document_id=target_document_id).all()
+        )
+        for historical_calculation in historical_calculations:
+            db.delete(historical_calculation)
 
         # Commit financial statement deletions before deleting the document
         db.commit()
@@ -1299,17 +1299,25 @@ def _build_financial_statement_progress(document_id: str, db: Session) -> dict:
     else:
         additional_item_missing.append("organic growth")
 
-    if other_assets and other_assets.line_items:
-        if not other_assets.is_valid:
-            additional_item_errors.append("other assets")
-    else:
-        additional_item_missing.append("other assets")
+    # Check document type - earnings announcements skip other assets/liabilities
+    document = db.query(Document).filter(Document.id == document_id).first()
+    is_earnings_announcement = (
+        document and document.document_type == DocumentType.EARNINGS_ANNOUNCEMENT
+    )
 
-    if other_liabilities and other_liabilities.line_items:
-        if not other_liabilities.is_valid:
-            additional_item_errors.append("other liabilities")
-    else:
-        additional_item_missing.append("other liabilities")
+    if not is_earnings_announcement:
+        # Only check for other assets/liabilities for non-earnings announcements
+        if other_assets and other_assets.line_items:
+            if not other_assets.is_valid:
+                additional_item_errors.append("other assets")
+        else:
+            additional_item_missing.append("other assets")
+
+        if other_liabilities and other_liabilities.line_items:
+            if not other_liabilities.is_valid:
+                additional_item_errors.append("other liabilities")
+        else:
+            additional_item_missing.append("other liabilities")
 
     if not income_statement and not _active_progress_milestone("extracting_additional_items"):
         milestones["extracting_additional_items"] = {
@@ -1448,7 +1456,6 @@ if DEBUG:
             raise HTTPException(status_code=404, detail="Document not found")
         return _build_financial_statement_progress(document_id, db)
 
-
     @router.get("/{document_id}/status-test", response_model=DocumentSchema)
     async def get_document_status_test(document_id: str, db: Session = Depends(get_db)):
         """
@@ -1459,6 +1466,148 @@ if DEBUG:
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
         return add_uploader_name_to_document(db, document)
+
+
+@router.get("/{document_id}/chunks")
+async def get_document_chunks(
+    document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    """
+    Get all chunks for an indexed document.
+    Returns chunk text, page ranges, and metadata for each chunk.
+    """
+    document = db.query(Document).filter(Document.id == document_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Only return chunks for indexed documents
+    if document.indexing_status != ProcessingStatus.INDEXED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Document is not indexed. Current status: {document.indexing_status.value}",
+        )
+
+    # Get chunk metadata
+    chunk_metadata = get_chunk_metadata(document_id)
+    if not chunk_metadata:
+        raise HTTPException(
+            status_code=404, detail="Chunk metadata not found. Document may not be indexed."
+        )
+
+    num_chunks = chunk_metadata.get("num_chunks", 0)
+    chunk_size = chunk_metadata.get("chunk_size", 2)
+
+    # Get all chunks
+    chunks = []
+    for chunk_index in range(num_chunks):
+        try:
+            chunk_text, start_page, end_page = get_chunk_text(
+                document.file_path, chunk_index, chunk_size
+            )
+            chunks.append(
+                {
+                    "chunk_index": chunk_index,
+                    "text": chunk_text,
+                    "start_page": start_page,
+                    "end_page": end_page - 1,  # end_page is exclusive, so subtract 1 for display
+                    "character_count": len(chunk_text),
+                }
+            )
+        except Exception as e:
+            # If a chunk fails, continue with others
+            print(f"Error loading chunk {chunk_index}: {str(e)}")
+            chunks.append(
+                {
+                    "chunk_index": chunk_index,
+                    "text": None,
+                    "start_page": chunk_index * chunk_size,
+                    "end_page": min(
+                        (chunk_index + 1) * chunk_size - 1, chunk_metadata.get("total_pages", 0) - 1
+                    ),
+                    "character_count": 0,
+                    "error": str(e),
+                }
+            )
+
+    return {
+        "document_id": document_id,
+        "num_chunks": num_chunks,
+        "chunk_size": chunk_size,
+        "total_pages": chunk_metadata.get("total_pages", 0),
+        "chunks": chunks,
+    }
+
+
+if DEBUG:
+
+    @router.get("/{document_id}/chunks-test")
+    async def get_document_chunks_test(document_id: str, db: Session = Depends(get_db)):
+        """
+        TEST ENDPOINT: Get all chunks for an indexed document without authentication.
+        Only available when DEBUG=true or ENVIRONMENT=development.
+        """
+        document = db.query(Document).filter(Document.id == document_id).first()
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        # Only return chunks for indexed documents
+        if document.indexing_status != ProcessingStatus.INDEXED:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Document is not indexed. Current status: {document.indexing_status.value}",
+            )
+
+        # Get chunk metadata
+        chunk_metadata = get_chunk_metadata(document_id)
+        if not chunk_metadata:
+            raise HTTPException(
+                status_code=404, detail="Chunk metadata not found. Document may not be indexed."
+            )
+
+        num_chunks = chunk_metadata.get("num_chunks", 0)
+        chunk_size = chunk_metadata.get("chunk_size", 2)
+
+        # Get all chunks
+        chunks = []
+        for chunk_index in range(num_chunks):
+            try:
+                chunk_text, start_page, end_page = get_chunk_text(
+                    document.file_path, chunk_index, chunk_size
+                )
+                chunks.append(
+                    {
+                        "chunk_index": chunk_index,
+                        "text": chunk_text,
+                        "start_page": start_page,
+                        "end_page": end_page
+                        - 1,  # end_page is exclusive, so subtract 1 for display
+                        "character_count": len(chunk_text),
+                    }
+                )
+            except Exception as e:
+                # If a chunk fails, continue with others
+                print(f"Error loading chunk {chunk_index}: {str(e)}")
+                chunks.append(
+                    {
+                        "chunk_index": chunk_index,
+                        "text": None,
+                        "start_page": chunk_index * chunk_size,
+                        "end_page": min(
+                            (chunk_index + 1) * chunk_size - 1,
+                            chunk_metadata.get("total_pages", 0) - 1,
+                        ),
+                        "character_count": 0,
+                        "error": str(e),
+                    }
+                )
+
+        return {
+            "document_id": document_id,
+            "num_chunks": num_chunks,
+            "chunk_size": chunk_size,
+            "total_pages": chunk_metadata.get("total_pages", 0),
+            "chunks": chunks,
+        }
 
 
 @router.post("/", response_model=DocumentSchema)
