@@ -5,12 +5,16 @@ Balance sheet extraction agent using Gemini LLM and embeddings
 import json
 import re
 
+from agents.extractor_utils import (
+    call_llm_and_parse_json,
+    check_section_completeness_llm,
+    get_llm_insights_generic,
+)
 from app.utils.document_section_finder import find_document_section
 from app.utils.financial_statement_progress import (
     FinancialStatementMilestone,
     add_log,
 )
-from app.utils.gemini_client import generate_content_safe
 from app.utils.line_item_utils import normalize_line_name
 from app.utils.pdf_extractor import extract_text_from_pdf
 
@@ -79,10 +83,6 @@ def find_balance_sheet_section(
             "Other Liabilities",
             "Payable",
             "Debt",
-            # "consolidated balance sheet",
-            # "balance sheet",
-            # "total assets",
-            # "total liabilities",
         ]
         rerank_query_texts = [normalize_line_name(term) for term in rerank_query_texts]
 
@@ -169,16 +169,7 @@ Return only valid JSON, no additional text."""
 
     try:
         # Use temperature 0.0 for extraction to prevent hallucination
-        response_text = generate_content_safe(prompt, temperature=0.0)
-
-        # Remove markdown code blocks if present
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
-
-        result = json.loads(response_text)
+        result = call_llm_and_parse_json(prompt, temperature=0.0)
 
         # Ensure line_items exists and is a list
         if "line_items" not in result:
@@ -188,8 +179,6 @@ Return only valid JSON, no additional text."""
 
         return result
 
-    except json.JSONDecodeError as e:
-        raise Exception(f"Failed to parse LLM response as JSON: {str(e)}")
     except Exception as e:
         raise Exception(f"Error extracting balance sheet: {str(e)}")
 
@@ -274,16 +263,7 @@ Return only valid JSON, no additional text."""
 
     try:
         # Use temperature 0.0 for extraction to prevent hallucination
-        response_text = generate_content_safe(prompt, temperature=0.0)
-
-        # Remove markdown code blocks if present
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
-
-        result = json.loads(response_text)
+        result = call_llm_and_parse_json(prompt, temperature=0.0)
 
         # Ensure line_items exists and is a list
         if "line_items" not in result:
@@ -293,8 +273,6 @@ Return only valid JSON, no additional text."""
 
         return result
 
-    except json.JSONDecodeError as e:
-        raise Exception(f"Failed to parse LLM response as JSON: {str(e)}")
     except Exception as e:
         raise Exception(f"Error extracting balance sheet: {str(e)}")
 
@@ -650,15 +628,7 @@ def check_balance_sheet_completeness_llm(text: str, time_period: str) -> bool:
     Returns:
         True if complete, False otherwise
     """
-    prompt = f"""Analyze the following document text to determine if it contains a COMPLETE consolidated balance sheet starting from cash to total shareholder's equity for the time period: {time_period}.
-
-CRITICAL ANTI-HALLUCINATION RULES:
-- ONLY use information from the provided document text below
-- DO NOT use external knowledge or assumptions
-- Base your assessment ONLY on what is provided in the text
-
-A COMPLETE consolidated balance sheet should:
-- Start with cash or cash equivalents
+    validation_criteria = """- Start with cash or cash equivalents
 - Include current assets (cash, accounts receivable, inventory, etc.)
 - Include non-current assets (property, plant & equipment, intangible assets, etc.)
 - Have a "Total Assets" line
@@ -667,37 +637,11 @@ A COMPLETE consolidated balance sheet should:
 - Have a "Total Liabilities" line
 - Include equity items (common stock, retained earnings, etc.)
 - Have a "Total Liabilities and Equity" or "Total Shareholder's Equity" line
-- Balance (Total Assets = Total Liabilities and Equity)
-- Avoid smaller informational tables that do not have the complete information
+- Balance (Total Assets = Total Liabilities and Equity)"""
 
-Document text:
-{text}
-
-Return a JSON object:
-{{
-    "is_complete": true or false,
-    "reason": "brief explanation of why it is or is not complete (only if not complete)"
-}}
-
-Return only valid JSON, no additional text."""
-
-    try:
-        # Use temperature 0.0 for completeness check to prevent hallucination
-        response_text = generate_content_safe(prompt, temperature=0.0)
-
-        # Remove markdown code blocks if present
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
-
-        result = json.loads(response_text)
-        return result.get("is_complete", False)
-    except Exception as e:
-        print(f"Error checking balance sheet completeness: {str(e)}")
-        # If check fails, default to False (not complete) to be safe
-        return False
+    return check_section_completeness_llm(
+        text, time_period, "consolidated balance sheet", validation_criteria
+    )
 
 
 def get_balance_sheet_llm_insights(
@@ -707,29 +651,7 @@ def get_balance_sheet_llm_insights(
     Use LLM to identify key line items in a balance sheet.
     This function is used during post-processing to identify and standardize line item names.
     """
-    if not line_items:
-        return {}, []
-
-    line_items_text = "\n".join(
-        [
-            f"{idx + 1}. {item['line_name']} | {item['line_value']}"
-            for idx, item in enumerate(line_items)
-        ]
-    )
-
-    prompt = f"""You are analyzing a balance sheet. Identify key line items by name.
-Return ONLY valid JSON using the exact line names provided.
-
-CRITICAL ANTI-HALLUCINATION RULES:
-- ONLY match line items that ACTUALLY appear in the provided line items list below
-- DO NOT invent line names - use null if a line item is not found in the list
-- Match line names exactly as they appear in the list (case-sensitive matching is preferred)
-
-Line items:
-{line_items_text}
-
-Return this JSON structure:
-{{
+    json_structure = """{
     "cash_and_equivalents_line": "exact line name for cash and cash equivalents (must match a name from the list above, or null if not found)",
     "accounts_receivable_line": "exact line name for accounts receivable (must match a name from the list above, or null if not found)",
     "inventory_line": "exact line name for inventory (must match a name from the list above, or null if not found)",
@@ -750,10 +672,9 @@ Return this JSON structure:
     "retained_earnings_line": "exact line name for retained earnings (must match a name from the list above, or null if not found)",
     "total_equity_line": "exact line name for total equity or total shareholders' equity (must match a name from the list above, or null if not found)",
     "total_liabilities_equity_line": "exact line name for total liabilities and equity or total liabilities and shareholders' equity (must match a name from the list above, or null if not found)"
-}}
+}"""
 
-Guidance for matching (but only use names that actually appear in the list above):
-- Cash and equivalents: Cash and cash equivalents, Cash, Cash & Equivalents
+    guidance = """- Cash and equivalents: Cash and cash equivalents, Cash, Cash & Equivalents
 - Accounts receivable: Accounts receivable, Trade receivables
 - Inventory: Inventories, Inventory
 - Total current assets: Total current assets, Current assets
@@ -764,52 +685,11 @@ Guidance for matching (but only use names that actually appear in the list above
 - Common equity: Common equity, Common stockholders' equity, Common stock, Shareholders' equity
 - Retained earnings: Retained earnings, Accumulated deficit
 - Total equity: Total equity, Total stockholders' equity, Total shareholders' equity
-- Total liabilities and equity: Total liabilities and equity, Total liabilities and shareholders' equity
+- Total liabilities and equity: Total liabilities and equity, Total liabilities and shareholders' equity"""
 
-Return only JSON with no extra text."""
-
-    try:
-        # Use temperature 0.0 for extraction to prevent hallucination
-        response_text = generate_content_safe(prompt, temperature=0.0)
-
-        # Remove markdown code blocks if present
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
-
-        insights = json.loads(response_text)
-        return (
-            {
-                "cash_and_equivalents_line": insights.get("cash_and_equivalents_line"),
-                "accounts_receivable_line": insights.get("accounts_receivable_line"),
-                "inventory_line": insights.get("inventory_line"),
-                "other_current_assets_line": insights.get("other_current_assets_line"),
-                "total_current_assets_line": insights.get("total_current_assets_line"),
-                "ppe_line": insights.get("ppe_line"),
-                "goodwill_intangible_line": insights.get("goodwill_intangible_line"),
-                "other_non_current_assets_line": insights.get("other_non_current_assets_line"),
-                "total_assets_line": insights.get("total_assets_line"),
-                "accounts_payable_line": insights.get("accounts_payable_line"),
-                "short_term_debt_line": insights.get("short_term_debt_line"),
-                "other_current_liabilities_line": insights.get("other_current_liabilities_line"),
-                "total_current_liabilities_line": insights.get("total_current_liabilities_line"),
-                "long_term_debt_line": insights.get("long_term_debt_line"),
-                "other_non_current_liabilities_line": insights.get(
-                    "other_non_current_liabilities_line"
-                ),
-                "total_liabilities_line": insights.get("total_liabilities_line"),
-                "common_equity_line": insights.get("common_equity_line"),
-                "retained_earnings_line": insights.get("retained_earnings_line"),
-                "total_equity_line": insights.get("total_equity_line"),
-                "total_liabilities_equity_line": insights.get("total_liabilities_equity_line"),
-            },
-            [],
-        )
-
-    except Exception as exc:
-        return {}, [f"LLM insights unavailable: {str(exc)}"]
+    return get_llm_insights_generic(
+        line_items, "a balance sheet", json_structure, guidance
+    )
 
 
 def post_process_balance_sheet_line_items(line_items: list[dict]) -> list[dict]:
@@ -995,16 +875,7 @@ Return only valid JSON array, no additional text."""
 
     try:
         # Use temperature 0.0 for extraction to prevent hallucination
-        response_text = generate_content_safe(prompt, temperature=0.0)
-
-        # Remove markdown code blocks if present
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
-
-        classifications = json.loads(response_text)
+        classifications = call_llm_and_parse_json(prompt, temperature=0.0)
 
         # Map classifications back to line items
         classification_map = {item["line_name"]: item["is_operating"] for item in classifications}
