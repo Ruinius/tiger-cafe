@@ -886,7 +886,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                   {/* Historical Calculations Section */}
                   {historicalCalculations && (
                     <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
-
+                      <h3>Historical Calculations</h3>
 
                       <div className="balance-sheet-header">
                         <div className="balance-sheet-meta">
@@ -995,8 +995,8 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                         <tr>
                                           <th className="col-name">Line Item</th>
                                           <th className="col-category">Category</th>
-                                          <th className="col-type">Type</th>
                                           <th className="text-right col-value">Amount</th>
+                                          <th className="col-type text-right">Type</th>
                                         </tr>
                                       </thead>
                                       <tbody>
@@ -1008,7 +1008,8 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                           <tr key={`ca-${idx}`}>
                                             <td className="col-name" style={{ paddingLeft: '2rem' }}>{item.line_name}</td>
                                             <td className="col-category">{item.line_category || 'N/A'}</td>
-                                            <td className="col-type">
+                                            <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet?.unit || historicalCalculations?.unit)}</td>
+                                            <td className="col-type text-right">
                                               {item.is_operating === true ? (
                                                 <span className="type-badge operating">Operating</span>
                                               ) : item.is_operating === false ? (
@@ -1017,7 +1018,6 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                                 <span className="text-muted">—</span>
                                               )}
                                             </td>
-                                            <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet?.unit || historicalCalculations?.unit)}</td>
                                           </tr>
                                         )) : (
                                           <tr>
@@ -1032,7 +1032,8 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                           <tr key={`cl-${idx}`}>
                                             <td className="col-name" style={{ paddingLeft: '2rem' }}>{item.line_name}</td>
                                             <td className="col-category">{item.line_category || 'N/A'}</td>
-                                            <td className="col-type">
+                                            <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet?.unit || historicalCalculations?.unit)}</td>
+                                            <td className="col-type text-right">
                                               {item.is_operating === true ? (
                                                 <span className="type-badge operating">Operating</span>
                                               ) : item.is_operating === false ? (
@@ -1041,7 +1042,6 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                                 <span className="text-muted">—</span>
                                               )}
                                             </td>
-                                            <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet?.unit || historicalCalculations?.unit)}</td>
                                           </tr>
                                         )) : (
                                           <tr>
@@ -1049,16 +1049,19 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                           </tr>
                                         )}
                                         <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 600 }}>
-                                          <td colSpan="3" className="col-name">Total Current Assets (Operating)</td>
+                                          <td colSpan="2" className="col-name">Total Current Assets (Operating)</td>
                                           <td className="text-right col-value">{formatNumber(currentAssetsTotal, balanceSheet?.unit || historicalCalculations?.unit)}</td>
+                                          <td></td>
                                         </tr>
                                         <tr style={{ fontWeight: 600 }}>
-                                          <td colSpan="3" className="col-name">Total Current Liabilities (Operating)</td>
+                                          <td colSpan="2" className="col-name">Total Current Liabilities (Operating)</td>
                                           <td className="text-right col-value">{formatNumber(currentLiabilitiesTotal, balanceSheet?.unit || historicalCalculations?.unit)}</td>
+                                          <td></td>
                                         </tr>
                                         <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700, fontSize: '1.05rem' }}>
-                                          <td colSpan="3" className="col-name">Net Working Capital</td>
+                                          <td colSpan="2" className="col-name">Net Working Capital</td>
                                           <td className="text-right col-value">{formatNumber(netWorkingCapital, balanceSheet?.unit || historicalCalculations?.unit)}</td>
+                                          <td></td>
                                         </tr>
                                       </tbody>
                                     </table>
@@ -1073,8 +1076,8 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                         <tr>
                                           <th className="col-name">Line Item</th>
                                           <th className="col-category">Category</th>
-                                          <th className="col-type">Type</th>
                                           <th className="text-right col-value">Amount</th>
+                                          <th className="col-type text-right">Type</th>
                                         </tr>
                                       </thead>
                                       <tbody>
@@ -1086,8 +1089,8 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                           <tr key={`nca-${idx}`}>
                                             <td className="col-name" style={{ paddingLeft: '2rem' }}>{item.line_name}</td>
                                             <td className="col-category">{item.line_category || 'N/A'}</td>
-                                            <td className="col-type">{item.is_operating === true ? 'Operating' : item.is_operating === false ? 'Non-Operating' : 'N/A'}</td>
                                             <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet.unit)}</td>
+                                            <td className="col-type text-right">{item.is_operating === true ? 'Operating' : item.is_operating === false ? 'Non-Operating' : 'N/A'}</td>
                                           </tr>
                                         )) : (
                                           <tr>
@@ -1102,8 +1105,8 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                           <tr key={`ncl-${idx}`}>
                                             <td className="col-name" style={{ paddingLeft: '2rem' }}>{item.line_name}</td>
                                             <td className="col-category">{item.line_category || 'N/A'}</td>
-                                            <td className="col-type">{item.is_operating === true ? 'Operating' : item.is_operating === false ? 'Non-Operating' : 'N/A'}</td>
                                             <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet.unit)}</td>
+                                            <td className="col-type text-right">{item.is_operating === true ? 'Operating' : item.is_operating === false ? 'Non-Operating' : 'N/A'}</td>
                                           </tr>
                                         )) : (
                                           <tr>
@@ -1111,8 +1114,9 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                           </tr>
                                         )}
                                         <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 600 }}>
-                                          <td colSpan="3" className="col-name">Net Long Term Operating Assets</td>
+                                          <td colSpan="2" className="col-name">Net Long Term Operating Assets</td>
                                           <td className="text-right col-value">{formatNumber(netLongTerm, balanceSheet.unit)}</td>
+                                          <td></td>
                                         </tr>
                                       </tbody>
                                     </table>
@@ -1224,8 +1228,8 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                       <tr>
                                         <th className="col-name">Line Item</th>
                                         <th className="col-category">Category</th>
-                                        <th className="col-type">Type</th>
                                         <th className="text-right col-value">Amount</th>
+                                        <th className="col-type text-right">Type</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -1233,8 +1237,8 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                         <tr>
                                           <td className="col-name">{operatingIncomeItem.line_name}</td>
                                           <td className="col-category">{operatingIncomeItem.line_category || 'N/A'}</td>
-                                          <td className="col-type">{operatingIncomeItem.is_operating === true ? 'Operating' : operatingIncomeItem.is_operating === false ? 'Non-Operating' : 'N/A'}</td>
                                           <td className="text-right col-value">{formatNumber(operatingIncome, incomeStatement.unit)}</td>
+                                          <td className="col-type text-right">{operatingIncomeItem.is_operating === true ? 'Operating' : operatingIncomeItem.is_operating === false ? 'Non-Operating' : 'N/A'}</td>
                                         </tr>
                                       )}
                                       {nonOperatingItems.length > 0 && (
@@ -1246,13 +1250,14 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                             <tr key={`no-${idx}`}>
                                               <td className="col-name" style={{ paddingLeft: '2rem' }}>{item.line_name}</td>
                                               <td className="col-category">{item.line_category || 'N/A'}</td>
-                                              <td className="col-type">{item.is_operating === false ? 'Non-Operating' : 'N/A'}</td>
                                               <td className="text-right col-value">{formatNumber(-item.line_value, incomeStatement.unit)}</td>
+                                              <td className="col-type text-right">{item.is_operating === false ? 'Non-Operating' : 'N/A'}</td>
                                             </tr>
                                           ))}
                                           <tr>
-                                            <td colSpan="3" style={{ paddingLeft: '2rem', fontStyle: 'italic' }}>Sum of Non-Operating Items</td>
+                                            <td colSpan="2" style={{ paddingLeft: '2rem', fontStyle: 'italic' }}>Sum of Non-Operating Items</td>
                                             <td className="text-right col-value">{formatNumber(nonOperatingSum, incomeStatement.unit)}</td>
+                                            <td></td>
                                           </tr>
                                         </>
                                       )}
@@ -1260,13 +1265,14 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                         <tr>
                                           <td className="col-name">Amortization</td>
                                           <td className="col-category">N/A</td>
-                                          <td className="col-type">N/A</td>
                                           <td className="text-right col-value">{formatNumber(amortizationValue, incomeStatement.amortization_unit || incomeStatement.unit)}</td>
+                                          <td className="col-type text-right">N/A</td>
                                         </tr>
                                       )}
                                       <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700, fontSize: '1.05rem' }}>
-                                        <td colSpan="3" className="col-name">= EBITA</td>
+                                        <td colSpan="2" className="col-name">= EBITA</td>
                                         <td className="text-right col-value">{formatNumber(historicalCalculations.ebita, historicalCalculations.unit)}</td>
+                                        <td></td>
                                       </tr>
                                     </tbody>
                                   </table>
@@ -1302,7 +1308,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                             <table className="balance-sheet-table">
                               <thead>
                                 <tr>
-                                  <th>Metric</th>
+                                  <th>Line Item</th>
                                   <th className="text-right">Amount</th>
                                   <th>Unit</th>
                                 </tr>
@@ -1497,7 +1503,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                   <table className="balance-sheet-table">
                     <thead>
                       <tr>
-                        <th>Metric</th>
+                        <th>Line Item</th>
                         {timePeriods.map((period) => (
                           <th key={period} className="text-right">{period}</th>
                         ))}

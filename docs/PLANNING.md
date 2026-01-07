@@ -789,7 +789,14 @@ All calculations are performed for a specific document using the extracted balan
 ## Next Steps
 
 ### Immediate Priorities
-- [ ] (Awaiting User Input)
+- [ ] Change the first column header in the Organic Growth table from Metric to Line Item
+- [ ] Fix the Historical Calculations table formatting according the UI_UX_DESIGN.md and what the Balance Sheet and Income Statement tables look like
+- [ ] Fix the Net Working Capital calculation and frontend display - First Collect all the Current Assets that are Operating. Then collect all the Current Liabilities that are Operating. Subtract the two subtotals. Currently, it looks like the app is not able to collect the Current Liabilities that are Operating.
+- [ ] Fix the Net Long Term Operating Assets calculation and frontend display - First Collect all the non-current assets that are operating. Then collect all the non-current liabilities that are operating. Then subract the two subtotals. Currently, it looks like ht app is not able to collect the Non-current liabilities that are Operating.
+- [ ] Make the Net Working Capital, Net Long Term Operating Assets, and Invested Capital tables closer together. They go together. Make the EBITA, NOPAT and ROIC, and Adjusted Tax Rate tables closer together. They go together.
+- [ ] Move the NOPAT and ROIC table to below the Adjusted Tax Rate table.
+- [ ] Fix the Summary Table formtating according to UI_UX_DESIGN.md
+
 
 ### Backlog / Future Enhancements
 - [ ] **Tagging System**: Replace "Type", "Category", and "Status" columns with a unified **Tagging System**.
@@ -800,5 +807,3 @@ All calculations are performed for a specific document using the extracted balan
 ## UI/UX Design
 
 For detailed UI/UX specifications and design guidance, see [UI_UX_DESIGN.md](UI_UX_DESIGN.md).
-
-
