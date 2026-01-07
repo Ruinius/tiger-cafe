@@ -61,6 +61,12 @@ def calculate_net_working_capital(balance_sheet: BalanceSheet) -> dict[str, Any]
     for item in balance_sheet.line_items:
         # Check if it's a current asset
         category_lower = item.line_category.lower() if item.line_category else ""
+        name_lower = item.line_name.lower()
+        
+        # Skip totals and subtotals to avoid double counting
+        if "total" in name_lower or "subtotal" in name_lower or "total" in category_lower:
+            continue
+            
         is_non_current = "non-current" in category_lower or (
             "long" in category_lower and "term" in category_lower
         )
@@ -118,18 +124,20 @@ def calculate_net_long_term_operating_assets(balance_sheet: BalanceSheet) -> Dec
     non_current_liabilities_operating = Decimal("0")
 
     for item in balance_sheet.line_items:
-        # Check if it's a non-current asset (exclude totals)
+        # Check if it's a non-current asset
         category_lower = item.line_category.lower() if item.line_category else ""
+        name_lower = item.line_name.lower()
+
+        # Skip totals and subtotals to avoid double counting
+        if "total" in name_lower or "subtotal" in name_lower or "total" in category_lower:
+            continue
+
         if "non-current" in category_lower or (
             "long" in category_lower and "term" in category_lower
         ):
-            if "asset" in category_lower and item.is_operating and "total" not in category_lower:
+            if "asset" in category_lower and item.is_operating:
                 non_current_assets_operating += item.line_value
-            elif (
-                "liability" in category_lower
-                and item.is_operating
-                and "total" not in category_lower
-            ):
+            elif "liability" in category_lower and item.is_operating:
                 non_current_liabilities_operating += item.line_value
 
     net_long_term = non_current_assets_operating - non_current_liabilities_operating

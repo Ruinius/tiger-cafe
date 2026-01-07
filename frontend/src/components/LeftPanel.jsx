@@ -403,19 +403,20 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
     chunksAbortControllerRef.current = abortController
 
     // Use setTimeout to ensure this runs asynchronously and doesn't block
+    // specifically wait for the UI and PDF viewer to settle before loading raw chunks
     setTimeout(async () => {
       try {
         const endpoint = isAuthenticated ? 'chunks' : 'chunks-test'
         const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
         const response = await axios.get(
           `${API_BASE_URL}/documents/${documentId}/${endpoint}`,
-          { 
+          {
             headers,
             signal: abortController.signal,
             timeout: 30000 // 30 second timeout
           }
         )
-        
+
         // Only update state if request wasn't aborted
         if (!abortController.signal.aborted) {
           setDocumentChunks(response.data)
@@ -435,7 +436,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
           setChunksLoading(false)
         }
       }
-    }, 0) // Run on next tick to avoid blocking
+    }, 1000) // Run after 1s delay to avoid blocking initial render
   }, [isAuthenticated, token, selectedDocument?.indexing_status])
 
   useEffect(() => {

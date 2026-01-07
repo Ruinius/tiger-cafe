@@ -807,7 +807,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                   {amortization && (
                     <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
                       <h3>Non-GAAP Reconciliation</h3>
-                      <LineItemTable data={amortization} formatNumber={formatNumber} />
+                      <LineItemTable data={amortization} formatNumber={formatNumber} showCategory={false} />
                     </div>
                   )}
 
@@ -863,12 +863,12 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                           incomeStatement={incomeStatement}
                           typeOverride={<span className="type-badge non-operating">Non-Operating</span>}
                           categoryFormatter={(value) => {
-                             if (!value) return 'Unknown'
-                             return value
-                               .replace(/_/g, ' ')
-                               .split(' ')
-                               .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
-                               .join(' ')
+                            if (!value) return 'Unknown'
+                            return value
+                              .replace(/_/g, ' ')
+                              .split(' ')
+                              .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+                              .join(' ')
                           }}
                         />
                       ) : (
@@ -884,10 +884,11 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                   {/* Historical Calculations Section */}
                   {historicalCalculations && (
                     <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
-                      <h3>Historical Calculations</h3>
+
 
                       <div className="balance-sheet-header">
                         <div className="balance-sheet-meta">
+                          <span><strong>Time Period:</strong> {historicalCalculations.time_period || balanceSheet?.time_period || incomeStatement?.time_period || 'N/A'}</span>
                           <span><strong>Currency:</strong> {balanceSheet?.currency || incomeStatement?.currency || 'N/A'}</span>
                           {(balanceSheet?.unit || incomeStatement?.unit) && (
                             <span><strong>Unit:</strong> {(balanceSheet?.unit || incomeStatement?.unit).replace('_', ' ')}</span>
@@ -898,7 +899,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                       {/* Invested Capital Breakdown */}
                       {historicalCalculations.invested_capital != null && balanceSheet && (
                         <div style={{ marginTop: '1.5rem' }}>
-                          <h4>Invested Capital</h4>
+
                           {(() => {
                             // Use breakdown from backend if available, otherwise calculate from balance sheet
                             let currentAssetsOperating = []
@@ -926,7 +927,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                 const isCurrent = !isNonCurrent && categoryLower.includes('current')
                                 const isAsset = categoryLower.includes('asset')
                                 const isLiability = categoryLower.includes('liability')
-                                const isTotal = categoryLower.includes('total')
+                                const isTotal = categoryLower.includes('total') || item.line_name.toLowerCase().includes('total') || item.line_name.toLowerCase().includes('subtotal')
 
                                 const isCurrentAsset = isCurrent && isAsset && !isTotal
                                 const isCurrentLiability = isCurrent && isLiability && !isTotal
@@ -966,7 +967,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                   (categoryLower.includes('long') && categoryLower.includes('term'))
                                 const isAsset = categoryLower.includes('asset')
                                 const isLiability = categoryLower.includes('liability')
-                                const isTotal = categoryLower.includes('total')
+                                const isTotal = categoryLower.includes('total') || item.line_name.toLowerCase().includes('total') || item.line_name.toLowerCase().includes('subtotal')
 
                                 const isNonCurrentAsset = isNonCurrent && isAsset && !isTotal
                                 const isNonCurrentLiability = isNonCurrent && isLiability && !isTotal
@@ -985,7 +986,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                             return (
                               <div className="balance-sheet-container" style={{ marginTop: '1rem' }}>
                                 <div style={{ marginBottom: '1.5rem' }}>
-                                  <h5 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.75rem' }}>Net Working Capital</h5>
+
                                   <div className="balance-sheet-table-container">
                                     <table className="balance-sheet-table">
                                       <thead>
@@ -1063,7 +1064,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                 </div>
 
                                 <div style={{ marginBottom: '1.5rem' }}>
-                                  <h5 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.75rem' }}>Net Long Term Operating Assets</h5>
+
                                   <div className="balance-sheet-table-container">
                                     <table className="balance-sheet-table">
                                       <thead>
@@ -1116,7 +1117,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                   </div>
                                 </div>
 
-                                <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '2px solid var(--border)' }}>
+                                <div style={{ marginTop: '1.5rem', paddingTop: '1rem' }}>
                                   <div className="balance-sheet-table-container">
                                     <table className="balance-sheet-table">
                                       <tbody>
@@ -1142,15 +1143,12 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                         </div>
                       )}
 
-                      <div style={{ marginTop: '1.5rem' }}>
-                        <h4>Adjusted Tax Rate</h4>
-                        <p className="placeholder-text">Adjusted tax rate breakdown will appear here.</p>
-                      </div>
+
 
                       {/* EBITA Breakdown */}
                       {historicalCalculations.ebita != null && incomeStatement && (
                         <div style={{ marginTop: '1.5rem' }}>
-                          <h4>EBITA</h4>
+
                           {(() => {
                             // Find operating income
                             let operatingIncome = null
@@ -1278,13 +1276,26 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                       )}
 
                       <div style={{ marginTop: '1.5rem' }}>
-                        <h4>NOPAT &amp; ROIC</h4>
+
                         <p className="placeholder-text">NOPAT and ROIC calculations will appear here.</p>
                       </div>
 
-                      <div style={{ marginTop: '2rem' }}>
-                        <h4>Summary Table</h4>
+                      <div style={{ marginTop: '1.5rem' }}>
+                        <p className="placeholder-text">Adjusted tax rate breakdown will appear here.</p>
+                      </div>
+
+                      <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
+                        <h3>Summary Table</h3>
                         <div className="balance-sheet-container">
+                          <div className="balance-sheet-header">
+                            <div className="balance-sheet-meta">
+                              <span><strong>Time Period:</strong> {historicalCalculations.time_period || balanceSheet?.time_period || incomeStatement?.time_period || 'N/A'}</span>
+                              <span><strong>Currency:</strong> {balanceSheet?.currency || incomeStatement?.currency || 'N/A'}</span>
+                              {(balanceSheet?.unit || incomeStatement?.unit) && (
+                                <span><strong>Unit:</strong> {(balanceSheet?.unit || incomeStatement?.unit).replace('_', ' ')}</span>
+                              )}
+                            </div>
+                          </div>
                           <div className="balance-sheet-table-container">
                             <table className="balance-sheet-table">
                               <thead>

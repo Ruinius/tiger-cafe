@@ -21,6 +21,14 @@
 | **Border** | `#E5E7EB` | `#2B313A` |
 | **Border Subtle**| `#F3F4F6` | `#262A33` |
 
+## Interactive Elements & Button Logic
+**Strict Rules for Button States & Behavior:**
+1. **Initial State**: Buttons must load quickly. If dependencies are not met (e.g., file not selected), they start `disabled`.
+2. **Enable Condition**: Buttons become `enabled` *only* after specific conditions are fully met.
+3. **Click Behavior (Immediate Feedback)**: Upon click, the button must **immediately** transition to a `disabled` (loading) state. Do not wait for API response.
+4. **Cross-Component Signaling**: Clicking a primary action button should immediately signal other dependent buttons to disable via state push, preventing race conditions or double-submissions.
+5. **Re-enable Logic**: Buttons should re-enable via explicit "push" events (e.g., "Process Complete") rather than relying solely on passive background polling.
+
 ## Components
 - **Buttons**: Pill-shaped or Rounded-md (8-12px).
   - *Primary*: Solid Accent color.

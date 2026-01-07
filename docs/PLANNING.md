@@ -765,26 +765,57 @@ All calculations are performed for a specific document using the extracted balan
 
 ### Immediate Priorities
 
-**Historical Calculations UI Enhancement:**
-- [ ] Create new sections above the summary table (in order from top to bottom):
-  1. **Invested Capital Section**: Display components/calculations related to invested capital adjustments
-  2. **Adjusted Tax Rate Section**: Display components/calculations related to adjusted tax rate (currently calculated, but will need breakdown)
-  3. **EBITA Section**: Display components/calculations related to EBITA adjustments
-  4. **NOPAT & ROIC Section**: Display NOPAT and ROIC calculations and components
+#### 1. Button Logic & UI Interaction Standardization
+- [ ] **Define and Implement Button State Rules**:
+  - **Initial State**: Buttons should load quickly but start in a `disabled` state if dependencies are not met.
+  - **Enable Condition**: Buttons become `enabled` only after specific conditions (e.g., file loaded, processing complete) are met.
+  - **Click Behavior**: Upon click, the button must significantly and immediately transition to a `disabled` state to prevent double-submissions.
+  - **Cross-Component Signaling**: Clicking a button should trigger disabling of other relevant buttons *immediately* via state push (e.g., using a global context or event), rather than waiting for valid polling or asynchronous status updates.
+  - **Re-enable Logic**: Buttons should re-enable via explicit "push" logic (e.g., completion event received) rather than relying solely on passive polling.
+  - **Conformance**: If a requested feature conflicts with these rules, **STOP** and ask the user for guidance.
+- [x] **Documentation**: Update `UI_UX_DESIGN.md` with these standardized button behavior guidelines.
 
-### Future Enhancements
+#### 2. Fine-Tuning UI Elements ("Small UI Fixes")
+**General Tables & Views**:
+- [x] **Loading Optimization**: In the Document Detail View, ensure the **Raw Document (PDF Viewer)** loads *last* (or asynchronously without blocking) so the critical financial data/tables appear first.
+- [x] **Non-GAAP Reconciliation**: Remove the "Category" column from the table.
+- [x] **Table Headers**: Add "Time Period" as the first item in the header for the following tables (matching Balance Sheet style):
+  - Shares Outstanding
+  - Non-GAAP Reconciliation
+  - Organic Growth
+  - Non-Operating Classification
+  - Historical Calculations
 
-**UI UX Fixes that are not time critical but needs to be addressed eventually**
-- [ ] The button logic is still horrible. Need to define this and then create standard rules to follow
-  1. All buttons should load quickly but disabled
-  2. Buttons are then enabled after conditions are met
-  3. After the button is clicked, the first thing that happens is it goes disabled
-  4. In some cases, after the button is clicked, it fires off commands for other buttons to disable (instead of waiting for polling or status change to disable other buttons)
-  5. Buttons should ideally not enable or disable based on polling and there should instead be push or pull logic. For example, after a task complete, there is an explicit push for a button to re-enable
-  6. Warn the user that the latest request makes it hard to follow the button rules AND STOP for guidance
-- [ ] For the Type, Category, Status boxes, switch to a tagging system that allows for multiple, simultaneous tags
-  1. No more Type and Category column. Just a single column called tag that could including operating, recurring, sum tags
-  2. Status could include tags like Indexed, Balance Sheet, Income Statement, etc.
+**Summary & Historical Calculations Section**:
+- [x] **Summary Table Metadata**: Add "Time Period", "Currency", and "Unit" fields to the Summary Table.
+- [x] **Dividers**:
+  - *Remove* the divider between the "Net Long Term Operating Assets" table and the final "Invested Capital" calculation.
+  - *Add* a divider between the "NOPAT & ROIC" table and the "Summary Table" to visually separate it from the Historical Calculation breakdown.
+- [x] **Titles**: Remove table titles for the following subsections under Historical Calculations (the section header is sufficient):
+  - Invested Capital
+  - Net Working Capital
+  - Net Long Term Operating Assets
+  - Adjusted Tax Rate
+  - EBITA
+  - NOPAT & ROIC
+- [x] **Layout**: Move "Adjusted Tax Rate" section to be below the Invested Capital/EBITA sections (check logical flow).
+- [x] **Design Compliance**: Audit the Historical Calculations section to ensure formatting strictly matches `UI_UX_DESIGN.md` guidelines.
+
+#### 3. Invested Capital Logic Fixes
+The current calculations for Invested Capital are incorrect. Implement the following logic in both Backend (Python) and Frontend (Display):
+
+- [x] **Net Working Capital**:
+  - **Formula**: `Sum(Current Assets where Type=Operating) - Sum(Current Liabilities where Type=Operating)`
+  - **Action**: Verify `app/routers/historical_calculations.py` (or relevant backend logic) and the frontend display logic.
+- [x] **Net Long Term Operating Assets**:
+  - **Formula**: `Sum(Non-Current Assets where Type=Operating) - Sum(Non-Current Liabilities where Type=Operating)`
+  - **Action**: Verify `app/routers/historical_calculations.py` (or relevant backend logic) and the frontend display logic.
+
+### Backlog / Future Enhancements
+- [ ] **Tagging System**: Replace "Type", "Category", and "Status" columns with a unified **Tagging System**.
+  - Single "Tag" column supporting multiple simultaneous tags (e.g., "Operating", "Recurring", "Non-Cash").
+  - Status fields becomes a tag (e.g., "Indexed", "Balance Sheet").
+- [ ] **UI Interactivity**: Implementation capability to change "Category" and "Type" directly in the UI.
 
 ## UI/UX Design
 
