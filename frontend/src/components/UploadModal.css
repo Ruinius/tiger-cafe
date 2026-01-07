@@ -294,55 +294,6 @@
   border-top: 1px solid var(--border);
 }
 
-.button-primary,
-.button-secondary,
-.button-warning {
-  padding: 0.6rem 1.2rem;
-  border: none;
-  border-radius: 999px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
-}
-
-.button-primary {
-  background-color: var(--text-primary);
-  color: var(--bg-secondary);
-}
-
-.button-primary:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 20px var(--shadow);
-}
-
-.button-primary:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  filter: grayscale(1);
-}
-
-.button-secondary {
-  background-color: var(--bg-elevated);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
-}
-
-.button-secondary:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 20px var(--shadow);
-}
-
-.button-warning {
-  background-color: var(--warning);
-  color: #1C1E22;
-}
-
-.button-warning:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 10px 20px var(--shadow);
-}
-
 /* New Multi-File Upload Styles */
 .upload-limit-info {
   text-align: center;
