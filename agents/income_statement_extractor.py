@@ -4,6 +4,12 @@ Income statement extraction agent using Gemini LLM and embeddings
 
 import json
 
+from agents.extractor_utils import (
+    call_llm_and_parse_json,
+    call_llm_with_retry,
+    check_section_completeness_llm,
+    get_llm_insights_generic,
+)
 from app.utils.document_section_finder import find_document_section
 from app.utils.financial_statement_progress import (
     FinancialStatementMilestone,
@@ -320,16 +326,7 @@ Return only valid JSON, no additional text."""
 
     try:
         # Use temperature 0.0 for extraction to prevent hallucination
-        response_text = generate_content_safe(prompt, temperature=0.0)
-
-        # Remove markdown code blocks if present
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
-
-        result = json.loads(response_text)
+        result = call_llm_and_parse_json(prompt, temperature=0.0)
 
         # Ensure line_items exists and is a list
         if "line_items" not in result:
@@ -339,8 +336,6 @@ Return only valid JSON, no additional text."""
 
         return result
 
-    except json.JSONDecodeError as e:
-        raise Exception(f"Failed to parse LLM response as JSON: {str(e)}")
     except Exception as e:
         raise Exception(f"Error extracting income statement: {str(e)}")
 
@@ -434,16 +429,7 @@ Return only valid JSON, no additional text."""
 
     try:
         # Use temperature 0.0 for extraction to prevent hallucination
-        response_text = generate_content_safe(prompt, temperature=0.0)
-
-        # Remove markdown code blocks if present
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
-
-        result = json.loads(response_text)
+        result = call_llm_and_parse_json(prompt, temperature=0.0)
 
         # Ensure line_items exists and is a list
         if "line_items" not in result:
@@ -453,8 +439,6 @@ Return only valid JSON, no additional text."""
 
         return result
 
-    except json.JSONDecodeError as e:
-        raise Exception(f"Failed to parse LLM response as JSON: {str(e)}")
     except Exception as e:
         raise Exception(f"Error extracting income statement: {str(e)}")
 
@@ -478,30 +462,7 @@ def get_income_statement_llm_insights(
     Use LLM to identify key line items in an income statement.
     This function is used during post-processing to identify and standardize line item names.
     """
-
-    if not line_items:
-        return {}, []
-
-    line_items_text = "\n".join(
-        [
-            f"{idx + 1}. {item['line_name']} | {item['line_value']}"
-            for idx, item in enumerate(line_items)
-        ]
-    )
-
-    prompt = f"""You are analyzing an income statement. Identify key line items by name.
-Return ONLY valid JSON using the exact line names provided.
-
-CRITICAL ANTI-HALLUCINATION RULES:
-- ONLY match line items that ACTUALLY appear in the provided line items list below
-- DO NOT invent line names - use null if a line item is not found in the list
-- Match line names exactly as they appear in the list (case-sensitive matching is preferred)
-
-Line items:
-{line_items_text}
-
-Return this JSON structure:
-{{
+    json_structure = """{
     "total_net_revenue_line": "exact line name for total net revenue (must match a name from the list above, or null if not found)",
     "cost_of_revenue_line": "exact line name for cost of revenue or cost of goods sold (must match a name from the list above, or null if not found)",
     "gross_profit_line": "exact line name for gross profit (must match a name from the list above, or null if not found)",
@@ -510,41 +471,17 @@ Return this JSON structure:
     "pretax_income_line": "exact line name for income before taxes (must match a name from the list above, or null if not found)",
     "tax_expense_line": "exact line name for tax expense (must match a name from the list above, or null if not found)",
     "net_income_line": "exact line name for net income (must match a name from the list above, or null if not found)"
-}}
-
-Guidance for matching (but only use names that actually appear in the list above):
-- Total net revenue: Revenue, Total Revenue, Net Sales, Net Revenue, Total Net Revenue
+}"""
+    guidance = """- Total net revenue: Revenue, Total Revenue, Net Sales, Net Revenue, Total Net Revenue
 - Cost of revenue: Cost of revenue, Cost of goods sold, COGS, Cost of sales
 - Gross profit: Gross Profit, Gross Margin, Gross Income
 - Operating expenses: Total operating expenses, Operating expenses
 - Operating income: Operating Income, Income from Operations, Operating Profit, Operating Earnings
 - Pretax income: Income Before Tax, Earnings Before Income Tax, Profit Before Tax, Income Before Income Tax Expense
 - Tax expense: Income Tax Expense, Provision for Income Taxes, Income Taxes, Taxes
-- Net income: Net Income, Net Earnings, Profit After Tax, After Tax Profit
+- Net income: Net Income, Net Earnings, Profit After Tax, After Tax Profit"""
 
-Return only JSON with no extra text."""
-
-    try:
-        # Use temperature 0.0 for extraction to prevent hallucination
-        response_text = generate_content_safe(prompt, temperature=0.0)
-        insights = _parse_llm_json_response(response_text)
-
-        return (
-            {
-                "total_net_revenue_line": insights.get("total_net_revenue_line"),
-                "cost_of_revenue_line": insights.get("cost_of_revenue_line"),
-                "gross_profit_line": insights.get("gross_profit_line"),
-                "operating_expenses_line": insights.get("operating_expenses_line"),
-                "operating_income_line": insights.get("operating_income_line"),
-                "pretax_income_line": insights.get("pretax_income_line"),
-                "tax_expense_line": insights.get("tax_expense_line"),
-                "net_income_line": insights.get("net_income_line"),
-            },
-            [],
-        )
-
-    except Exception as exc:
-        return {}, [f"LLM insights unavailable: {str(exc)}"]
+    return get_llm_insights_generic(line_items, "an income statement", json_structure, guidance)
 
 
 def check_income_statement_completeness_llm(text: str, time_period: str) -> bool:
@@ -559,15 +496,7 @@ def check_income_statement_completeness_llm(text: str, time_period: str) -> bool
     Returns:
         True if complete, False otherwise
     """
-    prompt = f"""Analyze the following document text to determine if it contains a COMPLETE consolidated income statement starting from revenue to net income for the time period: {time_period}.
-
-CRITICAL ANTI-HALLUCINATION RULES:
-- ONLY use information from the provided document text below
-- DO NOT use external knowledge or assumptions
-- Base your assessment ONLY on what is provided in the text
-
-A COMPLETE consolidated income statement should:
-- Start with revenue (total net revenue, net sales, etc.)
+    validation_criteria = """- Start with revenue (total net revenue, net sales, etc.)
 - Include cost of revenue/cost of goods sold
 - Have a gross profit line
 - Include operating expenses (R&D, SG&A, etc.)
@@ -575,37 +504,11 @@ A COMPLETE consolidated income statement should:
 - Include interest income/expense and other non-operating items
 - Have an income before taxes/pretax income line
 - Include tax expense
-- End with net income/net earnings
-- Avoid smaller informational tables that do not have the complete information
+- End with net income/net earnings"""
 
-Document text:
-{text}
-
-Return a JSON object:
-{{
-    "is_complete": true or false,
-    "reason": "brief explanation of why it is or is not complete (only if not complete)"
-}}
-
-Return only valid JSON, no additional text."""
-
-    try:
-        # Use temperature 0.0 for completeness check to prevent hallucination
-        response_text = generate_content_safe(prompt, temperature=0.0)
-
-        # Remove markdown code blocks if present
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
-
-        result = json.loads(response_text)
-        return result.get("is_complete", False)
-    except Exception as e:
-        print(f"Error checking income statement completeness: {str(e)}")
-        # If check fails, default to False (not complete) to be safe
-        return False
+    return check_section_completeness_llm(
+        text, time_period, "consolidated income statement", validation_criteria
+    )
 
 
 def _match_line_item(line_items: list[dict], target_name: str | None) -> dict | None:
@@ -1102,98 +1005,49 @@ Return a JSON object with the following structure:
 
 Return only valid JSON, no additional text."""
 
-    import time
-
-    for attempt in range(max_retries):
-        try:
-            # Use temperature 0.0 for extraction to prevent hallucination
-            response_text = generate_content_safe(prompt, temperature=0.0)
-
-            # Remove markdown code blocks if present
-            if response_text.startswith("```"):
-                response_text = response_text.split("```")[1]
-                if response_text.startswith("json"):
-                    response_text = response_text[4:]
-                response_text = response_text.strip()
-
-            result = json.loads(response_text)
-            classifications = {
-                item["line_name"]: {
-                    "is_operating": item.get("is_operating"),
-                    "line_category": item.get(
-                        "line_category", "Recurring"
-                    ),  # Default to Recurring if not specified
-                }
-                for item in result.get("classifications", [])
+    def process_result(result):
+        classifications = {
+            item["line_name"]: {
+                "is_operating": item.get("is_operating"),
+                "line_category": item.get("line_category", "Recurring"),
             }
+            for item in result.get("classifications", [])
+        }
 
-            # Add classifications to line items
-            classified_items = []
-            for item in line_items:
-                item_copy = item.copy()
-                classification = classifications.get(item["line_name"], {})
+        classified_items = []
+        for item in line_items:
+            item_copy = item.copy()
+            classification = classifications.get(item["line_name"], {})
 
-                # Handle is_operating: totals should be None (except "Total Net Revenue")
-                line_name_lower = item.get("line_name", "").lower()
-                is_total = (
-                    classification.get("line_category") == "Total" or "total" in line_name_lower
-                )
-
-                if is_total:
-                    # For totals, set is_operating to None (except "Total Net Revenue")
-                    if "total net revenue" in line_name_lower or "total revenue" in line_name_lower:
-                        item_copy["is_operating"] = (
-                            True  # Exception: Total Net Revenue is operating
-                        )
-                    else:
-                        item_copy["is_operating"] = None  # All other totals have no type
-                else:
-                    item_copy["is_operating"] = classification.get("is_operating", None)
-
-                # Preserve line_category from extraction if available, otherwise use classification
-                if "line_category" not in item_copy or not item_copy.get("line_category"):
-                    item_copy["line_category"] = classification.get("line_category", "Recurring")
-                classified_items.append(item_copy)
-
-            return classified_items
-
-        except Exception as e:
-            error_str = str(e).lower()
-            is_api_error = any(
-                keyword in error_str
-                for keyword in [
-                    "rate limit",
-                    "quota",
-                    "429",
-                    "500",
-                    "503",
-                    "internal",
-                    "resource exhausted",
-                    "service unavailable",
-                    "too many requests",
-                ]
+            line_name_lower = item.get("line_name", "").lower()
+            is_total = (
+                classification.get("line_category") == "Total" or "total" in line_name_lower
             )
 
-            if is_api_error and attempt < max_retries - 1:
-                # Retry with exponential backoff for API errors
-                wait_time = 2**attempt  # 1s, 2s, 4s
-                print(
-                    f"API error classifying income statement line items (attempt {attempt + 1}/{max_retries}): {str(e)}. Retrying in {wait_time}s..."
-                )
-                time.sleep(wait_time)
-                continue
+            if is_total:
+                if "total net revenue" in line_name_lower or "total revenue" in line_name_lower:
+                    item_copy["is_operating"] = True
+                else:
+                    item_copy["is_operating"] = None
             else:
-                # Non-retryable error or max retries reached
-                print(f"Error classifying income statement line items: {str(e)}")
-                if attempt == max_retries - 1:
-                    print(
-                        f"Max retries ({max_retries}) reached for classification. Returning items without classification."
-                    )
-                # Return items without classification if classification fails
-                return line_items
+                item_copy["is_operating"] = classification.get("is_operating", None)
 
-    # Fallback: return items without classification
-    return line_items
+            if "line_category" not in item_copy or not item_copy.get("line_category"):
+                item_copy["line_category"] = classification.get("line_category", "Recurring")
+            classified_items.append(item_copy)
+
+        return classified_items
+
+    try:
+        # Use call_llm_with_retry but we need to handle the custom processing
+        # Since call_llm_with_retry returns the parsed JSON, we can just use that
+        result = call_llm_with_retry(prompt, max_retries=max_retries, temperature=0.0)
+        return process_result(result)
+
+    except Exception as e:
+        print(f"Error classifying income statement line items: {str(e)}")
+        # Return items without classification if classification fails
+        return line_items
 
 
 def extract_income_statement(

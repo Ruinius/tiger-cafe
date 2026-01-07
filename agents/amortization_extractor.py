@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 
+from agents.extractor_utils import call_llm_and_parse_json
 from app.utils.document_section_finder import collect_top_chunk_texts
 from app.utils.gemini_client import generate_content_safe
 from app.utils.line_item_utils import normalize_line_name
@@ -73,13 +74,7 @@ Document text:
 
 Return only valid JSON, no additional text."""
 
-    response_text = generate_content_safe(prompt, temperature=0.0)
-    if response_text.startswith("```"):
-        response_text = response_text.split("```")[1]
-        if response_text.startswith("json"):
-            response_text = response_text[4:]
-        response_text = response_text.strip()
-    return json.loads(response_text)
+    return call_llm_and_parse_json(prompt, temperature=0.0)
 
 
 def extract_amortization_llm_with_feedback(
@@ -118,13 +113,7 @@ Document text:
 
 Return only valid JSON, no additional text."""
 
-    response_text = generate_content_safe(prompt, temperature=0.0)
-    if response_text.startswith("```"):
-        response_text = response_text.split("```")[1]
-        if response_text.startswith("json"):
-            response_text = response_text[4:]
-        response_text = response_text.strip()
-    return json.loads(response_text)
+    return call_llm_and_parse_json(prompt, temperature=0.0)
 
 
 def extract_amortization(
