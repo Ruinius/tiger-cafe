@@ -987,7 +987,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
 
                             return (
                               <div className="balance-sheet-container" style={{ marginTop: '1rem' }}>
-                                <div style={{ marginBottom: '1rem' }}>
+                                <div style={{ marginBottom: '0.5rem' }}>
 
                                   <div className="balance-sheet-table-container">
                                     <table className="balance-sheet-table">
@@ -1068,7 +1068,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                   </div>
                                 </div>
 
-                                <div style={{ marginBottom: '1rem' }}>
+                                <div style={{ marginBottom: '0.5rem' }}>
 
                                   <div className="balance-sheet-table-container">
                                     <table className="balance-sheet-table">
@@ -1123,7 +1123,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                   </div>
                                 </div>
 
-                                <div style={{ marginTop: '1rem', paddingTop: '0.5rem' }}>
+                                <div style={{ marginTop: '0.5rem', paddingTop: '0.25rem' }}>
                                   <div className="balance-sheet-table-container">
                                     <table className="balance-sheet-table">
                                       <tbody>
@@ -1151,9 +1151,6 @@ function RightPanel({ selectedCompany, selectedDocument }) {
 
 
 
-                      <div style={{ marginTop: '1rem' }}>
-                        <p className="placeholder-text">Adjusted tax rate breakdown will appear here.</p>
-                      </div>
 
                       {/* EBITA Breakdown */}
                       {historicalCalculations.ebita != null && incomeStatement && (
@@ -1287,8 +1284,12 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                         </div>
                       )}
 
-                      <div style={{ marginTop: '1rem' }}>
+                      {/* Adjusted Tax Rate - Moved below EBITA */}
+                      <div style={{ marginTop: '0.5rem' }}>
+                        <p className="placeholder-text">Adjusted tax rate breakdown will appear here.</p>
+                      </div>
 
+                      <div style={{ marginTop: '0.5rem' }}>
                         <p className="placeholder-text">NOPAT and ROIC calculations will appear here.</p>
                       </div>
 
