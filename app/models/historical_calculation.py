@@ -44,6 +44,9 @@ class HistoricalCalculation(Base):
     net_working_capital_breakdown = Column(
         Text, nullable=True
     )  # JSON string for net working capital breakdown
+    net_long_term_operating_assets_breakdown = Column(
+        Text, nullable=True
+    )  # JSON string for net long term operating assets breakdown
 
     # Relationships
     document = relationship("Document", back_populates="historical_calculation")

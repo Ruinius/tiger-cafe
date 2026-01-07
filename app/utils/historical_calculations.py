@@ -61,16 +61,14 @@ def calculate_net_working_capital(balance_sheet: BalanceSheet) -> dict[str, Any]
     for item in balance_sheet.line_items:
         # Check if it's a current asset
         category_lower = item.line_category.lower() if item.line_category else ""
-        name_lower = item.line_name.lower()
+        item.line_name.lower()
 
         # Skip totals and subtotals to avoid double counting
-        if "total" in name_lower or "subtotal" in name_lower or "total" in category_lower:
+        if "total" in category_lower:
             continue
 
-        is_non_current = "non-current" in category_lower or (
-            "long" in category_lower and "term" in category_lower
-        )
-        is_current = not is_non_current and "current" in category_lower
+        is_non_current = "non-current" in category_lower
+        is_current = not is_non_current
 
         # Logic Update:
         # A line item is a "Current Asset" if:
@@ -80,7 +78,7 @@ def calculate_net_working_capital(balance_sheet: BalanceSheet) -> dict[str, Any]
         # But our classification logic assigns "Current Assets" or "Non-Current Assets" usually.
         # Let's trust the category string matching "current" and "asset".
 
-        if is_current and "asset" in category_lower:
+        if is_current and "assets" in category_lower:
             if item.is_operating:
                 current_assets_operating += item.line_value
                 current_assets_items.append(
@@ -92,14 +90,7 @@ def calculate_net_working_capital(balance_sheet: BalanceSheet) -> dict[str, Any]
                     }
                 )
 
-        # Check if it's a current liability
-        # Update: Also match if category is just "liabilities" and not "non-current" or "long-term",
-        # BUT usually it should be "Current Liabilities".
-        # The issue reported is "app is not able to collect the Current Liabilities that are Operating".
-        # This might be because some items are categorized as "Liabilities" (generic) but are actually current.
-        # However, safe assumption is strict "current" check.
-        # Let's debug by loosening the check slightly: if it says "current liabilities" OR (is_current and "liability").
-        elif is_current and ("liability" in category_lower or "liabilities" in category_lower):
+        elif is_current and "liabilities" in category_lower:
             if item.is_operating:
                 current_liabilities_operating += item.line_value
                 current_liabilities_items.append(
@@ -126,44 +117,72 @@ def calculate_net_working_capital(balance_sheet: BalanceSheet) -> dict[str, Any]
     }
 
 
-def calculate_net_long_term_operating_assets(balance_sheet: BalanceSheet) -> Decimal | None:
+def calculate_net_long_term_operating_assets(balance_sheet: BalanceSheet) -> dict[str, Any] | None:
     """
     Calculate net long term operating assets by summing all Non-current Assets labeled as Operating
     and subtracting the sum of all Non-current Liabilities labeled as Operating.
+
+    Returns a dictionary with:
+    - total: The net long term operating assets value
+    - non_current_assets: List of non-current asset items used
+    - non_current_liabilities: List of non-current liability items used
+    - non_current_assets_total: Sum of non-current assets
+    - non_current_liabilities_total: Sum of non-current liabilities
     """
     if not balance_sheet or not balance_sheet.line_items:
         return None
 
     non_current_assets_operating = Decimal("0")
     non_current_liabilities_operating = Decimal("0")
+    non_current_assets_items = []
+    non_current_liabilities_items = []
 
     for item in balance_sheet.line_items:
         # Check if it's a non-current asset
         category_lower = item.line_category.lower() if item.line_category else ""
-        name_lower = item.line_name.lower()
+        item.line_name.lower()
 
         # Skip totals and subtotals to avoid double counting
-        if "total" in name_lower or "subtotal" in name_lower or "total" in category_lower:
+        if "total" in category_lower:
             continue
 
-        is_non_current = "non-current" in category_lower or (
-            "long" in category_lower and "term" in category_lower
-        )
-
-        # Issue reported: "app is not able to collect the Non-current liabilities that are Operating".
-        # This might be because category is "Liabilities" (and implies non-current if not current?).
-        # Or maybe "Long-Term Liabilities".
-        # The existing check: ("non-current" in category) OR ("long" in category AND "term" in category).
-        # This covers "Non-Current Liabilities" and "Long-Term Liabilities".
+        is_non_current = "non-current" in category_lower
 
         if is_non_current:
-            if "asset" in category_lower and item.is_operating:
+            if "assets" in category_lower and item.is_operating:
                 non_current_assets_operating += item.line_value
-            elif ("liability" in category_lower or "liabilities" in category_lower) and item.is_operating:
+                non_current_assets_items.append(
+                    {
+                        "line_name": item.line_name,
+                        "line_value": float(item.line_value),
+                        "line_category": item.line_category,
+                        "is_operating": item.is_operating,
+                    }
+                )
+            elif "liabilities" in category_lower and item.is_operating:
                 non_current_liabilities_operating += item.line_value
+                non_current_liabilities_items.append(
+                    {
+                        "line_name": item.line_name,
+                        "line_value": float(item.line_value),
+                        "line_category": item.line_category,
+                        "is_operating": item.is_operating,
+                    }
+                )
 
     net_long_term = non_current_assets_operating - non_current_liabilities_operating
-    return net_long_term.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    return {
+        "total": float(net_long_term.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+        "non_current_assets": non_current_assets_items,
+        "non_current_liabilities": non_current_liabilities_items,
+        "non_current_assets_total": float(
+            non_current_assets_operating.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        ),
+        "non_current_liabilities_total": float(
+            non_current_liabilities_operating.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        ),
+    }
 
 
 def calculate_invested_capital(
@@ -550,7 +569,8 @@ def calculate_all_historical_metrics(
     net_working_capital = (
         Decimal(str(net_working_capital_result["total"])) if net_working_capital_result else None
     )
-    net_long_term = calculate_net_long_term_operating_assets(balance_sheet)
+    net_long_term_result = calculate_net_long_term_operating_assets(balance_sheet)
+    net_long_term = Decimal(str(net_long_term_result["total"])) if net_long_term_result else None
     invested_capital = calculate_invested_capital(net_working_capital, net_long_term)
     capital_turnover = calculate_capital_turnover(
         revenue, invested_capital, income_statement.time_period if income_statement else None
@@ -604,6 +624,7 @@ def calculate_all_historical_metrics(
         "net_working_capital": net_working_capital,
         "net_working_capital_breakdown": net_working_capital_result,
         "net_long_term_operating_assets": net_long_term,
+        "net_long_term_operating_assets_breakdown": net_long_term_result,
         "invested_capital": invested_capital,
         "capital_turnover": capital_turnover,
         "ebita": ebita,

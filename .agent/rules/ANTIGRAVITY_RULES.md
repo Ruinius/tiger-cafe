@@ -1,5 +1,6 @@
 ---
-trigger: always_on
+trigger: model_decision
+description: When working on a larger task
 ---
 
 # ANTIGRAVITY RULES

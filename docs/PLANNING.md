@@ -791,11 +791,35 @@ All calculations are performed for a specific document using the extracted balan
 ### Immediate Priorities
 - [x] Change the first column header in the Organic Growth table from Metric to Line Item
 - [x] Fix the Historical Calculations table formatting according the UI_UX_DESIGN.md and what the Balance Sheet and Income Statement tables look like
-- [ ] Fix the Net Working Capital calculation and frontend display - First Collect all the Current Assets that are Operating. Then collect all the Current Liabilities that are Operating. Subtract the two subtotals. Currently, it looks like the app is not able to collect the Current Liabilities that are Operating.
-- [ ] Fix the Net Long Term Operating Assets calculation and frontend display - First Collect all the non-current assets that are operating. Then collect all the non-current liabilities that are operating. Then subract the two subtotals. Currently, it looks like ht app is not able to collect the Non-current liabilities that are Operating.
+- [x] Fix the Net Working Capital calculation and frontend display - First Collect all the Current Assets that are Operating. Then collect all the Current Liabilities that are Operating. Subtract the two subtotals. Currently, it looks like the app is not able to collect the Current Liabilities that are Operating.
+- [x] Fix the Net Long Term Operating Assets calculation and frontend display - First Collect all the non-current assets that are operating. Then collect all the non-current liabilities that are operating. Then subract the two subtotals. Currently, it looks like ht app is not able to collect the Non-current liabilities that are Operating.
 - [x] Make the Net Working Capital, Net Long Term Operating Assets, and Invested Capital tables closer together. They go together. Make the EBITA, NOPAT and ROIC, and Adjusted Tax Rate tables closer together. They go together.
 - [x] Move the NOPAT and ROIC table to below the Adjusted Tax Rate table.
-- [ ] Fix the Summary Table formtating according to UI_UX_DESIGN.md
+- [x] Fix the Summary Table formtating according to UI_UX_DESIGN.md
+
+
+- [x] Double check the font size for the Historical Calculation tables. Some texts look bigger than others. Double check against UI_UX_DESIGN.md
+- [x] Minor fixes to the Net Working Capital table
+  1. Remove Current Assets (Operating) subheader
+  2. Remove Current Liabilities (Operating) subheader
+  3. Move Total Current Assets (Operating) to the end of the list of Current Assets
+  4. Move Total Current Liabilities (Operating) to the end of the list of Current Liabilities
+  5. Make the Line Item column all aligned with no strange indentions
+- [x] Minor fixes to the Net Long Term Operating Assets table
+  1. Remove Non-current Assets (Operating) subheader
+  2. Remove Non-current Liabilities (operating) subheader
+  3. Add Total Non-current Assets (Operating) at the end of the list of Non-current Assets with a sum value
+  4. Add Total Non-currnet Liabilities (Operating) at the end of the list of Non-current Liabilities with a sum value
+  5. Make the Line Item column all aligned with no strange indentions
+- [x] Minor fixes to EBITA
+  1. Make the Line Item column all aligned with no strange indentions
+- [x] Create an AUTHORITATIVE_LOOKUP for income_statement_extractor.py similar to the one in balance_sheet_extractor.py for use in classify_line_items_llm
+
+- [ ] Final nitpick edits
+  1. In the Net Working Capital table, remove the empty line between Total Current Assets (Operating) and the first Current Liabilities line item
+  2. In the Net Long Term Operating Capital table, remove the empty line between Total Non-Current Assets (Operating) and the first Non-Current Liabilities line item
+  3. Double check the font size of the Net Working Capital line, Net Long Term Operating Capital line, =Invested Capital line, =EBITA line against the balance sheet Total line items (e.g, Total Assets).
+  4. Format Total Current Assets (Operating), Total Current Liablities (Operating), Total Non-Current Assets (Operating), and Total Non-Current Liablities (Operating) subtotal lines like the Total Assets line in balance sheet
 
 
 ### Backlog / Future Enhancements

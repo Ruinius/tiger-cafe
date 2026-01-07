@@ -15,7 +15,6 @@ from app.utils.financial_statement_progress import (
     FinancialStatementMilestone,
     add_log,
 )
-from app.utils.gemini_client import generate_content_safe
 from app.utils.line_item_utils import normalize_line_name
 from app.utils.pdf_extractor import extract_text_from_pdf
 
@@ -953,27 +952,56 @@ def classify_line_items_llm(line_items: list[dict], max_retries: int = 3) -> lis
     Returns:
         List of line items with is_operating classification added
     """
+    AUTHORITATIVE_LOOKUP = {
+        "Total Net Revenue": "Operating",
+        "Revenue": "Operating",
+        "Cost of Revenue": "Operating",
+        "Cost of Goods Sold": "Operating",
+        "Gross Profit": "Operating",
+        "Operating Expenses": "Operating",
+        "Research and Development": "Operating",
+        "Sales and Marketing": "Operating",
+        "Sales": "Operating",
+        "Marketing": "Operating",
+        "General and Administrative": "Operating",
+        "Depreciation": "Operating",
+        "Amortization of Intangible Assets": "Non-Operating",
+        "Operating Income": "Operating",
+        "Interest Expense": "Non-Operating",
+        "Interest Income": "Non-Operating",
+        "Other Income (Expense)": "Non-Operating",
+        "Foreign Exchange Gain (Loss)": "Non-Operating",
+        "Gain (Loss) on Investments": "Non-Operating",
+        "Gain (Loss) on Sale of Assets": "Non-Operating",
+        "Restructuring Charges": "Non-Operating",
+        "Impairment Charges": "Non-Operating",
+        "Write-offs": "Non-Operating",
+        "Legal Settlements": "Non-Operating",
+        "Income Tax Expense": "Operating",
+        "Sales Tax": "Operating",
+        "Property Tax": "Operating",
+    }
+
+    # Create normalized lookup map
+    normalized_lookup = {normalize_line_name(k): v for k, v in AUTHORITATIVE_LOOKUP.items()}
+
+    # Prepare lookup context for prompt
+    lookup_context = "\n".join([f'  "{k}": "{v}"' for k, v in AUTHORITATIVE_LOOKUP.items()])
+
     # Prepare context for LLM
     items_text = "\n".join([f"- {item['line_name']}" for item in line_items])
 
     prompt = f"""Classify each income statement line item as operating or non-operating, and as recurring, one-time, or total.
 
-Operating items are related to the core business operations:
-- Revenue, Cost of Revenue, Operating Expenses, Operating Income
-- Sales, Marketing, R&D, General & Administrative expenses
-- Sales tax, income tax, property tax
-- Items that are part of normal business operations
+HIGHEST PRIORITY: Use the AUTHORITATIVE_LOOKUP below as a binding decision table.
+- If a provided line item matches a key in AUTHORITATIVE_LOOKUP after normalization, you MUST use that value.
+- Normalization: trim, case-insensitive, collapse repeated whitespace, remove leading/trailing punctuation.
+- If no match: use the definitions below.
 
-Non-operating items are not part of core operations:
-- Interest income/expense
-- Foreign exchange gains/losses
-- Investment gains/losses
-- Restructuring charges
-- Impairment charges
-- Write-offs
-- Gains/losses on sale of assets
-- Amortization of intangible assets, because intangibles generally arise from acquisitions
-- One-time items
+AUTHORITATIVE_LOOKUP:
+{{
+{lookup_context}
+}}
 
 Recurring items are normal business operations that occur regularly:
 - Revenue, Cost of Revenue, Operating Expenses, Depreciation, Interest Expense, Taxes
@@ -1017,20 +1045,33 @@ Return only valid JSON, no additional text."""
         classified_items = []
         for item in line_items:
             item_copy = item.copy()
-            classification = classifications.get(item["line_name"], {})
+            line_name = item["line_name"]
+            classification = classifications.get(line_name, {})
 
-            line_name_lower = item.get("line_name", "").lower()
-            is_total = (
-                classification.get("line_category") == "Total" or "total" in line_name_lower
-            )
+            line_name_lower = line_name.lower()
+            normalized_name = normalize_line_name(line_name)
+
+            # First try authoritative lookup for is_operating
+            if normalized_name in normalized_lookup:
+                lookup_value = normalized_lookup[normalized_name]
+                # Map "Operating" -> True, "Non-Operating" -> False
+                is_operating_lookup = lookup_value == "Operating"
+                item_copy["is_operating"] = is_operating_lookup
+            else:
+                # Fallback to LLM
+                item_copy["is_operating"] = classification.get("is_operating", None)
+
+            # Handle Totals special case
+            is_total = classification.get("line_category") == "Total" or "total" in line_name_lower
 
             if is_total:
                 if "total net revenue" in line_name_lower or "total revenue" in line_name_lower:
                     item_copy["is_operating"] = True
                 else:
                     item_copy["is_operating"] = None
-            else:
-                item_copy["is_operating"] = classification.get("is_operating", None)
+
+            # If authoritative lookup said Operating/Non-Op, trust it unless it's a Total that should be null
+            # (The Total logic above overrides the lookup if it's a total)
 
             if "line_category" not in item_copy or not item_copy.get("line_category"):
                 item_copy["line_category"] = classification.get("line_category", "Recurring")

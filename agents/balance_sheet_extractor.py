@@ -145,7 +145,18 @@ Return a JSON object with the following structure:
         {{
             "line_name": "exact name as it appears in the document but do not include long notes in parentheses",
             "line_value": numeric value (as number, not string) - MUST match exactly what is shown in the document,
-            "line_category": one of ["Current Assets", "Non-Current Assets", "Total Assets", "Current Liabilities", "Non-Current Liabilities", "Total Liabilities", "Equity", "Total Liabilities and Equity"]
+            "line_category": one of [
+                "Current Assets",
+                "Total Current Assets",
+                "Non-Current Assets",
+                "Total Assets",
+                "Current Liabilities",
+                "Total Current Liabilities",
+                "Non-Current Liabilities",
+                "Total Liabilities",
+                "Equity",
+                "Total Liabilities and Equity"
+            ]
         }},
         ...
     ]
@@ -687,9 +698,7 @@ def get_balance_sheet_llm_insights(
 - Total equity: Total equity, Total stockholders' equity, Total shareholders' equity
 - Total liabilities and equity: Total liabilities and equity, Total liabilities and shareholders' equity"""
 
-    return get_llm_insights_generic(
-        line_items, "a balance sheet", json_structure, guidance
-    )
+    return get_llm_insights_generic(line_items, "a balance sheet", json_structure, guidance)
 
 
 def post_process_balance_sheet_line_items(line_items: list[dict]) -> list[dict]:
@@ -805,6 +814,7 @@ def classify_line_items_llm(line_items: list[dict]) -> list[dict]:
         "Inventories": "Operating",
         "Prepaid expenses": "Operating",
         "Other current assets": "Operating",
+        "Assets Held for Sale": "Non-Operating",
         "Property, plant and equipment (PPE)": "Operating",
         "Operating lease right-of-use assets": "Non-Operating",
         "Goodwill": "Non-Operating",
@@ -818,6 +828,7 @@ def classify_line_items_llm(line_items: list[dict]) -> list[dict]:
         "Short-term debt": "Non-Operating",
         "Current portion of long-term debt": "Non-Operating",
         "Current lease liabilities": "Non-Operating",
+        "Liabilities Held for Sale": "Non-Operating",
         "Other current liabilities": "Non-Operating",
         "Long-term debt": "Non-Operating",
         "Non-current lease liabilities": "Non-Operating",

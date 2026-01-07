@@ -68,6 +68,13 @@ def calculate_and_save_historical_calculations(
         else None
     )
 
+    # Convert net long term operating assets breakdown to JSON string for storage
+    net_long_term_operating_assets_breakdown_json = (
+        json.dumps(results["net_long_term_operating_assets_breakdown"])
+        if results.get("net_long_term_operating_assets_breakdown")
+        else None
+    )
+
     # Check if historical calculation already exists
     existing_calc = (
         db.query(HistoricalCalculation)
@@ -80,6 +87,9 @@ def calculate_and_save_historical_calculations(
         existing_calc.net_working_capital = results["net_working_capital"]
         existing_calc.net_working_capital_breakdown = net_working_capital_breakdown_json
         existing_calc.net_long_term_operating_assets = results["net_long_term_operating_assets"]
+        existing_calc.net_long_term_operating_assets_breakdown = (
+            net_long_term_operating_assets_breakdown_json
+        )
         existing_calc.invested_capital = results["invested_capital"]
         existing_calc.capital_turnover = results["capital_turnover"]
         existing_calc.ebita = results["ebita"]
@@ -101,6 +111,7 @@ def calculate_and_save_historical_calculations(
             net_working_capital=results["net_working_capital"],
             net_working_capital_breakdown=net_working_capital_breakdown_json,
             net_long_term_operating_assets=results["net_long_term_operating_assets"],
+            net_long_term_operating_assets_breakdown=net_long_term_operating_assets_breakdown_json,
             invested_capital=results["invested_capital"],
             capital_turnover=results["capital_turnover"],
             ebita=results["ebita"],
@@ -156,6 +167,11 @@ def get_historical_calculations(
         if calc.net_working_capital_breakdown
         else None,
         "net_long_term_operating_assets": calc.net_long_term_operating_assets,
+        "net_long_term_operating_assets_breakdown": json.loads(
+            calc.net_long_term_operating_assets_breakdown
+        )
+        if calc.net_long_term_operating_assets_breakdown
+        else None,
         "invested_capital": calc.invested_capital,
         "capital_turnover": calc.capital_turnover,
         "ebita": calc.ebita,
@@ -195,6 +211,11 @@ def recalculate_historical_calculations(
             if calc.net_working_capital_breakdown
             else None,
             "net_long_term_operating_assets": calc.net_long_term_operating_assets,
+            "net_long_term_operating_assets_breakdown": json.loads(
+                calc.net_long_term_operating_assets_breakdown
+            )
+            if calc.net_long_term_operating_assets_breakdown
+            else None,
             "invested_capital": calc.invested_capital,
             "capital_turnover": calc.capital_turnover,
             "ebita": calc.ebita,
@@ -253,6 +274,11 @@ def get_historical_calculations_test(document_id: str, db: Session = Depends(get
         if calc.net_working_capital_breakdown
         else None,
         "net_long_term_operating_assets": calc.net_long_term_operating_assets,
+        "net_long_term_operating_assets_breakdown": json.loads(
+            calc.net_long_term_operating_assets_breakdown
+        )
+        if calc.net_long_term_operating_assets_breakdown
+        else None,
         "invested_capital": calc.invested_capital,
         "capital_turnover": calc.capital_turnover,
         "ebita": calc.ebita,

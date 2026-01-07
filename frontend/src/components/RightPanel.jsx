@@ -957,10 +957,20 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                             }
 
                             // Extract line items for net long term operating assets calculation
-                            const nonCurrentAssetsOperating = []
-                            const nonCurrentLiabilitiesOperating = []
+                            let nonCurrentAssetsOperating = []
+                            let nonCurrentLiabilitiesOperating = []
+                            let nonCurrentAssetsTotal = 0
+                            let nonCurrentLiabilitiesTotal = 0
+                            let netLongTerm = 0
 
-                            if (balanceSheet?.line_items) {
+                            if (historicalCalculations?.net_long_term_operating_assets_breakdown) {
+                              const breakdown = historicalCalculations.net_long_term_operating_assets_breakdown
+                              nonCurrentAssetsOperating = breakdown.non_current_assets || []
+                              nonCurrentLiabilitiesOperating = breakdown.non_current_liabilities || []
+                              nonCurrentAssetsTotal = breakdown.non_current_assets_total || 0
+                              nonCurrentLiabilitiesTotal = breakdown.non_current_liabilities_total || 0
+                              netLongTerm = breakdown.total || 0
+                            } else if (balanceSheet?.line_items) {
                               balanceSheet.line_items.forEach(item => {
                                 const categoryLower = (item.line_category || '').toLowerCase()
 
@@ -980,10 +990,11 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                   nonCurrentLiabilitiesOperating.push(item)
                                 }
                               })
-                            }
 
-                            const netLongTerm = nonCurrentAssetsOperating.reduce((sum, item) => sum + parseFloat(item.line_value || 0), 0) -
-                              nonCurrentLiabilitiesOperating.reduce((sum, item) => sum + parseFloat(item.line_value || 0), 0)
+                              nonCurrentAssetsTotal = nonCurrentAssetsOperating.reduce((sum, item) => sum + parseFloat(item.line_value || 0), 0)
+                              nonCurrentLiabilitiesTotal = nonCurrentLiabilitiesOperating.reduce((sum, item) => sum + parseFloat(item.line_value || 0), 0)
+                              netLongTerm = nonCurrentAssetsTotal - nonCurrentLiabilitiesTotal
+                            }
 
                             return (
                               <div className="balance-sheet-container" style={{ marginTop: '1rem' }}>
@@ -1000,13 +1011,9 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                         </tr>
                                       </thead>
                                       <tbody>
-                                        <tr>
-                                          <td colSpan="3" style={{ fontWeight: 600, paddingLeft: '1rem' }}>Current Assets (Operating)</td>
-                                          <td className="text-right col-value"></td>
-                                        </tr>
                                         {currentAssetsOperating.length > 0 ? currentAssetsOperating.map((item, idx) => (
                                           <tr key={`ca-${idx}`}>
-                                            <td className="col-name" style={{ paddingLeft: '2rem' }}>{item.line_name}</td>
+                                            <td className="col-name">{item.line_name}</td>
                                             <td className="col-category">{item.line_category || 'N/A'}</td>
                                             <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet?.unit || historicalCalculations?.unit)}</td>
                                             <td className="col-type text-right">
@@ -1021,44 +1028,42 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                           </tr>
                                         )) : (
                                           <tr>
-                                            <td colSpan="4" style={{ paddingLeft: '2rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>No operating current assets found</td>
+                                            <td colSpan="4" style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>No operating current assets found</td>
                                           </tr>
                                         )}
-                                        <tr>
-                                          <td colSpan="3" style={{ fontWeight: 600, paddingLeft: '1rem' }}>Current Liabilities (Operating)</td>
-                                          <td className="text-right col-value"></td>
-                                        </tr>
-                                        {currentLiabilitiesOperating.length > 0 ? currentLiabilitiesOperating.map((item, idx) => (
-                                          <tr key={`cl-${idx}`}>
-                                            <td className="col-name" style={{ paddingLeft: '2rem' }}>{item.line_name}</td>
-                                            <td className="col-category">{item.line_category || 'N/A'}</td>
-                                            <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet?.unit || historicalCalculations?.unit)}</td>
-                                            <td className="col-type text-right">
-                                              {item.is_operating === true ? (
-                                                <span className="type-badge operating">Operating</span>
-                                              ) : item.is_operating === false ? (
-                                                <span className="type-badge non-operating">Non-Operating</span>
-                                              ) : (
-                                                <span className="text-muted">—</span>
-                                              )}
-                                            </td>
-                                          </tr>
-                                        )) : (
-                                          <tr>
-                                            <td colSpan="4" style={{ paddingLeft: '2rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>No operating current liabilities found</td>
-                                          </tr>
-                                        )}
-                                        <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 600 }}>
+                                        <tr className="key-total-row">
                                           <td colSpan="2" className="col-name">Total Current Assets (Operating)</td>
                                           <td className="text-right col-value">{formatNumber(currentAssetsTotal, balanceSheet?.unit || historicalCalculations?.unit)}</td>
                                           <td></td>
                                         </tr>
-                                        <tr style={{ fontWeight: 600 }}>
+
+                                        {currentLiabilitiesOperating.length > 0 ? currentLiabilitiesOperating.map((item, idx) => (
+                                          <tr key={`cl-${idx}`}>
+                                            <td className="col-name">{item.line_name}</td>
+                                            <td className="col-category">{item.line_category || 'N/A'}</td>
+                                            <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet?.unit || historicalCalculations?.unit)}</td>
+                                            <td className="col-type text-right">
+                                              {item.is_operating === true ? (
+                                                <span className="type-badge operating">Operating</span>
+                                              ) : item.is_operating === false ? (
+                                                <span className="type-badge non-operating">Non-Operating</span>
+                                              ) : (
+                                                <span className="text-muted">—</span>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        )) : (
+                                          <tr>
+                                            <td colSpan="4" style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>No operating current liabilities found</td>
+                                          </tr>
+                                        )}
+                                        <tr className="key-total-row">
                                           <td colSpan="2" className="col-name">Total Current Liabilities (Operating)</td>
                                           <td className="text-right col-value">{formatNumber(currentLiabilitiesTotal, balanceSheet?.unit || historicalCalculations?.unit)}</td>
                                           <td></td>
                                         </tr>
-                                        <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700, fontSize: '1.05rem' }}>
+
+                                        <tr className="key-total-row">
                                           <td colSpan="2" className="col-name">Net Working Capital</td>
                                           <td className="text-right col-value">{formatNumber(netWorkingCapital, balanceSheet?.unit || historicalCalculations?.unit)}</td>
                                           <td></td>
@@ -1081,13 +1086,9 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                         </tr>
                                       </thead>
                                       <tbody>
-                                        <tr>
-                                          <td colSpan="3" style={{ fontWeight: 600, paddingLeft: '1rem' }}>Non-Current Assets (Operating)</td>
-                                          <td className="text-right col-value"></td>
-                                        </tr>
                                         {nonCurrentAssetsOperating.length > 0 ? nonCurrentAssetsOperating.map((item, idx) => (
                                           <tr key={`nca-${idx}`}>
-                                            <td className="col-name" style={{ paddingLeft: '2rem' }}>{item.line_name}</td>
+                                            <td className="col-name">{item.line_name}</td>
                                             <td className="col-category">{item.line_category || 'N/A'}</td>
                                             <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet.unit)}</td>
                                             <td className="col-type text-right">
@@ -1102,16 +1103,18 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                           </tr>
                                         )) : (
                                           <tr>
-                                            <td colSpan="4" style={{ paddingLeft: '2rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>No operating non-current assets found</td>
+                                            <td colSpan="4" style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>No operating non-current assets found</td>
                                           </tr>
                                         )}
-                                        <tr>
-                                          <td colSpan="3" style={{ fontWeight: 600, paddingLeft: '1rem' }}>Non-Current Liabilities (Operating)</td>
-                                          <td className="text-right col-value"></td>
+                                        <tr className="key-total-row">
+                                          <td colSpan="2" className="col-name">Total Non-Current Assets (Operating)</td>
+                                          <td className="text-right col-value">{formatNumber(nonCurrentAssetsTotal, balanceSheet?.unit || historicalCalculations?.unit)}</td>
+                                          <td></td>
                                         </tr>
+
                                         {nonCurrentLiabilitiesOperating.length > 0 ? nonCurrentLiabilitiesOperating.map((item, idx) => (
                                           <tr key={`ncl-${idx}`}>
-                                            <td className="col-name" style={{ paddingLeft: '2rem' }}>{item.line_name}</td>
+                                            <td className="col-name">{item.line_name}</td>
                                             <td className="col-category">{item.line_category || 'N/A'}</td>
                                             <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet.unit)}</td>
                                             <td className="col-type text-right">
@@ -1126,10 +1129,16 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                           </tr>
                                         )) : (
                                           <tr>
-                                            <td colSpan="4" style={{ paddingLeft: '2rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>No operating non-current liabilities found</td>
+                                            <td colSpan="4" style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>No operating non-current liabilities found</td>
                                           </tr>
                                         )}
-                                        <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 600 }}>
+                                        <tr className="key-total-row">
+                                          <td colSpan="2" className="col-name">Total Non-Current Liabilities (Operating)</td>
+                                          <td className="text-right col-value">{formatNumber(nonCurrentLiabilitiesTotal, balanceSheet?.unit || historicalCalculations?.unit)}</td>
+                                          <td></td>
+                                        </tr>
+
+                                        <tr className="key-total-row">
                                           <td colSpan="2" className="col-name">Net Long Term Operating Assets</td>
                                           <td className="text-right col-value">{formatNumber(netLongTerm, balanceSheet.unit)}</td>
                                           <td></td>
@@ -1151,7 +1160,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                           <td className="col-name">+ Net Long Term Operating Assets</td>
                                           <td className="text-right col-value">{formatNumber(netLongTerm, balanceSheet?.unit || historicalCalculations?.unit)}</td>
                                         </tr>
-                                        <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700, fontSize: '1.05rem' }}>
+                                        <tr className="key-total-row">
                                           <td className="col-name">= Invested Capital</td>
                                           <td className="text-right col-value">{formatNumber(historicalCalculations.invested_capital, historicalCalculations.unit)}</td>
                                         </tr>
@@ -1269,11 +1278,11 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                       {nonOperatingItems.length > 0 && (
                                         <>
                                           <tr>
-                                            <td colSpan="4" style={{ fontWeight: 600, paddingLeft: '1rem', paddingTop: '0.5rem' }}>Non-Operating Items (between Revenue and Operating Income)</td>
+                                            <td colSpan="4" style={{ fontWeight: 600, paddingTop: '0.5rem' }}>Non-Operating Items (between Revenue and Operating Income)</td>
                                           </tr>
                                           {nonOperatingItems.map((item, idx) => (
                                             <tr key={`no-${idx}`}>
-                                              <td className="col-name" style={{ paddingLeft: '2rem' }}>{item.line_name}</td>
+                                              <td className="col-name">{item.line_name}</td>
                                               <td className="col-category">{item.line_category || 'N/A'}</td>
                                               <td className="text-right col-value">{formatNumber(-item.line_value, incomeStatement.unit)}</td>
                                               <td className="col-type text-right">
@@ -1286,7 +1295,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                             </tr>
                                           ))}
                                           <tr>
-                                            <td colSpan="2" style={{ paddingLeft: '2rem', fontStyle: 'italic' }}>Sum of Non-Operating Items</td>
+                                            <td colSpan="2" style={{ fontStyle: 'italic', fontWeight: 500 }}>Sum of Non-Operating Items</td>
                                             <td className="text-right col-value">{formatNumber(nonOperatingSum, incomeStatement.unit)}</td>
                                             <td></td>
                                           </tr>
@@ -1300,7 +1309,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                           <td className="col-type text-right">N/A</td>
                                         </tr>
                                       )}
-                                      <tr style={{ borderTop: '2px solid var(--border)', fontWeight: 700, fontSize: '1.05rem' }}>
+                                      <tr className="key-total-row">
                                         <td colSpan="2" className="col-name">= EBITA</td>
                                         <td className="text-right col-value">{formatNumber(historicalCalculations.ebita, historicalCalculations.unit)}</td>
                                         <td></td>
