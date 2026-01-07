@@ -987,7 +987,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
 
                             return (
                               <div className="balance-sheet-container" style={{ marginTop: '1rem' }}>
-                                <div style={{ marginBottom: '1.5rem' }}>
+                                <div style={{ marginBottom: '1rem' }}>
 
                                   <div className="balance-sheet-table-container">
                                     <table className="balance-sheet-table">
@@ -1068,7 +1068,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                   </div>
                                 </div>
 
-                                <div style={{ marginBottom: '1.5rem' }}>
+                                <div style={{ marginBottom: '1rem' }}>
 
                                   <div className="balance-sheet-table-container">
                                     <table className="balance-sheet-table">
@@ -1123,7 +1123,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                   </div>
                                 </div>
 
-                                <div style={{ marginTop: '1.5rem', paddingTop: '1rem' }}>
+                                <div style={{ marginTop: '1rem', paddingTop: '0.5rem' }}>
                                   <div className="balance-sheet-table-container">
                                     <table className="balance-sheet-table">
                                       <tbody>
@@ -1151,9 +1151,13 @@ function RightPanel({ selectedCompany, selectedDocument }) {
 
 
 
+                      <div style={{ marginTop: '1rem' }}>
+                        <p className="placeholder-text">Adjusted tax rate breakdown will appear here.</p>
+                      </div>
+
                       {/* EBITA Breakdown */}
                       {historicalCalculations.ebita != null && incomeStatement && (
-                        <div style={{ marginTop: '1.5rem' }}>
+                        <div style={{ marginTop: '1rem' }}>
 
                           {(() => {
                             // Find operating income
@@ -1283,13 +1287,9 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                         </div>
                       )}
 
-                      <div style={{ marginTop: '1.5rem' }}>
+                      <div style={{ marginTop: '1rem' }}>
 
                         <p className="placeholder-text">NOPAT and ROIC calculations will appear here.</p>
-                      </div>
-
-                      <div style={{ marginTop: '1.5rem' }}>
-                        <p className="placeholder-text">Adjusted tax rate breakdown will appear here.</p>
                       </div>
 
                       <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
@@ -1308,80 +1308,80 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                             <table className="balance-sheet-table">
                               <thead>
                                 <tr>
-                                  <th>Line Item</th>
-                                  <th className="text-right">Amount</th>
-                                  <th>Unit</th>
+                                  <th className="col-name">Line Item</th>
+                                  <th className="text-right col-value">Amount</th>
+                                  <th className="col-category">Unit</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {organicGrowth && organicGrowth.current_period_revenue != null && (
                                   <tr>
-                                    <td>Revenue</td>
-                                    <td className="text-right">{formatNumber(organicGrowth.current_period_revenue, organicGrowth.current_period_revenue_unit)}</td>
-                                    <td>{organicGrowth.current_period_revenue_unit ? organicGrowth.current_period_revenue_unit.replace('_', ' ') : 'N/A'}</td>
+                                    <td className="col-name">Revenue</td>
+                                    <td className="text-right col-value">{formatNumber(organicGrowth.current_period_revenue, organicGrowth.current_period_revenue_unit)}</td>
+                                    <td className="col-category">{organicGrowth.current_period_revenue_unit ? organicGrowth.current_period_revenue_unit.replace('_', ' ') : 'N/A'}</td>
                                   </tr>
                                 )}
                                 {incomeStatement && incomeStatement.revenue_growth_yoy != null && (
                                   <tr>
-                                    <td>YOY Revenue Growth</td>
-                                    <td className="text-right">{formatPercent(incomeStatement.revenue_growth_yoy, 1)}</td>
-                                    <td>—</td>
+                                    <td className="col-name">YOY Revenue Growth</td>
+                                    <td className="text-right col-value">{formatPercent(incomeStatement.revenue_growth_yoy, 1)}</td>
+                                    <td className="col-category">—</td>
                                   </tr>
                                 )}
                                 {organicGrowth && organicGrowth.organic_revenue_growth != null && (
                                   <tr>
-                                    <td>Organic Growth</td>
-                                    <td className="text-right">{formatPercent(organicGrowth.organic_revenue_growth, 1)}</td>
-                                    <td>—</td>
+                                    <td className="col-name">Organic Growth</td>
+                                    <td className="text-right col-value">{formatPercent(organicGrowth.organic_revenue_growth, 1)}</td>
+                                    <td className="col-category">—</td>
                                   </tr>
                                 )}
                                 {historicalCalculations && historicalCalculations.ebita != null && (
                                   <tr>
-                                    <td>EBITA</td>
-                                    <td className="text-right">{formatNumber(historicalCalculations.ebita, historicalCalculations.unit)}</td>
-                                    <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
+                                    <td className="col-name">EBITA</td>
+                                    <td className="text-right col-value">{formatNumber(historicalCalculations.ebita, historicalCalculations.unit)}</td>
+                                    <td className="col-category">{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
                                   </tr>
                                 )}
                                 {historicalCalculations && historicalCalculations.ebita_margin != null && (
                                   <tr>
-                                    <td>EBITA Margin</td>
-                                    <td className="text-right">{formatPercent(historicalCalculations.ebita_margin, 100)}</td>
-                                    <td>—</td>
+                                    <td className="col-name">EBITA Margin</td>
+                                    <td className="text-right col-value">{formatPercent(historicalCalculations.ebita_margin, 100)}</td>
+                                    <td className="col-category">—</td>
                                   </tr>
                                 )}
                                 {historicalCalculations && historicalCalculations.adjusted_tax_rate != null && (
                                   <tr>
-                                    <td>Adjusted Tax Rate</td>
-                                    <td className="text-right">{formatPercent(historicalCalculations.adjusted_tax_rate, 100)}</td>
-                                    <td>—</td>
+                                    <td className="col-name">Adjusted Tax Rate</td>
+                                    <td className="text-right col-value">{formatPercent(historicalCalculations.adjusted_tax_rate, 100)}</td>
+                                    <td className="col-category">—</td>
                                   </tr>
                                 )}
                                 {historicalCalculations && historicalCalculations.net_working_capital != null && (
                                   <tr>
-                                    <td>Net Working Capital</td>
-                                    <td className="text-right">{formatNumber(historicalCalculations.net_working_capital, historicalCalculations.unit)}</td>
-                                    <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
+                                    <td className="col-name">Net Working Capital</td>
+                                    <td className="text-right col-value">{formatNumber(historicalCalculations.net_working_capital, historicalCalculations.unit)}</td>
+                                    <td className="col-category">{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
                                   </tr>
                                 )}
                                 {historicalCalculations && historicalCalculations.net_long_term_operating_assets != null && (
                                   <tr>
-                                    <td>Net Long Term Operating Assets</td>
-                                    <td className="text-right">{formatNumber(historicalCalculations.net_long_term_operating_assets, historicalCalculations.unit)}</td>
-                                    <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
+                                    <td className="col-name">Net Long Term Operating Assets</td>
+                                    <td className="text-right col-value">{formatNumber(historicalCalculations.net_long_term_operating_assets, historicalCalculations.unit)}</td>
+                                    <td className="col-category">{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
                                   </tr>
                                 )}
                                 {historicalCalculations && historicalCalculations.invested_capital != null && (
                                   <tr>
-                                    <td>Invested Capital</td>
-                                    <td className="text-right">{formatNumber(historicalCalculations.invested_capital, historicalCalculations.unit)}</td>
-                                    <td>{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
+                                    <td className="col-name">Invested Capital</td>
+                                    <td className="text-right col-value">{formatNumber(historicalCalculations.invested_capital, historicalCalculations.unit)}</td>
+                                    <td className="col-category">{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
                                   </tr>
                                 )}
                                 {historicalCalculations && historicalCalculations.capital_turnover != null && (
                                   <tr>
-                                    <td>Capital Turnover, Annualized</td>
-                                    <td className="text-right">{formatDecimal(historicalCalculations.capital_turnover, 4)}</td>
-                                    <td>—</td>
+                                    <td className="col-name">Capital Turnover, Annualized</td>
+                                    <td className="text-right col-value">{formatDecimal(historicalCalculations.capital_turnover, 4)}</td>
+                                    <td className="col-category">—</td>
                                   </tr>
                                 )}
                               </tbody>

@@ -72,6 +72,14 @@ def calculate_net_working_capital(balance_sheet: BalanceSheet) -> dict[str, Any]
         )
         is_current = not is_non_current and "current" in category_lower
 
+        # Logic Update:
+        # A line item is a "Current Asset" if:
+        # 1. Category contains "current" AND "asset"
+        # 2. OR Category is exactly "assets" (and we assume current if not marked non-current, but safer to stick to explicit)
+        # However, some items might be categorized as just "Assets" but are in the current section.
+        # But our classification logic assigns "Current Assets" or "Non-Current Assets" usually.
+        # Let's trust the category string matching "current" and "asset".
+
         if is_current and "asset" in category_lower:
             if item.is_operating:
                 current_assets_operating += item.line_value
@@ -85,7 +93,13 @@ def calculate_net_working_capital(balance_sheet: BalanceSheet) -> dict[str, Any]
                 )
 
         # Check if it's a current liability
-        elif is_current and "liability" in category_lower:
+        # Update: Also match if category is just "liabilities" and not "non-current" or "long-term",
+        # BUT usually it should be "Current Liabilities".
+        # The issue reported is "app is not able to collect the Current Liabilities that are Operating".
+        # This might be because some items are categorized as "Liabilities" (generic) but are actually current.
+        # However, safe assumption is strict "current" check.
+        # Let's debug by loosening the check slightly: if it says "current liabilities" OR (is_current and "liability").
+        elif is_current and ("liability" in category_lower or "liabilities" in category_lower):
             if item.is_operating:
                 current_liabilities_operating += item.line_value
                 current_liabilities_items.append(
@@ -132,12 +146,20 @@ def calculate_net_long_term_operating_assets(balance_sheet: BalanceSheet) -> Dec
         if "total" in name_lower or "subtotal" in name_lower or "total" in category_lower:
             continue
 
-        if "non-current" in category_lower or (
+        is_non_current = "non-current" in category_lower or (
             "long" in category_lower and "term" in category_lower
-        ):
+        )
+
+        # Issue reported: "app is not able to collect the Non-current liabilities that are Operating".
+        # This might be because category is "Liabilities" (and implies non-current if not current?).
+        # Or maybe "Long-Term Liabilities".
+        # The existing check: ("non-current" in category) OR ("long" in category AND "term" in category).
+        # This covers "Non-Current Liabilities" and "Long-Term Liabilities".
+
+        if is_non_current:
             if "asset" in category_lower and item.is_operating:
                 non_current_assets_operating += item.line_value
-            elif "liability" in category_lower and item.is_operating:
+            elif ("liability" in category_lower or "liabilities" in category_lower) and item.is_operating:
                 non_current_liabilities_operating += item.line_value
 
     net_long_term = non_current_assets_operating - non_current_liabilities_operating
