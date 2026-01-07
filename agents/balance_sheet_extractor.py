@@ -11,6 +11,7 @@ from app.utils.financial_statement_progress import (
     add_log,
 )
 from app.utils.gemini_client import generate_content_safe
+from app.utils.line_item_utils import normalize_line_name
 from app.utils.pdf_extractor import extract_text_from_pdf
 
 
@@ -67,16 +68,6 @@ def find_balance_sheet_section(
         ]
 
         # Re-ranking query terms: normalized balance sheet line items
-        def normalize_term(term: str) -> str:
-            import re
-
-            # Lowercase, remove special characters except spaces, normalize whitespace
-            normalized = term.lower()
-            normalized = re.sub(r"[()]", "", normalized)  # Remove parentheses
-            normalized = normalized.replace(",", "")  # Remove commas
-            normalized = re.sub(r"\s+", " ", normalized)  # Normalize whitespace
-            return normalized.strip()
-
         rerank_query_texts = [
             "Cash",
             "Accounts Receivable",
@@ -93,7 +84,7 @@ def find_balance_sheet_section(
             # "total assets",
             # "total liabilities",
         ]
-        rerank_query_texts = [normalize_term(term) for term in rerank_query_texts]
+        rerank_query_texts = [normalize_line_name(term) for term in rerank_query_texts]
 
         result = find_document_section(
             document_id=document_id,
@@ -709,24 +700,6 @@ Return only valid JSON, no additional text."""
         return False
 
 
-def normalize_line_name(name: str) -> str:
-    """
-    Normalize a line item name for matching: trim, case-insensitive,
-    collapse whitespace, remove leading/trailing punctuation.
-    """
-    if not name:
-        return ""
-    # Trim
-    normalized = name.strip()
-    # Case-insensitive (convert to lowercase)
-    normalized = normalized.lower()
-    # Collapse repeated whitespace
-    normalized = re.sub(r"\s+", " ", normalized)
-    # Remove leading/trailing punctuation
-    normalized = normalized.strip(".,;:!?()[]{}")
-    return normalized
-
-
 def get_balance_sheet_llm_insights(
     line_items: list[dict],
 ) -> tuple[dict, list[str]]:
@@ -881,14 +854,8 @@ def post_process_balance_sheet_line_items(line_items: list[dict]) -> list[dict]:
     # Step 2: Rename identified line items
     processed_items = []
 
-    # Use helper from line_item_utils if available, else define locally
-    def get_orig_name(name):
-        import re
-
-        match = re.search(r"^[^(]+\((.+)\)$", name)
-        if match:
-            return match.group(1).strip()
-        return name
+    # Use helper from line_item_utils
+    from app.utils.line_item_utils import extract_original_name_from_standardized as get_orig_name
 
     for item in line_items:
         item_copy = item.copy()

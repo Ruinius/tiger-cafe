@@ -10,6 +10,7 @@ from app.utils.financial_statement_progress import (
     add_log,
 )
 from app.utils.gemini_client import generate_content_safe
+from app.utils.line_item_utils import normalize_line_name
 from app.utils.pdf_extractor import extract_text_from_pdf
 
 
@@ -208,16 +209,6 @@ def find_income_statement_section(
         ]
 
         # Re-ranking query terms: normalized income statement line items
-        def normalize_term(term: str) -> str:
-            import re
-
-            # Lowercase, remove special characters except spaces, normalize whitespace
-            normalized = term.lower()
-            normalized = re.sub(r"[()]", "", normalized)  # Remove parentheses
-            normalized = normalized.replace(",", "")  # Remove commas
-            normalized = re.sub(r"\s+", " ", normalized)  # Normalize whitespace
-            return normalized.strip()
-
         rerank_query_texts = [
             # "Net Income",
             # "Tax",
@@ -228,7 +219,7 @@ def find_income_statement_section(
             "statement of operations",
             "consolidated income statement",
         ]
-        rerank_query_texts = [normalize_term(term) for term in rerank_query_texts]
+        rerank_query_texts = [normalize_line_name(term) for term in rerank_query_texts]
 
         result = find_document_section(
             document_id=document_id,
@@ -617,13 +608,6 @@ Return only valid JSON, no additional text."""
         return False
 
 
-def _normalize_line_name(line_name: str) -> str:
-    """Normalize line name for matching."""
-    import re
-
-    return re.sub(r"[^a-z0-9]+", " ", line_name.lower()).strip()
-
-
 def _match_line_item(line_items: list[dict], target_name: str | None) -> dict | None:
     """Find matching line item by name."""
     from difflib import SequenceMatcher
@@ -631,12 +615,12 @@ def _match_line_item(line_items: list[dict], target_name: str | None) -> dict | 
     if not target_name:
         return None
 
-    normalized_target = _normalize_line_name(target_name)
+    normalized_target = normalize_line_name(target_name)
     best_item = None
     best_ratio = 0.0
 
     for item in line_items:
-        normalized_item = _normalize_line_name(item.get("line_name", ""))
+        normalized_item = normalize_line_name(item.get("line_name", ""))
         if normalized_item == normalized_target:
             return item
 
@@ -683,14 +667,7 @@ def post_process_income_statement_line_items(
     }
 
     # Step 2: Rename identified line items
-    # Helper to extract original name from standardized name "Standard (Original)"
-    def get_orig_name(name):
-        import re
-
-        match = re.search(r"^[^(]+\((.+)\)$", name)
-        if match:
-            return match.group(1).strip()
-        return name
+    from app.utils.line_item_utils import extract_original_name_from_standardized as get_orig_name
 
     processed_items = []
 

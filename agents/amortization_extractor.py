@@ -9,12 +9,9 @@ from __future__ import annotations
 import json
 import re
 
-from app.utils.document_section_helpers import collect_top_chunk_texts
+from app.utils.document_section_finder import collect_top_chunk_texts
 from app.utils.gemini_client import generate_content_safe
-
-
-def _normalize_line_name(line_name: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", line_name.lower()).strip()
+from app.utils.line_item_utils import normalize_line_name
 
 
 def _deduplicate_line_items(line_items: list[dict]) -> tuple[list[dict], list[str]]:
@@ -23,7 +20,7 @@ def _deduplicate_line_items(line_items: list[dict]) -> tuple[list[dict], list[st
 
     for item in line_items:
         name = item.get("line_name", "")
-        normalized = _normalize_line_name(name)
+        normalized = normalize_line_name(name)
         if normalized in seen:
             existing = seen[normalized]
             existing_score = sum(

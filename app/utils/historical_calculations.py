@@ -9,10 +9,7 @@ from typing import Any
 
 from app.models.balance_sheet import BalanceSheet
 from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
-
-
-def _normalize_line_name(line_name: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", line_name.lower()).strip()
+from app.utils.line_item_utils import normalize_line_name
 
 
 def _match_line_item(
@@ -21,12 +18,12 @@ def _match_line_item(
     if not target_name:
         return None
 
-    normalized_target = _normalize_line_name(target_name)
+    normalized_target = normalize_line_name(target_name)
     best_item = None
     best_ratio = 0.0
 
     for item in line_items:
-        normalized_item = _normalize_line_name(item.line_name)
+        normalized_item = normalize_line_name(item.line_name)
         if normalized_item == normalized_target:
             return item
 
@@ -311,7 +308,7 @@ def get_non_operating_items_between_revenue_and_operating_income(
                 break
 
     non_operating_candidates = get_non_operating_line_items(income_statement)
-    candidate_names = {_normalize_line_name(item.line_name) for item in non_operating_candidates}
+    candidate_names = {normalize_line_name(item.line_name) for item in non_operating_candidates}
 
     non_operating_sum = Decimal("0")
     use_range = revenue_item and operating_item
@@ -322,7 +319,7 @@ def get_non_operating_items_between_revenue_and_operating_income(
                 continue
 
         if candidate_names:
-            if _normalize_line_name(item.line_name) not in candidate_names:
+            if normalize_line_name(item.line_name) not in candidate_names:
                 continue
         elif item.is_operating is not False:
             continue
