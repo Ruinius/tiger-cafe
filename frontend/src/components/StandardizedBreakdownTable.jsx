@@ -1,60 +1,7 @@
 import React from 'react'
+import { normalizeLineName } from '../utils/textUtils'
 
-const STANDARD_REFERENCES = [
-  { id: 1, label: 'Other Current Assets', category: 'Current Assets' },
-  { id: 2, label: 'Other Non-Current Assets', category: 'Non-Current Assets' }
-]
-
-const normalizeLineName = (name) =>
-  (name || '')
-    .toLowerCase()
-    .replace(/&/g, 'and')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim()
-
-const dedupeLineItems = (items) => {
-  const seen = new Map()
-  items.forEach((item) => {
-    const key = normalizeLineName(item.line_name)
-    const score = ['unit', 'is_operating', 'category']
-      .map((field) => (item[field] !== null && item[field] !== undefined ? 1 : 0))
-      .reduce((sum, value) => sum + value, 0)
-
-    if (!seen.has(key) || score > seen.get(key).score) {
-      seen.set(key, { item, score })
-    }
-  })
-  return Array.from(seen.values()).map((entry) => entry.item)
-}
-
-const filterTotalLines = (items) => {
-  return items.filter((item) => {
-    const categoryLabel = STANDARD_REFERENCES.find(
-      (reference) => reference.category === item.category
-    )?.label
-    if (!categoryLabel) return true
-
-    const normalizedName = normalizeLineName(item.line_name)
-    const normalizedLabel = normalizeLineName(categoryLabel)
-    const isTotalLine =
-      normalizedName === normalizedLabel ||
-      normalizedName.startsWith(`total ${normalizedLabel}`) ||
-      normalizedName.includes(`total ${normalizedLabel}`)
-
-    if (!isTotalLine) return true
-
-    const hasBreakdownItems = items.some(
-      (candidate) =>
-        candidate !== item &&
-        candidate.category === item.category &&
-        normalizeLineName(candidate.line_name) !== normalizedName
-    )
-
-    return !hasBreakdownItems
-  })
-}
-
-export default function OtherAssetsTable({ data, balanceSheet, formatNumber }) {
+export default function StandardizedBreakdownTable({ data, balanceSheet, formatNumber, standardReferences }) {
   if (!data || !data.line_items) return null
 
   const renderTable = (reference) => {
@@ -140,12 +87,12 @@ export default function OtherAssetsTable({ data, balanceSheet, formatNumber }) {
       <div className="standardized-references">
         <div className="standardized-references-title">Standardized References</div>
         <ol>
-          {STANDARD_REFERENCES.map((reference) => (
+          {standardReferences.map((reference) => (
             <li key={reference.id}>{reference.label}</li>
           ))}
         </ol>
       </div>
-      {STANDARD_REFERENCES.map(renderTable)}
+      {standardReferences.map(renderTable)}
     </div>
   )
 }
