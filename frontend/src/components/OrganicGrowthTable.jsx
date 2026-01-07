@@ -22,7 +22,7 @@ export default function OrganicGrowthTable({ data, formatNumber }) {
         <table className="balance-sheet-table">
           <thead>
             <tr>
-              <th className="col-name">Metric</th>
+              <th className="col-name">Line Item</th>
               <th className="text-right col-value">Amount</th>
             </tr>
           </thead>
