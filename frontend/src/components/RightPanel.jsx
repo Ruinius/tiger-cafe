@@ -1032,7 +1032,8 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                           </tr>
                                         )}
                                         <tr className="key-total-row">
-                                          <td colSpan="2" className="col-name">Total Current Assets (Operating)</td>
+                                          <td className="col-name">Total Current Assets (Operating)</td>
+                                          <td className="col-category"></td>
                                           <td className="text-right col-value">{formatNumber(currentAssetsTotal, balanceSheet?.unit || historicalCalculations?.unit)}</td>
                                           <td></td>
                                         </tr>
@@ -1058,13 +1059,15 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                           </tr>
                                         )}
                                         <tr className="key-total-row">
-                                          <td colSpan="2" className="col-name">Total Current Liabilities (Operating)</td>
+                                          <td className="col-name">Total Current Liabilities (Operating)</td>
+                                          <td className="col-category"></td>
                                           <td className="text-right col-value">{formatNumber(currentLiabilitiesTotal, balanceSheet?.unit || historicalCalculations?.unit)}</td>
                                           <td></td>
                                         </tr>
 
                                         <tr className="key-total-row">
-                                          <td colSpan="2" className="col-name">Net Working Capital</td>
+                                          <td className="col-name">Net Working Capital</td>
+                                          <td className="col-category"></td>
                                           <td className="text-right col-value">{formatNumber(netWorkingCapital, balanceSheet?.unit || historicalCalculations?.unit)}</td>
                                           <td></td>
                                         </tr>
@@ -1107,7 +1110,8 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                           </tr>
                                         )}
                                         <tr className="key-total-row">
-                                          <td colSpan="2" className="col-name">Total Non-Current Assets (Operating)</td>
+                                          <td className="col-name">Total Non-Current Assets (Operating)</td>
+                                          <td className="col-category"></td>
                                           <td className="text-right col-value">{formatNumber(nonCurrentAssetsTotal, balanceSheet?.unit || historicalCalculations?.unit)}</td>
                                           <td></td>
                                         </tr>
@@ -1133,13 +1137,15 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                           </tr>
                                         )}
                                         <tr className="key-total-row">
-                                          <td colSpan="2" className="col-name">Total Non-Current Liabilities (Operating)</td>
+                                          <td className="col-name">Total Non-Current Liabilities (Operating)</td>
+                                          <td className="col-category"></td>
                                           <td className="text-right col-value">{formatNumber(nonCurrentLiabilitiesTotal, balanceSheet?.unit || historicalCalculations?.unit)}</td>
                                           <td></td>
                                         </tr>
 
                                         <tr className="key-total-row">
-                                          <td colSpan="2" className="col-name">Net Long Term Operating Assets</td>
+                                          <td className="col-name">Net Long Term Operating Assets</td>
+                                          <td className="col-category"></td>
                                           <td className="text-right col-value">{formatNumber(netLongTerm, balanceSheet.unit)}</td>
                                           <td></td>
                                         </tr>
@@ -1154,15 +1160,21 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                       <tbody>
                                         <tr style={{ fontWeight: 600 }}>
                                           <td className="col-name">Net Working Capital</td>
+                                          <td className="col-category"></td>
                                           <td className="text-right col-value">{formatNumber(netWorkingCapital, balanceSheet?.unit || historicalCalculations?.unit)}</td>
+                                          <td></td>
                                         </tr>
                                         <tr style={{ fontWeight: 600 }}>
                                           <td className="col-name">+ Net Long Term Operating Assets</td>
+                                          <td className="col-category"></td>
                                           <td className="text-right col-value">{formatNumber(netLongTerm, balanceSheet?.unit || historicalCalculations?.unit)}</td>
+                                          <td></td>
                                         </tr>
                                         <tr className="key-total-row">
                                           <td className="col-name">= Invested Capital</td>
+                                          <td className="col-category"></td>
                                           <td className="text-right col-value">{formatNumber(historicalCalculations.invested_capital, historicalCalculations.unit)}</td>
+                                          <td></td>
                                         </tr>
                                       </tbody>
                                     </table>
@@ -1310,7 +1322,8 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                         </tr>
                                       )}
                                       <tr className="key-total-row">
-                                        <td colSpan="2" className="col-name">= EBITA</td>
+                                        <td className="col-name">= EBITA</td>
+                                        <td className="col-category"></td>
                                         <td className="text-right col-value">{formatNumber(historicalCalculations.ebita, historicalCalculations.unit)}</td>
                                         <td></td>
                                       </tr>
