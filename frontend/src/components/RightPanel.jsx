@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import axios from 'axios'
 import { useAuth } from '../contexts/AuthContext'
-import AmortizationTable from './AmortizationTable'
-import NonOperatingClassificationTable from './NonOperatingClassificationTable'
+import LineItemTable from './LineItemTable'
 import OrganicGrowthTable from './OrganicGrowthTable'
-import OtherAssetsTable from './OtherAssetsTable'
-import OtherLiabilitiesTable from './OtherLiabilitiesTable'
+import StandardizedBreakdownTable from './StandardizedBreakdownTable'
 import SharesOutstandingTable from './SharesOutstandingTable'
 import './RightPanel.css'
 
@@ -809,7 +807,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                   {amortization && (
                     <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
                       <h3>Non-GAAP Reconciliation</h3>
-                      <AmortizationTable data={amortization} formatNumber={formatNumber} />
+                      <LineItemTable data={amortization} formatNumber={formatNumber} />
                     </div>
                   )}
 
@@ -825,7 +823,15 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                   {otherAssets && (
                     <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
                       <h3>Other Assets</h3>
-                      <OtherAssetsTable data={otherAssets} balanceSheet={balanceSheet} formatNumber={formatNumber} />
+                      <StandardizedBreakdownTable
+                        data={otherAssets}
+                        balanceSheet={balanceSheet}
+                        formatNumber={formatNumber}
+                        standardReferences={[
+                          { id: 1, label: 'Other Current Assets', category: 'Current Assets' },
+                          { id: 2, label: 'Other Non-Current Assets', category: 'Non-Current Assets' }
+                        ]}
+                      />
                     </div>
                   )}
 
@@ -833,7 +839,15 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                   {otherLiabilities && (
                     <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
                       <h3>Other Liabilities</h3>
-                      <OtherLiabilitiesTable data={otherLiabilities} balanceSheet={balanceSheet} formatNumber={formatNumber} />
+                      <StandardizedBreakdownTable
+                        data={otherLiabilities}
+                        balanceSheet={balanceSheet}
+                        formatNumber={formatNumber}
+                        standardReferences={[
+                          { id: 1, label: 'Other Current Liabilities', category: 'Current Liabilities' },
+                          { id: 2, label: 'Other Non-Current Liabilities', category: 'Non-Current Liabilities' }
+                        ]}
+                      />
                     </div>
                   )}
 
@@ -842,11 +856,20 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                     <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
                       <h3>Non-Operating Classification</h3>
                       {nonOperatingClassification.line_items && nonOperatingClassification.line_items.length > 0 ? (
-                        <NonOperatingClassificationTable
+                        <LineItemTable
                           data={nonOperatingClassification}
                           formatNumber={formatNumber}
                           balanceSheet={balanceSheet}
                           incomeStatement={incomeStatement}
+                          typeOverride={<span className="type-badge non-operating">Non-Operating</span>}
+                          categoryFormatter={(value) => {
+                             if (!value) return 'Unknown'
+                             return value
+                               .replace(/_/g, ' ')
+                               .split(' ')
+                               .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+                               .join(' ')
+                          }}
                         />
                       ) : (
                         <div className="info-section">
