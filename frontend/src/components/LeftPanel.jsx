@@ -1048,6 +1048,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                       disabled={
                         isCheckingProcessingStatus ||
                         isProcessing ||
+                        selectedDocument.analysis_status === 'processing' ||
                         !hasFinancialStatements ||
                         !selectedDocument.document_type ||
                         !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)
