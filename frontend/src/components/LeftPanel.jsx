@@ -957,7 +957,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                           setIsProcessing(false)
                         }
                       }}
-                      style={{ width: '100%', textAlign: 'left', opacity: (isCheckingProcessingStatus || isProcessing || selectedDocument.indexing_status === 'indexing' || selectedDocument.analysis_status === 'processing') ? 0.6 : 1, cursor: (isCheckingProcessingStatus || isProcessing || selectedDocument.indexing_status === 'indexing' || selectedDocument.analysis_status === 'processing') ? 'not-allowed' : 'pointer' }}
+                      style={{ width: '100%', textAlign: 'left' }}
                     >
                       Re-run Indexing
                     </button>
@@ -995,12 +995,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                           setIsProcessing(false)
                         }
                       }}
-                      style={{
-                        width: '100%',
-                        textAlign: 'left',
-                        opacity: (isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing' || !selectedDocument.document_type || !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)) ? 0.6 : 1,
-                        cursor: (isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing' || !selectedDocument.document_type || !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)) ? 'not-allowed' : 'pointer'
-                      }}
+                      style={{ width: '100%', textAlign: 'left' }}
                     >
                       Re-run Extraction and Classification
                     </button>
@@ -1014,12 +1009,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                         !selectedDocument.document_type ||
                         !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)
                       }
-                      style={{
-                        width: '100%',
-                        textAlign: 'left',
-                        opacity: (isCheckingProcessingStatus || isProcessing || !hasFinancialStatements || !selectedDocument.document_type || !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)) ? 0.6 : 1,
-                        cursor: (isCheckingProcessingStatus || isProcessing || !hasFinancialStatements || !selectedDocument.document_type || !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)) ? 'not-allowed' : 'pointer'
-                      }}
+                      style={{ width: '100%', textAlign: 'left' }}
                       onClick={async () => {
                         if (!hasFinancialStatements) return
                         setIsProcessing(true)
@@ -1052,17 +1042,12 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
               <div className="summary-section" style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
                 <strong>Danger Zone</strong>
                 <button
-                  className="button-secondary"
+                  className="button-warning"
                   disabled={!hasFinancialStatements || isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing'}
                   style={{
                     width: '100%',
                     textAlign: 'left',
-                    marginTop: '0.75rem',
-                    backgroundColor: hasFinancialStatements ? 'var(--error-color, #dc3545)' : 'var(--bg-secondary)',
-                    color: hasFinancialStatements ? 'white' : 'var(--text-secondary)',
-                    border: 'none',
-                    opacity: (hasFinancialStatements && !isProcessing && selectedDocument.analysis_status !== 'processing') ? 1 : 0.6,
-                    cursor: (hasFinancialStatements && !isProcessing && selectedDocument.analysis_status !== 'processing') ? 'pointer' : 'not-allowed'
+                    marginTop: '0.75rem'
                   }}
                   onClick={async () => {
                     if (!hasFinancialStatements) return
@@ -1103,17 +1088,14 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                   Delete Financial Statements
                 </button>
                 <button
-                  className="button-secondary"
+                  className="button-warning"
                   disabled={isCheckingProcessingStatus || isProcessing || selectedDocument.indexing_status === 'indexing' || selectedDocument.analysis_status === 'processing'}
                   style={{
                     width: '100%',
                     textAlign: 'left',
                     marginTop: '0.75rem',
-                    backgroundColor: 'var(--error-color, #dc3545)',
-                    color: 'white',
-                    border: 'none',
-                    opacity: (isCheckingProcessingStatus || isProcessing || selectedDocument.indexing_status === 'indexing' || selectedDocument.analysis_status === 'processing') ? 0.6 : 1,
-                    cursor: (isCheckingProcessingStatus || isProcessing || selectedDocument.indexing_status === 'indexing' || selectedDocument.analysis_status === 'processing') ? 'not-allowed' : 'pointer'
+                    backgroundColor: 'var(--error, #E5484D)',
+                    color: 'white'
                   }}
                   onClick={async () => {
                     if (window.confirm(`Are you sure you want to permanently delete "${selectedDocument.filename}"? This will delete the document, all financial statements, and all associated data. This action cannot be undone.`)) {

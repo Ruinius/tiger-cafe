@@ -275,20 +275,21 @@
 .add-document-button {
   margin-top: auto;
   padding: 0.85rem 1.25rem;
-  background-color: var(--text-primary);
-  color: var(--bg-secondary);
+  background-color: var(--primary);
+  color: #FFFFFF;
   border: none;
   border-radius: 999px;
   cursor: pointer;
   font-size: 0.875rem;
   font-weight: 600;
   letter-spacing: 0.01em;
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s;
 }
 
 .add-document-button:hover {
   transform: translateY(-1px);
   box-shadow: 0 12px 24px var(--shadow);
+  background-color: var(--primary-dark);
 }
 
 .document-detail {
@@ -533,8 +534,8 @@
 }
 
 .add-document-button.has-uploads {
-  background-color: var(--text-primary);
-  color: var(--bg-secondary);
+  background-color: var(--primary);
+  color: #FFFFFF;
 }
 
 .add-document-button.has-uploads .button-spinner {
