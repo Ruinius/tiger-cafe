@@ -1090,7 +1090,15 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                             <td className="col-name" style={{ paddingLeft: '2rem' }}>{item.line_name}</td>
                                             <td className="col-category">{item.line_category || 'N/A'}</td>
                                             <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet.unit)}</td>
-                                            <td className="col-type text-right">{item.is_operating === true ? 'Operating' : item.is_operating === false ? 'Non-Operating' : 'N/A'}</td>
+                                            <td className="col-type text-right">
+                                              {item.is_operating === true ? (
+                                                <span className="type-badge operating">Operating</span>
+                                              ) : item.is_operating === false ? (
+                                                <span className="type-badge non-operating">Non-Operating</span>
+                                              ) : (
+                                                <span className="text-muted">—</span>
+                                              )}
+                                            </td>
                                           </tr>
                                         )) : (
                                           <tr>
@@ -1106,7 +1114,15 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                             <td className="col-name" style={{ paddingLeft: '2rem' }}>{item.line_name}</td>
                                             <td className="col-category">{item.line_category || 'N/A'}</td>
                                             <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet.unit)}</td>
-                                            <td className="col-type text-right">{item.is_operating === true ? 'Operating' : item.is_operating === false ? 'Non-Operating' : 'N/A'}</td>
+                                            <td className="col-type text-right">
+                                              {item.is_operating === true ? (
+                                                <span className="type-badge operating">Operating</span>
+                                              ) : item.is_operating === false ? (
+                                                <span className="type-badge non-operating">Non-Operating</span>
+                                              ) : (
+                                                <span className="text-muted">—</span>
+                                              )}
+                                            </td>
                                           </tr>
                                         )) : (
                                           <tr>
