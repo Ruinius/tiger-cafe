@@ -83,8 +83,23 @@ describe('LeftPanel Buttons', () => {
     })
 
     it('disables all re-run and delete buttons during processing state', async () => {
+        // Reset mocks to ensure no interference from beforeEach
+        axios.get.mockReset()
+
         // Modify doc to be in processing state
         const processingDoc = { ...mockSelectedDocument, analysis_status: 'processing' }
+
+        // Define mock with processing status
+        axios.get.mockImplementation((url) => {
+            if (url.includes('/documents/101/status')) {
+                return Promise.resolve({ data: processingDoc })
+            }
+            // Keep other mocks
+            if (url.includes('/documents/101/balance-sheet')) return Promise.resolve({ status: 200, data: { status: 'exists' } })
+            if (url.includes('/documents/101/income-statement')) return Promise.resolve({ status: 200, data: { status: 'exists' } })
+            if (url.includes('/companies/')) return Promise.resolve({ data: [mockSelectedCompany] })
+            return Promise.resolve({ data: [] })
+        })
 
         render(
             <LeftPanel

@@ -49,6 +49,8 @@ class Document(DocumentBase):
     duplicate_detected: bool | None = False
     existing_document_id: str | None = None
     uploader_name: str | None = None  # Name of user who uploaded the document
+    balance_sheet_status: str | None = None  # "valid", "invalid", "not_extracted"
+    income_statement_status: str | None = None  # "valid", "invalid", "not_extracted"
 
 
 # Upload and classification response schemas

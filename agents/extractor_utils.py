@@ -1,8 +1,9 @@
 import json
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from app.utils.gemini_client import generate_content_safe
+
 
 def clean_json_response(response_text: str) -> str:
     """Removes markdown code blocks from LLM response."""
@@ -13,7 +14,8 @@ def clean_json_response(response_text: str) -> str:
         response_text = response_text.strip()
     return response_text
 
-def call_llm_and_parse_json(prompt: str, temperature: float = 0.0) -> Dict[str, Any]:
+
+def call_llm_and_parse_json(prompt: str, temperature: float = 0.0) -> dict[str, Any]:
     """Calls LLM and parses the JSON response."""
     try:
         response_text = generate_content_safe(prompt, temperature=temperature)
@@ -24,7 +26,10 @@ def call_llm_and_parse_json(prompt: str, temperature: float = 0.0) -> Dict[str, 
     except Exception as e:
         raise Exception(f"LLM call failed: {str(e)}")
 
-def call_llm_with_retry(prompt: str, max_retries: int = 3, temperature: float = 0.0) -> Dict[str, Any]:
+
+def call_llm_with_retry(
+    prompt: str, max_retries: int = 3, temperature: float = 0.0
+) -> dict[str, Any]:
     """Calls LLM with retry logic for API errors."""
     for attempt in range(max_retries):
         try:
@@ -43,12 +48,20 @@ def call_llm_with_retry(prompt: str, max_retries: int = 3, temperature: float = 
                     "resource exhausted",
                     "service unavailable",
                     "too many requests",
+                    "json",
+                    "decode",
                 ]
             )
 
+            # Retry on JSON errors too
+            if isinstance(e, json.JSONDecodeError):
+                is_api_error = True
+
             if is_api_error and attempt < max_retries - 1:
                 wait_time = 2**attempt
-                print(f"API error (attempt {attempt + 1}/{max_retries}): {str(e)}. Retrying in {wait_time}s...")
+                print(
+                    f"API error (attempt {attempt + 1}/{max_retries}): {str(e)}. Retrying in {wait_time}s..."
+                )
                 time.sleep(wait_time)
                 continue
 
@@ -56,11 +69,9 @@ def call_llm_with_retry(prompt: str, max_retries: int = 3, temperature: float = 
                 raise e
     raise Exception("Should not reach here")
 
+
 def check_section_completeness_llm(
-    text: str,
-    time_period: str,
-    statement_name: str,
-    validation_criteria: str
+    text: str, time_period: str, statement_name: str, validation_criteria: str
 ) -> bool:
     """
     Generic function to check if a document section contains a complete financial statement.
@@ -88,18 +99,19 @@ Return a JSON object:
 Return only valid JSON, no additional text."""
 
     try:
-        result = call_llm_and_parse_json(prompt)
+        result = call_llm_with_retry(prompt)
         return result.get("is_complete", False)
     except Exception as e:
         print(f"Error checking {statement_name} completeness: {str(e)}")
         return False
 
+
 def get_llm_insights_generic(
-    line_items: List[Dict[str, Any]],
+    line_items: list[dict[str, Any]],
     statement_type_description: str,
     json_structure_description: str,
-    guidance_text: str
-) -> Tuple[Dict[str, Any], List[str]]:
+    guidance_text: str,
+) -> tuple[dict[str, Any], list[str]]:
     """
     Generic function to identify key line items in a financial statement.
     """

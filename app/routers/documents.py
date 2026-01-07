@@ -10,7 +10,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from agents.document_classifier import classify_document
 from app.database import get_db
@@ -62,12 +62,25 @@ def add_uploader_name_to_document(db: Session, document: Document) -> dict:
         "duplicate_detected": document.duplicate_detected,
         "existing_document_id": document.existing_document_id,
         "uploader_name": None,
+        "balance_sheet_status": "not_extracted",
+        "income_statement_status": "not_extracted",
+        "gaap_reconciliation_status": "not_extracted",  # Placeholder for future
     }
     # Get uploader name
     if document.user_id:
         user = db.query(User).filter(User.id == document.user_id).first()
         if user:
             doc_dict["uploader_name"] = user.name or user.email
+
+    # Check for financial statements (assumes eager loading or lazy loading)
+    if document.balance_sheet:
+        doc_dict["balance_sheet_status"] = "valid" if document.balance_sheet.is_valid else "invalid"
+
+    if document.income_statement:
+        doc_dict["income_statement_status"] = (
+            "valid" if document.income_statement.is_valid else "invalid"
+        )
+
     return doc_dict
 
 
@@ -510,7 +523,10 @@ if DEBUG:
         TEST ENDPOINT: List documents without authentication.
         Only available when DEBUG=true or ENVIRONMENT=development.
         """
-        query = db.query(Document)
+        query = db.query(Document).options(
+            joinedload(Document.balance_sheet),
+            joinedload(Document.income_statement),
+        )
         if company_id:
             query = query.filter(Document.company_id == company_id)
         documents = query.order_by(Document.uploaded_at.desc()).offset(skip).limit(limit).all()
@@ -526,7 +542,10 @@ async def list_documents(
     current_user: User = Depends(get_current_user),
 ):
     """List documents, optionally filtered by company. Shows all documents (shared dashboard)."""
-    query = db.query(Document)
+    query = db.query(Document).options(
+        joinedload(Document.balance_sheet),
+        joinedload(Document.income_statement),
+    )
     if company_id:
         query = query.filter(Document.company_id == company_id)
     documents = query.order_by(Document.uploaded_at.desc()).offset(skip).limit(limit).all()
@@ -540,7 +559,15 @@ async def get_document(
     document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """Get a specific document by ID (shared dashboard - all users can see all documents)"""
-    document = db.query(Document).filter(Document.id == document_id).first()
+    document = (
+        db.query(Document)
+        .options(
+            joinedload(Document.balance_sheet),
+            joinedload(Document.income_statement),
+        )
+        .filter(Document.id == document_id)
+        .first()
+    )
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     return add_uploader_name_to_document(db, document)
@@ -1444,7 +1471,15 @@ async def get_document_status(
     document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """Get document status including indexing progress (shared dashboard - all users can see all documents)"""
-    document = db.query(Document).filter(Document.id == document_id).first()
+    document = (
+        db.query(Document)
+        .options(
+            joinedload(Document.balance_sheet),
+            joinedload(Document.income_statement),
+        )
+        .filter(Document.id == document_id)
+        .first()
+    )
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     return add_uploader_name_to_document(db, document)
@@ -1468,7 +1503,15 @@ if DEBUG:
         TEST ENDPOINT: Get document status without authentication.
         Only available when DEBUG=true or ENVIRONMENT=development.
         """
-        document = db.query(Document).filter(Document.id == document_id).first()
+        document = (
+            db.query(Document)
+            .options(
+                joinedload(Document.balance_sheet),
+                joinedload(Document.income_statement),
+            )
+            .filter(Document.id == document_id)
+            .first()
+        )
         if not document:
             raise HTTPException(status_code=404, detail="Document not found")
         return add_uploader_name_to_document(db, document)

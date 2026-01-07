@@ -15,8 +15,287 @@ from app.utils.financial_statement_progress import (
     FinancialStatementMilestone,
     add_log,
 )
+from app.utils.line_item_utils import extract_original_name_from_standardized as get_orig_name
 from app.utils.line_item_utils import normalize_line_name
 from app.utils.pdf_extractor import extract_text_from_pdf
+
+
+def extract_balance_sheet(
+    document_id: str,
+    file_path: str,
+    time_period: str,
+    max_retries: int = 3,
+    document_type: str | None = None,
+) -> dict:
+    """
+    Main function to extract balance sheet with two-stage validation and retries.
+
+    Stage 1: Find correct section (retry with rank 1, 2, 3 chunks)
+    Stage 2: Validate extraction calculations (retry extraction with LLM feedback)
+
+    Args:
+        document_id: Document ID
+        file_path: Path to PDF file
+        time_period: Time period (e.g., "Q3 2023")
+        max_retries: Maximum number of retry attempts for section finding (3 total: rank 1, 2, 3)
+        document_type: Document type (e.g., "earnings_announcement", "annual_filing", "quarterly_filing")
+
+    Returns:
+        Dictionary with balance sheet data and validation status
+    """
+    # Stage 1: Find correct section (retry with different chunk ranks)
+    balance_sheet_text = None
+    start_page = None
+    log_info = None
+    successful_chunk_index = None  # Track successful chunk index for income statement extraction
+
+    for section_attempt in range(max_retries):  # 3 tries: rank 0, 1, 2
+        try:
+            section_msg = f"Stage 1: Finding balance sheet section (rank {section_attempt + 1})"
+            print(section_msg)
+            add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, section_msg)
+
+            # Find balance sheet section using embeddings
+            balance_sheet_text, start_page, log_info = find_balance_sheet_section(
+                document_id, file_path, time_period, document_type, chunk_rank=section_attempt
+            )
+
+            if not balance_sheet_text:
+                # Fallback: extract full document if embedding search fails
+                fallback_msg = "Embedding search failed, extracting full document..."
+                print(fallback_msg)
+                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, fallback_msg)
+                balance_sheet_text, _, _ = extract_text_from_pdf(file_path, max_pages=None)
+                balance_sheet_text = balance_sheet_text[:50000]  # Limit to 50k chars
+                extracted_msg = f"Extracted {len(balance_sheet_text)} characters from full document"
+                print(extracted_msg)
+                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, extracted_msg)
+            else:
+                # Log chunk/page information if available
+                if log_info:
+                    rank_text = f" (rank {section_attempt + 1})" if section_attempt > 0 else ""
+                    chunk_msg = f"Best match{rank_text}: chunk {log_info['best_chunk_index']} (pages {log_info['chunk_start_page']}-{log_info['chunk_end_page']})"
+                    print(chunk_msg)
+                    add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, chunk_msg)
+                    pages_msg = f"Found balance sheet section (pages {log_info['start_extract_page']}-{log_info['end_extract_page']})"
+                    print(pages_msg)
+                    add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, pages_msg)
+                found_msg = f"Found balance sheet section starting at page {start_page}, extracted {len(balance_sheet_text)} characters"
+                print(found_msg)
+                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, found_msg)
+
+            # Stage 1 validation: Check completeness of chunk text using LLM (before extraction)
+            completeness_check_msg = (
+                "Stage 1: Checking if chunk contains complete balance sheet using LLM"
+            )
+            print(completeness_check_msg)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.BALANCE_SHEET,
+                completeness_check_msg,
+            )
+
+            is_complete = check_balance_sheet_completeness_llm(balance_sheet_text, time_period)
+
+            if not is_complete:
+                section_failed_msg = "Stage 1 validation failed: LLM determined chunk does not contain complete balance sheet"
+                print(section_failed_msg)
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.BALANCE_SHEET,
+                    section_failed_msg,
+                )
+                if section_attempt < max_retries - 1:
+                    continue  # Try next chunk rank
+                else:
+                    # All section attempts failed, need to create empty extracted_data for error handling
+                    extracted_data = {
+                        "line_items": [],
+                        "currency": None,
+                        "unit": None,
+                        "time_period": time_period,
+                    }
+                    classified_items = classify_line_items_llm(extracted_data["line_items"])
+                    extracted_data["line_items"] = classified_items
+                    extracted_data["is_valid"] = False
+                    extracted_data["validation_errors"] = [
+                        "Balance sheet completeness check failed"
+                    ]
+                    return extracted_data
+
+            # Extract balance sheet using LLM (only if chunk is complete)
+            extraction_msg = "Extracting balance sheet from complete chunk"
+            print(extraction_msg)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.BALANCE_SHEET,
+                extraction_msg,
+            )
+
+            extracted_data = extract_balance_sheet_llm(balance_sheet_text, time_period)
+
+            # Ensure line_items exists and is a list
+            if "line_items" not in extracted_data:
+                extracted_data["line_items"] = []
+            elif not isinstance(extracted_data["line_items"], list):
+                print(
+                    f"Warning: line_items is not a list, got {type(extracted_data['line_items'])}"
+                )
+                extracted_data["line_items"] = []
+
+            extracted_count_msg = (
+                f"Extracted {len(extracted_data.get('line_items', []))} line items"
+            )
+            print(extracted_count_msg)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.BALANCE_SHEET,
+                extracted_count_msg,
+            )
+
+            section_valid_msg = (
+                "Stage 1 validation passed (complete balance sheet chunk found and extracted)"
+            )
+            print(section_valid_msg)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.BALANCE_SHEET,
+                section_valid_msg,
+            )
+            # Store successful chunk index for income statement extraction
+            successful_chunk_index = log_info.get("best_chunk_index") if log_info else None
+            break  # Section found and validated, proceed to Stage 2
+
+        except Exception as e:
+            error_str = str(e).lower()
+            is_api_error = any(
+                keyword in error_str
+                for keyword in [
+                    "rate limit",
+                    "quota",
+                    "429",
+                    "503",
+                    "resource exhausted",
+                    "service unavailable",
+                    "too many requests",
+                ]
+            )
+            if is_api_error:
+                print(f"API error on section attempt {section_attempt + 1}: {str(e)}")
+                raise
+            print(f"Error on section attempt {section_attempt + 1}: {str(e)}")
+            if section_attempt == max_retries - 1:
+                raise
+
+    if not balance_sheet_text:
+        raise Exception("Failed to find balance sheet section after all attempts")
+
+    # Stage 2: Validate extraction calculations (retry extraction with LLM feedback)
+    EXTRACTION_MAX_RETRIES = 3
+    # extracted_data was already set in Stage 1 and validated for completeness
+    calc_errors = []  # Will be set by validation
+
+    # Store successful chunk index in extracted_data for income statement extraction and persistence
+    if successful_chunk_index is not None:
+        extracted_data["balance_sheet_chunk_index"] = successful_chunk_index
+        extracted_data["chunk_index"] = successful_chunk_index  # Also store for persistence
+
+    for extraction_attempt in range(EXTRACTION_MAX_RETRIES):
+        try:
+            if extraction_attempt == 0:
+                # First attempt: use initial extraction from Stage 1
+                extraction_msg = "Stage 2: Validating extraction calculations"
+                print(extraction_msg)
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.BALANCE_SHEET,
+                    extraction_msg,
+                )
+                # extracted_data is already set from Stage 1
+            else:
+                # Retry with feedback from previous attempt
+                retry_msg = f"Stage 2: Retry extraction {extraction_attempt + 1}/{EXTRACTION_MAX_RETRIES} with LLM feedback"
+                print(retry_msg)
+                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, retry_msg)
+                # Re-extract with validation error feedback from previous attempt
+                extracted_data = extract_balance_sheet_llm_with_feedback(
+                    balance_sheet_text,
+                    time_period,
+                    extracted_data,  # Previous extraction
+                    calc_errors,  # Validation errors with differences from previous attempt
+                )
+
+            # Post-process to add standard names (ensure naming convention is maintained)
+            extracted_data["line_items"] = post_process_balance_sheet_line_items(
+                extracted_data["line_items"]
+            )
+
+            # Stage 2 validation: Check calculations (sums)
+            calc_valid, calc_errors = validate_balance_sheet_calculations(
+                extracted_data["line_items"]
+            )
+
+            if calc_valid:
+                calc_valid_msg = "Stage 2 validation passed (calculations are correct)"
+                print(calc_valid_msg)
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.BALANCE_SHEET,
+                    calc_valid_msg,
+                )
+                # Both stages passed, classify and return
+                classified_items = classify_line_items_llm(extracted_data["line_items"])
+                extracted_data["line_items"] = classified_items
+                extracted_data["is_valid"] = True
+                extracted_data["validation_errors"] = []
+                # Ensure chunk_index is included in the return value
+                if successful_chunk_index is not None:
+                    extracted_data["chunk_index"] = successful_chunk_index
+                return extracted_data
+            else:
+                calc_failed_msg = f"Stage 2 validation failed: {', '.join(calc_errors[:2])}"
+                print(calc_failed_msg)
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.BALANCE_SHEET,
+                    calc_failed_msg,
+                )
+                if extraction_attempt < EXTRACTION_MAX_RETRIES - 1:
+                    continue  # Retry with feedback
+                else:
+                    # All extraction attempts failed, return with errors
+                    classified_items = classify_line_items_llm(extracted_data["line_items"])
+                    extracted_data["line_items"] = classified_items
+                    extracted_data["is_valid"] = False
+                    extracted_data["validation_errors"] = calc_errors
+                    # Ensure chunk_index and balance_sheet_chunk_index are included in the return value
+                    if successful_chunk_index is not None:
+                        extracted_data["chunk_index"] = successful_chunk_index
+                        extracted_data["balance_sheet_chunk_index"] = successful_chunk_index
+                    return extracted_data
+
+        except Exception as e:
+            error_str = str(e).lower()
+            is_api_error = any(
+                keyword in error_str
+                for keyword in [
+                    "rate limit",
+                    "quota",
+                    "429",
+                    "503",
+                    "resource exhausted",
+                    "service unavailable",
+                    "too many requests",
+                ]
+            )
+            if is_api_error:
+                print(f"API error on extraction attempt {extraction_attempt + 1}: {str(e)}")
+                raise
+            print(f"Error on extraction attempt {extraction_attempt + 1}: {str(e)}")
+            if extraction_attempt == EXTRACTION_MAX_RETRIES - 1:
+                raise
+
+    raise Exception("Failed to extract balance sheet after all attempts")
 
 
 def find_balance_sheet_section(
@@ -108,6 +387,34 @@ def find_balance_sheet_section(
     except Exception as e:
         print(f"Error finding balance sheet section: {str(e)}")
         return None, None, None
+
+
+def check_balance_sheet_completeness_llm(text: str, time_period: str) -> bool:
+    """
+    Use LLM to check if the chunk text contains a complete consolidated balance sheet.
+    This is called BEFORE extraction to validate we have the right chunk.
+
+    Args:
+        text: Text containing balance sheet section (chunk text)
+        time_period: Time period (e.g., "Q3 2023")
+
+    Returns:
+        True if complete, False otherwise
+    """
+    validation_criteria = """- Start with cash or cash equivalents
+- Include current assets (cash, accounts receivable, inventory, etc.)
+- Include non-current assets (property, plant & equipment, intangible assets, etc.)
+- Have a "Total Assets" line
+- Include current liabilities (accounts payable, short-term debt, etc.)
+- Include non-current liabilities (long-term debt, etc.)
+- Have a "Total Liabilities" line
+- Include equity items (common stock, retained earnings, etc.)
+- Have a "Total Liabilities and Equity" or "Total Shareholder's Equity" line
+- Balance (Total Assets = Total Liabilities and Equity)"""
+
+    return check_section_completeness_llm(
+        text, time_period, "consolidated balance sheet", validation_criteria
+    )
 
 
 def extract_balance_sheet_llm(text: str, time_period: str, currency: str | None = None) -> dict:
@@ -243,8 +550,7 @@ Return a JSON object with the following structure:
             "line_name": "exact name as it appears in the document but do not include long notes in parentheses",
             "line_value": numeric value (as number, not string),
             "line_category": one of ["Current Assets", "Non-Current Assets", "Total Assets", "Current Liabilities", "Non-Current Liabilities", "Total Liabilities", "Equity", "Total Liabilities and Equity"]
-        }},
-        ...
+        }}
     ]
 }}
 
@@ -286,6 +592,142 @@ Return only valid JSON, no additional text."""
 
     except Exception as e:
         raise Exception(f"Error extracting balance sheet: {str(e)}")
+
+
+def post_process_balance_sheet_line_items(line_items: list[dict]) -> list[dict]:
+    """
+    Post-process balance sheet line items:
+    1. Use LLM to identify key line items
+    2. Rename identified items with standardized names (original in parentheses)
+
+    Returns:
+        Processed line items with standardized names
+    """
+    if not line_items:
+        return line_items
+
+    # Step 1: Get LLM insights to identify key line items
+    llm_insights, _ = get_balance_sheet_llm_insights(line_items=line_items)
+
+    # Mapping of standardized names to LLM insight keys
+    standard_names = {
+        "cash_and_equivalents_line": "Cash & Equivalents",
+        "accounts_receivable_line": "Accounts Receivable",
+        "inventory_line": "Inventory",
+        "other_current_assets_line": "Other Current Assets",
+        "total_current_assets_line": "Total Current Assets",
+        "ppe_line": "Property, Plant & Equipment",
+        "goodwill_intangible_line": "Goodwill & Intangible Assets",
+        "other_non_current_assets_line": "Other Non-Current Assets",
+        "total_assets_line": "Total Assets",
+        "accounts_payable_line": "Accounts Payable",
+        "short_term_debt_line": "Short-Term Debt",
+        "other_current_liabilities_line": "Other Current Liabilities",
+        "total_current_liabilities_line": "Total Current Liabilities",
+        "long_term_debt_line": "Long-Term Debt",
+        "other_non_current_liabilities_line": "Other Non-Current Liabilities",
+        "total_liabilities_line": "Total Liabilities",
+        "common_equity_line": "Common Equity",
+        "retained_earnings_line": "Retained Earnings",
+        "total_equity_line": "Total Equity",
+        "total_liabilities_equity_line": "Total Liabilities & Equity",
+    }
+
+    # Step 2: Rename identified line items
+    processed_items = []
+
+    for item in line_items:
+        item_copy = item.copy()
+        current_name = item.get("line_name", "")
+
+        # Check if this item matches any of the identified key items
+        for insight_key, standard_name in standard_names.items():
+            llm_line_name = llm_insights.get(insight_key)
+            if llm_line_name:
+                # Use exact match first, then normalized match
+                if current_name == llm_line_name or normalize_line_name(
+                    current_name
+                ) == normalize_line_name(llm_line_name):
+                    # Extract original name if it was already standardized
+                    original_name = get_orig_name(current_name)
+
+                    # Rename: "Standard Name (Original Name)"
+                    # Only apply if it's not already standardized to THIS standard name
+                    new_name = f"{standard_name} ({original_name})"
+                    if current_name != new_name:
+                        item_copy["line_name"] = new_name
+                    break
+
+        processed_items.append(item_copy)
+
+    return processed_items
+
+
+def get_balance_sheet_llm_insights(
+    line_items: list[dict],
+) -> tuple[dict, list[str]]:
+    """
+    Use LLM to identify key line items in a balance sheet.
+    This function is used during post-processing to identify and standardize line item names.
+    """
+    json_structure = """{
+    "cash_and_equivalents_line": "exact line name for cash and cash equivalents (must match a name from the list above, or null if not found)",
+    "accounts_receivable_line": "exact line name for accounts receivable (must match a name from the list above, or null if not found)",
+    "inventory_line": "exact line name for inventory (must match a name from the list above, or null if not found)",
+    "other_current_assets_line": "exact line name for other current assets (must match a name from the list above, or null if not found)",
+    "total_current_assets_line": "exact line name for total current assets (must match a name from the list above, or null if not found)",
+    "ppe_line": "exact line name for property, plant and equipment (must match a name from the list above, or null if not found)",
+    "goodwill_intangible_line": "exact line name for goodwill and intangible assets (must match a name from the list above, or null if not found)",
+    "other_non_current_assets_line": "exact line name for other non-current assets (must match a name from the list above, or null if not found)",
+    "total_assets_line": "exact line name for total assets (must match a name from the list above, or null if not found)",
+    "accounts_payable_line": "exact line name for accounts payable (must match a name from the list above, or null if not found)",
+    "short_term_debt_line": "exact line name for short-term debt (must match a name from the list above, or null if not found)",
+    "other_current_liabilities_line": "exact line name for other current liabilities (must match a name from the list above, or null if not found)",
+    "total_current_liabilities_line": "exact line name for total current liabilities (must match a name from the list above, or null if not found)",
+    "long_term_debt_line": "exact line name for long-term debt (must match a name from the list above, or null if not found)",
+    "other_non_current_liabilities_line": "exact line name for other non-current liabilities (must match a name from the list above, or null if not found)",
+    "total_liabilities_line": "exact line name for total liabilities (must match a name from the list above, or null if not found)",
+    "common_equity_line": "exact line name for common equity or common stockholders' equity (must match a name from the list above, or null if not found)",
+    "retained_earnings_line": "exact line name for retained earnings (must match a name from the list above, or null if not found)",
+    "total_equity_line": "exact line name for total equity or total shareholders' equity (must match a name from the list above, or null if not found)",
+    "total_liabilities_equity_line": "exact line name for total liabilities and equity or total liabilities and shareholders' equity (must match a name from the list above, or null if not found)"
+}"""
+
+    guidance = """- Cash and equivalents: Cash and cash equivalents, Cash, Cash & Equivalents
+- Accounts receivable: Accounts receivable, Trade receivables
+- Inventory: Inventories, Inventory
+- Total current assets: Total current assets, Current assets
+- Total assets: Total assets
+- Accounts payable: Accounts payable, Trade payables
+- Total current liabilities: Total current liabilities, Current liabilities
+- Total liabilities: Total liabilities
+- Common equity: Common equity, Common stockholders' equity, Common stock, Shareholders' equity
+- Retained earnings: Retained earnings, Accumulated deficit
+- Total equity: Total equity, Total stockholders' equity, Total shareholders' equity
+- Total liabilities and equity: Total liabilities and equity, Total liabilities and shareholders' equity"""
+
+    return get_llm_insights_generic(line_items, "a balance sheet", json_structure, guidance)
+
+
+def validate_balance_sheet(line_items: list[dict]) -> tuple[bool, list[str]]:
+    """
+    Combined validation function for backward compatibility.
+    Validates both section and calculations.
+
+    Args:
+        line_items: List of balance sheet line items
+
+    Returns:
+        Tuple of (is_valid, list_of_errors)
+    """
+    # First validate section
+    section_valid, section_errors = validate_balance_sheet_section(line_items)
+    if not section_valid:
+        return False, section_errors
+
+    # Then validate calculations
+    calc_valid, calc_errors = validate_balance_sheet_calculations(line_items)
+    return calc_valid, calc_errors
 
 
 def validate_balance_sheet_section(line_items: list[dict]) -> tuple[bool, list[str]]:
@@ -606,173 +1048,6 @@ def validate_balance_sheet_calculations(line_items: list[dict]) -> tuple[bool, l
     return len(errors) == 0, errors
 
 
-def validate_balance_sheet(line_items: list[dict]) -> tuple[bool, list[str]]:
-    """
-    Combined validation function for backward compatibility.
-    Validates both section and calculations.
-
-    Args:
-        line_items: List of balance sheet line items
-
-    Returns:
-        Tuple of (is_valid, list_of_errors)
-    """
-    # First validate section
-    section_valid, section_errors = validate_balance_sheet_section(line_items)
-    if not section_valid:
-        return False, section_errors
-
-    # Then validate calculations
-    calc_valid, calc_errors = validate_balance_sheet_calculations(line_items)
-    return calc_valid, calc_errors
-
-
-def check_balance_sheet_completeness_llm(text: str, time_period: str) -> bool:
-    """
-    Use LLM to check if the chunk text contains a complete consolidated balance sheet.
-    This is called BEFORE extraction to validate we have the right chunk.
-
-    Args:
-        text: Text containing balance sheet section (chunk text)
-        time_period: Time period (e.g., "Q3 2023")
-
-    Returns:
-        True if complete, False otherwise
-    """
-    validation_criteria = """- Start with cash or cash equivalents
-- Include current assets (cash, accounts receivable, inventory, etc.)
-- Include non-current assets (property, plant & equipment, intangible assets, etc.)
-- Have a "Total Assets" line
-- Include current liabilities (accounts payable, short-term debt, etc.)
-- Include non-current liabilities (long-term debt, etc.)
-- Have a "Total Liabilities" line
-- Include equity items (common stock, retained earnings, etc.)
-- Have a "Total Liabilities and Equity" or "Total Shareholder's Equity" line
-- Balance (Total Assets = Total Liabilities and Equity)"""
-
-    return check_section_completeness_llm(
-        text, time_period, "consolidated balance sheet", validation_criteria
-    )
-
-
-def get_balance_sheet_llm_insights(
-    line_items: list[dict],
-) -> tuple[dict, list[str]]:
-    """
-    Use LLM to identify key line items in a balance sheet.
-    This function is used during post-processing to identify and standardize line item names.
-    """
-    json_structure = """{
-    "cash_and_equivalents_line": "exact line name for cash and cash equivalents (must match a name from the list above, or null if not found)",
-    "accounts_receivable_line": "exact line name for accounts receivable (must match a name from the list above, or null if not found)",
-    "inventory_line": "exact line name for inventory (must match a name from the list above, or null if not found)",
-    "other_current_assets_line": "exact line name for other current assets (must match a name from the list above, or null if not found)",
-    "total_current_assets_line": "exact line name for total current assets (must match a name from the list above, or null if not found)",
-    "ppe_line": "exact line name for property, plant and equipment (must match a name from the list above, or null if not found)",
-    "goodwill_intangible_line": "exact line name for goodwill and intangible assets (must match a name from the list above, or null if not found)",
-    "other_non_current_assets_line": "exact line name for other non-current assets (must match a name from the list above, or null if not found)",
-    "total_assets_line": "exact line name for total assets (must match a name from the list above, or null if not found)",
-    "accounts_payable_line": "exact line name for accounts payable (must match a name from the list above, or null if not found)",
-    "short_term_debt_line": "exact line name for short-term debt (must match a name from the list above, or null if not found)",
-    "other_current_liabilities_line": "exact line name for other current liabilities (must match a name from the list above, or null if not found)",
-    "total_current_liabilities_line": "exact line name for total current liabilities (must match a name from the list above, or null if not found)",
-    "long_term_debt_line": "exact line name for long-term debt (must match a name from the list above, or null if not found)",
-    "other_non_current_liabilities_line": "exact line name for other non-current liabilities (must match a name from the list above, or null if not found)",
-    "total_liabilities_line": "exact line name for total liabilities (must match a name from the list above, or null if not found)",
-    "common_equity_line": "exact line name for common equity or common stockholders' equity (must match a name from the list above, or null if not found)",
-    "retained_earnings_line": "exact line name for retained earnings (must match a name from the list above, or null if not found)",
-    "total_equity_line": "exact line name for total equity or total shareholders' equity (must match a name from the list above, or null if not found)",
-    "total_liabilities_equity_line": "exact line name for total liabilities and equity or total liabilities and shareholders' equity (must match a name from the list above, or null if not found)"
-}"""
-
-    guidance = """- Cash and equivalents: Cash and cash equivalents, Cash, Cash & Equivalents
-- Accounts receivable: Accounts receivable, Trade receivables
-- Inventory: Inventories, Inventory
-- Total current assets: Total current assets, Current assets
-- Total assets: Total assets
-- Accounts payable: Accounts payable, Trade payables
-- Total current liabilities: Total current liabilities, Current liabilities
-- Total liabilities: Total liabilities
-- Common equity: Common equity, Common stockholders' equity, Common stock, Shareholders' equity
-- Retained earnings: Retained earnings, Accumulated deficit
-- Total equity: Total equity, Total stockholders' equity, Total shareholders' equity
-- Total liabilities and equity: Total liabilities and equity, Total liabilities and shareholders' equity"""
-
-    return get_llm_insights_generic(line_items, "a balance sheet", json_structure, guidance)
-
-
-def post_process_balance_sheet_line_items(line_items: list[dict]) -> list[dict]:
-    """
-    Post-process balance sheet line items:
-    1. Use LLM to identify key line items
-    2. Rename identified items with standardized names (original in parentheses)
-
-    Returns:
-        Processed line items with standardized names
-    """
-    if not line_items:
-        return line_items
-
-    # Step 1: Get LLM insights to identify key line items
-    llm_insights, _ = get_balance_sheet_llm_insights(line_items=line_items)
-
-    # Mapping of standardized names to LLM insight keys
-    standard_names = {
-        "cash_and_equivalents_line": "Cash & Equivalents",
-        "accounts_receivable_line": "Accounts Receivable",
-        "inventory_line": "Inventory",
-        "other_current_assets_line": "Other Current Assets",
-        "total_current_assets_line": "Total Current Assets",
-        "ppe_line": "Property, Plant & Equipment",
-        "goodwill_intangible_line": "Goodwill & Intangible Assets",
-        "other_non_current_assets_line": "Other Non-Current Assets",
-        "total_assets_line": "Total Assets",
-        "accounts_payable_line": "Accounts Payable",
-        "short_term_debt_line": "Short-Term Debt",
-        "other_current_liabilities_line": "Other Current Liabilities",
-        "total_current_liabilities_line": "Total Current Liabilities",
-        "long_term_debt_line": "Long-Term Debt",
-        "other_non_current_liabilities_line": "Other Non-Current Liabilities",
-        "total_liabilities_line": "Total Liabilities",
-        "common_equity_line": "Common Equity",
-        "retained_earnings_line": "Retained Earnings",
-        "total_equity_line": "Total Equity",
-        "total_liabilities_equity_line": "Total Liabilities & Equity",
-    }
-
-    # Step 2: Rename identified line items
-    processed_items = []
-
-    # Use helper from line_item_utils
-    from app.utils.line_item_utils import extract_original_name_from_standardized as get_orig_name
-
-    for item in line_items:
-        item_copy = item.copy()
-        current_name = item.get("line_name", "")
-
-        # Check if this item matches any of the identified key items
-        for insight_key, standard_name in standard_names.items():
-            llm_line_name = llm_insights.get(insight_key)
-            if llm_line_name:
-                # Use exact match first, then normalized match
-                if current_name == llm_line_name or normalize_line_name(
-                    current_name
-                ) == normalize_line_name(llm_line_name):
-                    # Extract original name if it was already standardized
-                    original_name = get_orig_name(current_name)
-
-                    # Rename: "Standard Name (Original Name)"
-                    # Only apply if it's not already standardized to THIS standard name
-                    new_name = f"{standard_name} ({original_name})"
-                    if current_name != new_name:
-                        item_copy["line_name"] = new_name
-                    break
-
-        processed_items.append(item_copy)
-
-    return processed_items
-
-
 def classify_line_items_llm(line_items: list[dict]) -> list[dict]:
     """
     Use LLM to categorize each balance sheet line item as operating or non-operating.
@@ -944,6 +1219,7 @@ Return only valid JSON array, no additional text."""
                         "property",
                         "plant",
                         "equipment",
+                        "pass",
                     ]
                 ):
                     item["is_operating"] = True
@@ -973,281 +1249,3 @@ Return only valid JSON array, no additional text."""
             if _is_total_or_subtotal(item):
                 item["is_operating"] = None
         return line_items
-
-
-def extract_balance_sheet(
-    document_id: str,
-    file_path: str,
-    time_period: str,
-    max_retries: int = 3,
-    document_type: str | None = None,
-) -> dict:
-    """
-    Main function to extract balance sheet with two-stage validation and retries.
-
-    Stage 1: Find correct section (retry with rank 1, 2, 3 chunks)
-    Stage 2: Validate extraction calculations (retry extraction with LLM feedback)
-
-    Args:
-        document_id: Document ID
-        file_path: Path to PDF file
-        time_period: Time period (e.g., "Q3 2023")
-        max_retries: Maximum number of retry attempts for section finding (3 total: rank 1, 2, 3)
-        document_type: Document type (e.g., "earnings_announcement", "annual_filing", "quarterly_filing")
-
-    Returns:
-        Dictionary with balance sheet data and validation status
-    """
-    # Stage 1: Find correct section (retry with different chunk ranks)
-    balance_sheet_text = None
-    start_page = None
-    log_info = None
-    successful_chunk_index = None  # Track successful chunk index for income statement extraction
-
-    for section_attempt in range(max_retries):  # 3 tries: rank 0, 1, 2
-        try:
-            section_msg = f"Stage 1: Finding balance sheet section (rank {section_attempt + 1})"
-            print(section_msg)
-            add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, section_msg)
-
-            # Find balance sheet section using embeddings
-            balance_sheet_text, start_page, log_info = find_balance_sheet_section(
-                document_id, file_path, time_period, document_type, chunk_rank=section_attempt
-            )
-
-            if not balance_sheet_text:
-                # Fallback: extract full document if embedding search fails
-                fallback_msg = "Embedding search failed, extracting full document..."
-                print(fallback_msg)
-                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, fallback_msg)
-                balance_sheet_text, _, _ = extract_text_from_pdf(file_path, max_pages=None)
-                balance_sheet_text = balance_sheet_text[:50000]  # Limit to 50k chars
-                extracted_msg = f"Extracted {len(balance_sheet_text)} characters from full document"
-                print(extracted_msg)
-                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, extracted_msg)
-            else:
-                # Log chunk/page information if available
-                if log_info:
-                    rank_text = f" (rank {section_attempt + 1})" if section_attempt > 0 else ""
-                    chunk_msg = f"Best match{rank_text}: chunk {log_info['best_chunk_index']} (pages {log_info['chunk_start_page']}-{log_info['chunk_end_page']})"
-                    print(chunk_msg)
-                    add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, chunk_msg)
-                    pages_msg = f"Found balance sheet section (pages {log_info['start_extract_page']}-{log_info['end_extract_page']})"
-                    print(pages_msg)
-                    add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, pages_msg)
-                found_msg = f"Found balance sheet section starting at page {start_page}, extracted {len(balance_sheet_text)} characters"
-                print(found_msg)
-                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, found_msg)
-
-            # Stage 1 validation: Check completeness of chunk text using LLM (before extraction)
-            completeness_check_msg = (
-                "Stage 1: Checking if chunk contains complete balance sheet using LLM"
-            )
-            print(completeness_check_msg)
-            add_log(
-                document_id,
-                FinancialStatementMilestone.BALANCE_SHEET,
-                completeness_check_msg,
-            )
-
-            is_complete = check_balance_sheet_completeness_llm(balance_sheet_text, time_period)
-
-            if not is_complete:
-                section_failed_msg = "Stage 1 validation failed: LLM determined chunk does not contain complete balance sheet"
-                print(section_failed_msg)
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.BALANCE_SHEET,
-                    section_failed_msg,
-                )
-                if section_attempt < max_retries - 1:
-                    continue  # Try next chunk rank
-                else:
-                    # All section attempts failed, need to create empty extracted_data for error handling
-                    extracted_data = {
-                        "line_items": [],
-                        "currency": None,
-                        "unit": None,
-                        "time_period": time_period,
-                    }
-                    classified_items = classify_line_items_llm(extracted_data["line_items"])
-                    extracted_data["line_items"] = classified_items
-                    extracted_data["is_valid"] = False
-                    extracted_data["validation_errors"] = [
-                        "Balance sheet completeness check failed"
-                    ]
-                    return extracted_data
-
-            # Extract balance sheet using LLM (only if chunk is complete)
-            extraction_msg = "Extracting balance sheet from complete chunk"
-            print(extraction_msg)
-            add_log(
-                document_id,
-                FinancialStatementMilestone.BALANCE_SHEET,
-                extraction_msg,
-            )
-
-            extracted_data = extract_balance_sheet_llm(balance_sheet_text, time_period)
-
-            # Ensure line_items exists and is a list
-            if "line_items" not in extracted_data:
-                extracted_data["line_items"] = []
-            elif not isinstance(extracted_data["line_items"], list):
-                print(
-                    f"Warning: line_items is not a list, got {type(extracted_data['line_items'])}"
-                )
-                extracted_data["line_items"] = []
-
-            extracted_count_msg = (
-                f"Extracted {len(extracted_data.get('line_items', []))} line items"
-            )
-            print(extracted_count_msg)
-            add_log(
-                document_id,
-                FinancialStatementMilestone.BALANCE_SHEET,
-                extracted_count_msg,
-            )
-
-            section_valid_msg = (
-                "Stage 1 validation passed (complete balance sheet chunk found and extracted)"
-            )
-            print(section_valid_msg)
-            add_log(
-                document_id,
-                FinancialStatementMilestone.BALANCE_SHEET,
-                section_valid_msg,
-            )
-            # Store successful chunk index for income statement extraction
-            successful_chunk_index = log_info.get("best_chunk_index") if log_info else None
-            break  # Section found and validated, proceed to Stage 2
-
-        except Exception as e:
-            error_str = str(e).lower()
-            is_api_error = any(
-                keyword in error_str
-                for keyword in [
-                    "rate limit",
-                    "quota",
-                    "429",
-                    "503",
-                    "resource exhausted",
-                    "service unavailable",
-                    "too many requests",
-                ]
-            )
-            if is_api_error:
-                print(f"API error on section attempt {section_attempt + 1}: {str(e)}")
-                raise
-            print(f"Error on section attempt {section_attempt + 1}: {str(e)}")
-            if section_attempt == max_retries - 1:
-                raise
-
-    if not balance_sheet_text:
-        raise Exception("Failed to find balance sheet section after all attempts")
-
-    # Stage 2: Validate extraction calculations (retry extraction with LLM feedback)
-    EXTRACTION_MAX_RETRIES = 3
-    # extracted_data was already set in Stage 1 and validated for completeness
-    calc_errors = []  # Will be set by validation
-
-    # Store successful chunk index in extracted_data for income statement extraction and persistence
-    if successful_chunk_index is not None:
-        extracted_data["balance_sheet_chunk_index"] = successful_chunk_index
-        extracted_data["chunk_index"] = successful_chunk_index  # Also store for persistence
-
-    for extraction_attempt in range(EXTRACTION_MAX_RETRIES):
-        try:
-            if extraction_attempt == 0:
-                # First attempt: use initial extraction from Stage 1
-                extraction_msg = "Stage 2: Validating extraction calculations"
-                print(extraction_msg)
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.BALANCE_SHEET,
-                    extraction_msg,
-                )
-                # extracted_data is already set from Stage 1
-            else:
-                # Retry with feedback from previous attempt
-                retry_msg = f"Stage 2: Retry extraction {extraction_attempt + 1}/{EXTRACTION_MAX_RETRIES} with LLM feedback"
-                print(retry_msg)
-                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, retry_msg)
-                # Re-extract with validation error feedback from previous attempt
-                extracted_data = extract_balance_sheet_llm_with_feedback(
-                    balance_sheet_text,
-                    time_period,
-                    extracted_data,  # Previous extraction
-                    calc_errors,  # Validation errors with differences from previous attempt
-                )
-
-            # Post-process to add standard names (ensure naming convention is maintained)
-            extracted_data["line_items"] = post_process_balance_sheet_line_items(
-                extracted_data["line_items"]
-            )
-
-            # Stage 2 validation: Check calculations (sums)
-            calc_valid, calc_errors = validate_balance_sheet_calculations(
-                extracted_data["line_items"]
-            )
-
-            if calc_valid:
-                calc_valid_msg = "Stage 2 validation passed (calculations are correct)"
-                print(calc_valid_msg)
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.BALANCE_SHEET,
-                    calc_valid_msg,
-                )
-                # Both stages passed, classify and return
-                classified_items = classify_line_items_llm(extracted_data["line_items"])
-                extracted_data["line_items"] = classified_items
-                extracted_data["is_valid"] = True
-                extracted_data["validation_errors"] = []
-                # Ensure chunk_index is included in the return value
-                if successful_chunk_index is not None:
-                    extracted_data["chunk_index"] = successful_chunk_index
-                return extracted_data
-            else:
-                calc_failed_msg = f"Stage 2 validation failed: {', '.join(calc_errors[:2])}"
-                print(calc_failed_msg)
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.BALANCE_SHEET,
-                    calc_failed_msg,
-                )
-                if extraction_attempt < EXTRACTION_MAX_RETRIES - 1:
-                    continue  # Retry with feedback
-                else:
-                    # All extraction attempts failed, return with errors
-                    classified_items = classify_line_items_llm(extracted_data["line_items"])
-                    extracted_data["line_items"] = classified_items
-                    extracted_data["is_valid"] = False
-                    extracted_data["validation_errors"] = calc_errors
-                    # Ensure chunk_index and balance_sheet_chunk_index are included in the return value
-                    if successful_chunk_index is not None:
-                        extracted_data["chunk_index"] = successful_chunk_index
-                        extracted_data["balance_sheet_chunk_index"] = successful_chunk_index
-                    return extracted_data
-
-        except Exception as e:
-            error_str = str(e).lower()
-            is_api_error = any(
-                keyword in error_str
-                for keyword in [
-                    "rate limit",
-                    "quota",
-                    "429",
-                    "503",
-                    "resource exhausted",
-                    "service unavailable",
-                    "too many requests",
-                ]
-            )
-            if is_api_error:
-                print(f"API error on extraction attempt {extraction_attempt + 1}: {str(e)}")
-                raise
-            print(f"Error on extraction attempt {extraction_attempt + 1}: {str(e)}")
-            if extraction_attempt == EXTRACTION_MAX_RETRIES - 1:
-                raise
-
-    raise Exception("Failed to extract balance sheet after all attempts")

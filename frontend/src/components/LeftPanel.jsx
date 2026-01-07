@@ -112,16 +112,22 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
   // Reset processing states when document changes or processing completes
   // Also fetch latest document status when document is selected to ensure we have current analysis_status
   useEffect(() => {
+    let isMounted = true
+
     if (!selectedDocument) {
-      setIsProcessing(false)
-      setIsCheckingProcessingStatus(false) // No document, so no need to check
-      setHasFinancialStatements(false)
+      if (isMounted) {
+        setIsProcessing(false)
+        setIsCheckingProcessingStatus(false) // No document, so no need to check
+        setHasFinancialStatements(false)
+      }
       return
     }
 
     // Set checking state to true to disable buttons while we fetch status
-    setIsCheckingProcessingStatus(true)
-    setHasFinancialStatements(false) // Reset until we check
+    if (isMounted) {
+      setIsCheckingProcessingStatus(true)
+      setHasFinancialStatements(false) // Reset until we check
+    }
 
     // Fetch latest document status to ensure we have current analysis_status
     const fetchLatestStatus = async () => {
@@ -134,22 +140,29 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
         )
         // Always update selectedDocument with latest status (including indexing_status)
         // This ensures polling keeps the document status current
-        if (response.data && onDocumentSelect) {
+        // CRITICAL FIX: Only call onDocumentSelect if isMounted is still true.
+        // If user clicked back, isMounted will be false, preventing re-selection.
+        if (isMounted && response.data && onDocumentSelect) {
           onDocumentSelect(response.data)
         }
-        // After fetching status, we can enable buttons (they'll still be disabled if processing)
-        setIsCheckingProcessingStatus(false)
 
-        // Check if financial statements exist (only for eligible document types)
-        const eligibleTypes = ['earnings_announcement', 'quarterly_filing', 'annual_filing']
-        if (selectedDocument.document_type && eligibleTypes.includes(selectedDocument.document_type)) {
-          await checkFinancialStatements(selectedDocument.id)
+        if (isMounted) {
+          // After fetching status, we can enable buttons (they'll still be disabled if processing)
+          setIsCheckingProcessingStatus(false)
+
+          // Check if financial statements exist (only for eligible document types)
+          const eligibleTypes = ['earnings_announcement', 'quarterly_filing', 'annual_filing']
+          if (selectedDocument.document_type && eligibleTypes.includes(selectedDocument.document_type)) {
+            await checkFinancialStatements(selectedDocument.id)
+          }
         }
       } catch (error) {
-        console.error('Error fetching latest document status:', error)
-        // Even on error, stop checking so buttons can be enabled (they'll check analysis_status)
-        setIsCheckingProcessingStatus(false)
-        setHasFinancialStatements(false)
+        if (isMounted) {
+          console.error('Error fetching latest document status:', error)
+          // Even on error, stop checking so buttons can be enabled (they'll check analysis_status)
+          setIsCheckingProcessingStatus(false)
+          setHasFinancialStatements(false)
+        }
       }
     }
 
@@ -161,6 +174,10 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
     if (selectedDocument.analysis_status !== 'processing') {
       // Reset button states when processing completes
       setIsProcessing(false)
+    }
+
+    return () => {
+      isMounted = false
     }
   }, [selectedDocument?.id, isAuthenticated, token, checkFinancialStatements])
 
@@ -184,6 +201,8 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
       analysisStatus: selectedDocument.analysis_status
     }
 
+    let isMounted = true
+
     // Poll every 3 seconds while indexing (reduced frequency to avoid jarring updates)
     const pollInterval = setInterval(async () => {
       try {
@@ -193,6 +212,9 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
           `${API_BASE_URL}/documents/${selectedDocument.id}/${endpoint}`,
           { headers }
         )
+
+        if (!isMounted) return
+
         if (response.data && onDocumentSelect) {
           const newIndexingStatus = response.data.indexing_status
           const newAnalysisStatus = response.data.analysis_status
@@ -212,11 +234,16 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
           }
         }
       } catch (error) {
-        console.error(`Error polling status for document ${selectedDocument.id}:`, error)
+        if (isMounted) {
+          console.error(`Error polling status for document ${selectedDocument.id}:`, error)
+        }
       }
-    }, 3000) // Increased from 2000ms to 3000ms
+    }, 3000)
 
-    return () => clearInterval(pollInterval)
+    return () => {
+      isMounted = false
+      clearInterval(pollInterval)
+    }
   }, [selectedDocument?.id, selectedDocument?.indexing_status, isAuthenticated, token, onDocumentSelect])
 
   // Track if we're waiting for indexing to complete
@@ -822,6 +849,22 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                   <span className={`status-badge status-${document.indexing_status?.toLowerCase()}`}>
                     {document.indexing_status || 'pending'}
                   </span>
+                  {document.balance_sheet_status && document.balance_sheet_status !== 'not_extracted' && (
+                    <span
+                      className={`status-badge status-${document.balance_sheet_status === 'valid' ? 'indexed' : 'classified'}`}
+                      title={`Balance Sheet: ${document.balance_sheet_status}`}
+                    >
+                      BS
+                    </span>
+                  )}
+                  {document.income_statement_status && document.income_statement_status !== 'not_extracted' && (
+                    <span
+                      className={`status-badge status-${document.income_statement_status === 'valid' ? 'indexed' : 'classified'}`}
+                      title={`Income Statement: ${document.income_statement_status}`}
+                    >
+                      IS
+                    </span>
+                  )}
                   {document.uploader_name && (
                     <span className="document-uploader">
                       Uploaded by {document.uploader_name}

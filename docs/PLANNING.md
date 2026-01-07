@@ -769,6 +769,44 @@ All calculations are performed for a specific document using the extracted balan
 - [x] **Layout**: Moved "Adjusted Tax Rate" section to be below the Invested Capital/EBITA sections.
 - [x] **Design Compliance**: Audited Historical Calculations section for `UI_UX_DESIGN.md` compliance.
 
+#### 7.3: Finalizing Historical Calculations & UI Polish (Complete)
+- [x] **Organic Growth Table**: Changed the first column header from Metric to Line Item
+- [x] **Historical Calculations Tables Formatting**: Fixed formatting to align with `UI_UX_DESIGN.md` and Balance Sheet/Income Statement tables
+- [x] **Net Working Capital Calculation**:
+  - Fixed logic to correctly collect Operating Current Assets and Operating Current Liabilities
+  - Corrected subtraction of subtotals
+  - Fixed issue where app was not collecting Operating Current Liabilities
+- [x] **Net Long Term Operating Assets Calculation**:
+  - Fixed logic to correctly collect Operating Non-Current Assets and Operating Non-Current Liabilities
+  - Corrected subtraction of subtotals
+  - Fixed issue where app was not collecting Operating Non-Current Liabilities
+- [x] **Table Grouping**:
+  - Grouped Net Working Capital, Net Long Term Operating Assets, and Invested Capital tables closer together
+  - Grouped EBITA, NOPAT & ROIC, and Adjusted Tax Rate tables closer together
+- [x] **Table Ordering**: Moved NOPAT and ROIC table to below the Adjusted Tax Rate table
+- [x] **Summary Table Formatting**: Fixed Summary Table formatting according to `UI_UX_DESIGN.md`
+- [x] **Font Size Consistency**: Verified and fixed font sizes in Historical Calculation tables to match design specs and other tables
+- [x] **Net Working Capital Table Refinements**:
+  - Removed "Current Assets (Operating)" and "Current Liabilities (Operating)" subheaders
+  - Moved "Total Current Assets (Operating)" and "Total Current Liabilities (Operating)" to the end of their respective lists
+  - Aligned Line Item column
+  - Removed empty line between Total Current Assets (Operating) and first Current Liabilities line item
+  - Formatted subtotal lines like Total Assets line in balance sheet
+- [x] **Net Long Term Operating Assets Table Refinements**:
+  - Removed "Non-current Assets (Operating)" and "Non-current Liabilities (operating)" subheaders
+  - Added "Total Non-current Assets (Operating)" and "Total Non-current Liabilities (Operating)" sums at the end of lists
+  - Aligned Line Item column
+  - Removed empty line between Total Non-Current Assets (Operating) and first Non-Current Liabilities line item
+  - Formatted subtotal lines like Total Assets line in balance sheet
+- [x] **EBITA Table Refinements**: Aligned Line Item column
+- [x] **Review Font Sizes**: Verified font sizes for major lines (Net Working Capital, Invested Capital, EBITA) against balance sheet totals
+- [x] **Backend Improvements**: Created `AUTHORITATIVE_LOOKUP` for `income_statement_extractor.py` consistent with balance sheet extractor
+
+#### 7.4: Refactoring & Document Status UI (Complete)
+- [x] Reorganize gaap_reconciliation_extractor.py, income_statement_extractor.py, balance_sheet_extractor.py functions to be in the order they appear in the pipeline.
+- [x] In gaap_reconciliation_extractor.py, implement AUTHORITATIVE_LOOKUP and classification logic similar to income_statement_extractor.py.
+- [x] Add status pills to document list view for "Balance Sheet" and "Income Statement" (Green=Valid, Orange=Invalid).
+
 ### Phase 8: Financial Modeling
 - [ ] TBD
 
@@ -789,44 +827,40 @@ All calculations are performed for a specific document using the extracted balan
 ## Next Steps
 
 ### Immediate Priorities
-- [x] Change the first column header in the Organic Growth table from Metric to Line Item
-- [x] Fix the Historical Calculations table formatting according the UI_UX_DESIGN.md and what the Balance Sheet and Income Statement tables look like
-- [x] Fix the Net Working Capital calculation and frontend display - First Collect all the Current Assets that are Operating. Then collect all the Current Liabilities that are Operating. Subtract the two subtotals. Currently, it looks like the app is not able to collect the Current Liabilities that are Operating.
-- [x] Fix the Net Long Term Operating Assets calculation and frontend display - First Collect all the non-current assets that are operating. Then collect all the non-current liabilities that are operating. Then subract the two subtotals. Currently, it looks like ht app is not able to collect the Non-current liabilities that are Operating.
-- [x] Make the Net Working Capital, Net Long Term Operating Assets, and Invested Capital tables closer together. They go together. Make the EBITA, NOPAT and ROIC, and Adjusted Tax Rate tables closer together. They go together.
-- [x] Move the NOPAT and ROIC table to below the Adjusted Tax Rate table.
-- [x] Fix the Summary Table formtating according to UI_UX_DESIGN.md
+- [ ] Enhance the gaap_reconciliation_extractor.py logic to:  
+  1. find the chunk, ask LLM to check completeness
+  2. ask LLM to extract the line_items (with "line_category": one of ["Recurring", "One-Time", "Total"])
+  3. validate that the first line and in between line items equal to the total (adjust logic to exclude any "Total" in between)
+  4. if validation fails, ask the LLM to check the time period of each line_item
+  5. Remove the out of place line_item and perform validation again
+  6. if validation fails again, pass the context, validation error, and current table, and ask the LLM to try one last time
+  7. if validation passes, then proceed to classify
+  8. Double check the file for redundant or legacy functions/logic (example: I noticed line_category is classified at the end, leading to potential conflicts)
 
+- [ ] Adjust the income_statement_extractor.py logic
+  1. if validation fails, ask the LLM to check the time period of each line_item
+  2. Remove the out of place line_item and perform validationa gain
+  3. if validation fails again, pass the context, validation error, and current table, and ask the LLM to try one last time
+  4. Double check the file for redundant or legacy functions/logic (example: I noticed line_category is classified twice, leading to potential conflicts)
 
-- [x] Double check the font size for the Historical Calculation tables. Some texts look bigger than others. Double check against UI_UX_DESIGN.md
-- [x] Minor fixes to the Net Working Capital table
-  1. Remove Current Assets (Operating) subheader
-  2. Remove Current Liabilities (Operating) subheader
-  3. Move Total Current Assets (Operating) to the end of the list of Current Assets
-  4. Move Total Current Liabilities (Operating) to the end of the list of Current Liabilities
-  5. Make the Line Item column all aligned with no strange indentions
-- [x] Minor fixes to the Net Long Term Operating Assets table
-  1. Remove Non-current Assets (Operating) subheader
-  2. Remove Non-current Liabilities (operating) subheader
-  3. Add Total Non-current Assets (Operating) at the end of the list of Non-current Assets with a sum value
-  4. Add Total Non-currnet Liabilities (Operating) at the end of the list of Non-current Liabilities with a sum value
-  5. Make the Line Item column all aligned with no strange indentions
-- [x] Minor fixes to EBITA
-  1. Make the Line Item column all aligned with no strange indentions
-- [x] Create an AUTHORITATIVE_LOOKUP for income_statement_extractor.py similar to the one in balance_sheet_extractor.py for use in classify_line_items_llm
+- [ ] Adjust the balance_sheet_extractor.py logic
+  1. if validation fails, ask the LLM to check the time period of each line_item
+  2. Remove the out of place line_item and perform validationa gain
+  3. if validation fails again, pass the context, validation error, and current table, and ask the LLM to try one last time
+  4. Double check the file for redundant or legacy functions/logic
 
-- [ ] Final nitpick edits
-  1. In the Net Working Capital table, remove the empty line between Total Current Assets (Operating) and the first Current Liabilities line item
-  2. In the Net Long Term Operating Capital table, remove the empty line between Total Non-Current Assets (Operating) and the first Non-Current Liabilities line item
-  3. Double check the font size of the Net Working Capital line, Net Long Term Operating Capital line, =Invested Capital line, =EBITA line against the balance sheet Total line items (e.g, Total Assets).
-  4. Format Total Current Assets (Operating), Total Current Liablities (Operating), Total Non-Current Assets (Operating), and Total Non-Current Liablities (Operating) subtotal lines like the Total Assets line in balance sheet
+- [ ] Bug Fixes (test failures and manual testing results)
+  1. Investigate bug with concurrent document uploads. Some documents failed to process, indicating classic LLM either got overwhelmed or the wrong context got passed (start with LLM validation failure in check_income_statement_completeness_llm and global queue/chunk index handling).
+  2. The "Re-run Historical Calculations" button for some reason becomes enabled while the document is processing. It should stay disabled.
+  3. When staying on the document page, after clicking on "Re-run Extraction and Classification", all the buttons re-enable after a while even when the document is processing
+  4. When staying on the document page, after the document finishes processing, all the buttons except for "Re-run Historical Calculations" stay disabled when it should re-enable
 
-
-### Backlog / Future Enhancements
+### Future Enhancements - DO NOT CODE
 - [ ] **Tagging System**: Replace "Type", "Category", and "Status" columns with a unified **Tagging System**.
   - Single "Tag" column supporting multiple simultaneous tags (e.g., "Operating", "Recurring", "Non-Cash").
   - Status fields becomes a tag (e.g., "Indexed", "Balance Sheet").
 - [ ] **UI Interactivity**: Implementation capability to change "Category" and "Type" directly in the UI.
+- [ ] Explore using small specialized embedding / encoder models to replace the AUTHORITATIVE_LOOKUP and the classify using LLM
 
 ## UI/UX Design
 
