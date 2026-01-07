@@ -2,6 +2,7 @@
 Authentication routes (Google OAuth)
 """
 
+import os
 import google.auth.transport.requests
 import google.oauth2.id_token
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -19,6 +20,16 @@ security = HTTPBearer()
 
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Verify Google ID token and return user info"""
+    # Check for mock environment
+    if os.environ.get("MOCK_LLM_RESPONSES") == "true" and credentials.credentials == "fake-token":
+        return {
+            "sub": "test-user",
+            "email": "test@example.com",
+            "name": "Test User",
+            "picture": "https://example.com/avatar.png",
+            "iss": "https://accounts.google.com"
+        }
+
     try:
         request = google.auth.transport.requests.Request()
         id_token = credentials.credentials
