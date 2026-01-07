@@ -430,6 +430,8 @@ function RightPanel({ selectedCompany, selectedDocument }) {
     // Listen for event to reload historical calculations
     const handleReloadHistoricalCalculations = () => {
       if (selectedDocument && isEligibleForFinancialStatements) {
+        // Clear immediately to show feedback
+        setHistoricalCalculations(null)
         // Reset the flag so we can reload
         setHistoricalCalculationsLoadAttempted(false)
         loadHistoricalCalculations()

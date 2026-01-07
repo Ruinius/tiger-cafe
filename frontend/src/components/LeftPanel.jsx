@@ -1116,29 +1116,30 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                     cursor: (isCheckingProcessingStatus || isProcessing || selectedDocument.indexing_status === 'indexing' || selectedDocument.analysis_status === 'processing') ? 'not-allowed' : 'pointer'
                   }}
                   onClick={async () => {
-                    if (!window.confirm(`Are you sure you want to permanently delete "${selectedDocument.filename}"? This will delete the document, all financial statements, and all associated data. This action cannot be undone.`)) {
-                      return
-                    }
-                    try {
-                      const endpoint = isAuthenticated ? 'permanent' : 'permanent/test'
-                      const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
-                      await axios.delete(
-                        `${API_BASE_URL}/documents/${selectedDocument.id}/${endpoint}`,
-                        { headers }
-                      )
-                      // Navigate back to company document list (one level up)
-                      if (onBack) {
-                        onBack()
+                    if (window.confirm(`Are you sure you want to permanently delete "${selectedDocument.filename}"? This will delete the document, all financial statements, and all associated data. This action cannot be undone.`)) {
+                      setIsProcessing(true)
+                      try {
+                        const endpoint = isAuthenticated ? 'permanent' : 'permanent/test'
+                        const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+                        await axios.delete(
+                          `${API_BASE_URL}/documents/${selectedDocument.id}/${endpoint}`,
+                          { headers }
+                        )
+                        // Navigate back to company document list (one level up)
+                        if (onBack) {
+                          onBack()
+                        }
+                        // Refresh the company documents list if we have a company
+                        if (selectedCompany) {
+                          // Small delay to ensure navigation happens first
+                          setTimeout(() => {
+                            loadCompanyDocuments(selectedCompany.id)
+                          }, 100)
+                        }
+                      } catch (err) {
+                        alert(err.response?.data?.detail || 'Failed to delete document')
+                        setIsProcessing(false)
                       }
-                      // Refresh the company documents list if we have a company
-                      if (selectedCompany) {
-                        // Small delay to ensure navigation happens first
-                        setTimeout(() => {
-                          loadCompanyDocuments(selectedCompany.id)
-                        }, 100)
-                      }
-                    } catch (err) {
-                      alert(err.response?.data?.detail || 'Failed to delete document')
                     }
                   }}
                 >

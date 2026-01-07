@@ -62,11 +62,11 @@ def calculate_net_working_capital(balance_sheet: BalanceSheet) -> dict[str, Any]
         # Check if it's a current asset
         category_lower = item.line_category.lower() if item.line_category else ""
         name_lower = item.line_name.lower()
-        
+
         # Skip totals and subtotals to avoid double counting
         if "total" in name_lower or "subtotal" in name_lower or "total" in category_lower:
             continue
-            
+
         is_non_current = "non-current" in category_lower or (
             "long" in category_lower and "term" in category_lower
         )

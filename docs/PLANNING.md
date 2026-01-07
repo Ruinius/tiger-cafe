@@ -733,7 +733,8 @@ All calculations are performed for a specific document using the extracted balan
 - [x] Frontend: Create component to display non-operating classification table. Show columns: Line Name, Value, Unit, Category, Source. Allow filtering/grouping by category and source. Use color coding or icons for different categories.
 
 #### 6.9: Invested Capital
-- [ ] TBD
+- [x] **Net Working Capital**: Updated formula to exclude "Total" and "Subtotal" line items to prevent double-counting.
+- [x] **Net Long Term Operating Assets**: Updated formula to exclude "Total" and "Subtotal" line items to prevent double-counting.
 
 #### 6.10: Adjusted Tax Rate
 - [ ] TBD
@@ -744,19 +745,43 @@ All calculations are performed for a specific document using the extracted balan
 #### 6.12: NOPAT and ROIC
 - [ ] TBD
 
-### Phase 7: Financial Modeling
+### Phase 7: UI Standardization and Refinement (Complete)
+
+#### 7.1: Button Logic & UI Interaction Standardization
+- [x] **Define and Implement Button State Rules**:
+  - **Initial State**: Buttons should load quickly but start in a `disabled` state if dependencies are not met.
+  - **Enable Condition**: Buttons become `enabled` only after specific conditions (e.g., file loaded, processing complete) are met.
+  - **Click Behavior**: Upon click, the button must significantly and immediately transition to a `disabled` state to prevent double-submissions.
+  - **Cross-Component Signaling**: Clicking a button should trigger disabling of other relevant buttons *immediately* via state push (e.g., using a global context or event), rather than waiting for valid polling or asynchronous status updates.
+  - **Re-enable Logic**: Buttons should re-enable via explicit "push" logic (e.g., completion event received) rather than relying solely on passive polling.
+- [x] **Documentation**: Updated `UI_UX_DESIGN.md` with these standardized button behavior guidelines.
+
+#### 7.2: Fine-Tuning UI Elements
+**General Tables & Views**:
+- [x] **Loading Optimization**: In the Document Detail View, ensure the **Raw Document (PDF Viewer)** loads *last* (or asynchronously without blocking) so the critical financial data/tables appear first.
+- [x] **Non-GAAP Reconciliation**: Remove the "Category" column from the table.
+- [x] **Table Headers**: Add "Time Period" as the first item in the header for: Shares Outstanding, Non-GAAP Reconciliation, Organic Growth, Non-Operating Classification, Historical Calculations.
+
+**Summary & Historical Calculations Section**:
+- [x] **Summary Table Metadata**: Added "Time Period", "Currency", and "Unit" fields to the Summary Table.
+- [x] **Dividers**: Adjusted dividers for better visual separation between detailed breakdowns and summary tables.
+- [x] **Titles**: Removed redundant table titles within the Historical Calculations section for cleaner UI.
+- [x] **Layout**: Moved "Adjusted Tax Rate" section to be below the Invested Capital/EBITA sections.
+- [x] **Design Compliance**: Audited Historical Calculations section for `UI_UX_DESIGN.md` compliance.
+
+### Phase 8: Financial Modeling
 - [ ] TBD
 
-### Phase 8: App-wide Analysis and Dashboard (right panel of the Top-level page)
+### Phase 9: App-wide Analysis and Dashboard (right panel of the Top-level page)
 - [ ] TBD
 
-### Phase 9: Refactor app to focus on company -> time period -> documents, enable incorporating other documents
+### Phase 10: Refactor app to focus on company -> time period -> documents, enable incorporating other documents
 - [ ] TBD
 
-### Phase 10: Get transcripts, news, and analyst repots to work to provide additional insights.
+### Phase 11: Get transcripts, news, and analyst repots to work to provide additional insights.
 - [ ] TBD
 
-### Phase 11: Get 10-K and 10-Q to provide additional details.
+### Phase 12: Get 10-K and 10-Q to provide additional details.
 - [ ] Other assets
 - [ ] Other liabilities
 - [ ] Organic growth, improved
@@ -764,52 +789,7 @@ All calculations are performed for a specific document using the extracted balan
 ## Next Steps
 
 ### Immediate Priorities
-
-#### 1. Button Logic & UI Interaction Standardization
-- [ ] **Define and Implement Button State Rules**:
-  - **Initial State**: Buttons should load quickly but start in a `disabled` state if dependencies are not met.
-  - **Enable Condition**: Buttons become `enabled` only after specific conditions (e.g., file loaded, processing complete) are met.
-  - **Click Behavior**: Upon click, the button must significantly and immediately transition to a `disabled` state to prevent double-submissions.
-  - **Cross-Component Signaling**: Clicking a button should trigger disabling of other relevant buttons *immediately* via state push (e.g., using a global context or event), rather than waiting for valid polling or asynchronous status updates.
-  - **Re-enable Logic**: Buttons should re-enable via explicit "push" logic (e.g., completion event received) rather than relying solely on passive polling.
-  - **Conformance**: If a requested feature conflicts with these rules, **STOP** and ask the user for guidance.
-- [x] **Documentation**: Update `UI_UX_DESIGN.md` with these standardized button behavior guidelines.
-
-#### 2. Fine-Tuning UI Elements ("Small UI Fixes")
-**General Tables & Views**:
-- [x] **Loading Optimization**: In the Document Detail View, ensure the **Raw Document (PDF Viewer)** loads *last* (or asynchronously without blocking) so the critical financial data/tables appear first.
-- [x] **Non-GAAP Reconciliation**: Remove the "Category" column from the table.
-- [x] **Table Headers**: Add "Time Period" as the first item in the header for the following tables (matching Balance Sheet style):
-  - Shares Outstanding
-  - Non-GAAP Reconciliation
-  - Organic Growth
-  - Non-Operating Classification
-  - Historical Calculations
-
-**Summary & Historical Calculations Section**:
-- [x] **Summary Table Metadata**: Add "Time Period", "Currency", and "Unit" fields to the Summary Table.
-- [x] **Dividers**:
-  - *Remove* the divider between the "Net Long Term Operating Assets" table and the final "Invested Capital" calculation.
-  - *Add* a divider between the "NOPAT & ROIC" table and the "Summary Table" to visually separate it from the Historical Calculation breakdown.
-- [x] **Titles**: Remove table titles for the following subsections under Historical Calculations (the section header is sufficient):
-  - Invested Capital
-  - Net Working Capital
-  - Net Long Term Operating Assets
-  - Adjusted Tax Rate
-  - EBITA
-  - NOPAT & ROIC
-- [x] **Layout**: Move "Adjusted Tax Rate" section to be below the Invested Capital/EBITA sections (check logical flow).
-- [x] **Design Compliance**: Audit the Historical Calculations section to ensure formatting strictly matches `UI_UX_DESIGN.md` guidelines.
-
-#### 3. Invested Capital Logic Fixes
-The current calculations for Invested Capital are incorrect. Implement the following logic in both Backend (Python) and Frontend (Display):
-
-- [x] **Net Working Capital**:
-  - **Formula**: `Sum(Current Assets where Type=Operating) - Sum(Current Liabilities where Type=Operating)`
-  - **Action**: Verify `app/routers/historical_calculations.py` (or relevant backend logic) and the frontend display logic.
-- [x] **Net Long Term Operating Assets**:
-  - **Formula**: `Sum(Non-Current Assets where Type=Operating) - Sum(Non-Current Liabilities where Type=Operating)`
-  - **Action**: Verify `app/routers/historical_calculations.py` (or relevant backend logic) and the frontend display logic.
+- [ ] (Awaiting User Input)
 
 ### Backlog / Future Enhancements
 - [ ] **Tagging System**: Replace "Type", "Category", and "Status" columns with a unified **Tagging System**.
@@ -821,116 +801,4 @@ The current calculations for Invested Capital are incorrect. Implement the follo
 
 For detailed UI/UX specifications and design guidance, see [UI_UX_DESIGN.md](UI_UX_DESIGN.md).
 
-## Clarifications and Notes
 
-### Chunk-Based Document Indexing
-
-**Current Implementation:**
-- Documents are split into 2-page chunks for embedding generation during indexing
-- Each chunk embedding is persisted to disk (`{document_id}_chunk_{index}_embedding.json`)
-- Chunk metadata is stored (`{document_id}_chunks_metadata.json`)
-- Extractors reuse persisted chunk embeddings instead of regenerating them
-- When extracting sections, extractors search chunks and include 1 page before/after the best match for context
-- Eliminates duplicate API calls and improves extraction performance
-
-**Benefits:**
-- More granular search: 2-page chunks provide better precision than document-level embeddings while maintaining context
-- Performance: Chunk embeddings generated once during indexing, reused during extraction
-- Efficiency: No duplicate embedding generation when re-running extractions
-- Scalability: Large documents are fully indexed across all chunks
-
-### Financial Statement Processing
-
-**Automatic Processing:**
-- Financial statement processing (balance sheet and income statement) is automatically triggered after document indexing completes
-- Processing runs sequentially: balance sheet first, then income statement (to avoid overwhelming Gemini API)
-- Only earnings announcements are processed (quarterly/annual filings not yet implemented)
-
-**Priority-Based Processing Queue:**
-- Global priority queue ensures sequential processing to prevent API overload
-- Upload step: Parallel (file I/O only, no API calls)
-- Classification & Indexing: Sequential via priority queue (priority 0 - highest priority)
-- Financial Statement Processing: Sequential via priority queue (priority 1 - lower priority)
-- High-priority tasks (classification/indexing) are always processed before lower-priority tasks (financial statements)
-- Queue processes: All classification/indexing tasks → All financial statement tasks (if eligible)
-- This ensures documents are indexed and searchable before intensive financial statement extraction begins
-
-**Real-Time Progress Tracking:**
-- Right panel displays real-time progress tracker when viewing a document
-- Milestones tracked:
-  - Balance sheet (extraction + classification)
-  - Income statement (extraction + classification)
-  - Extracting additional items (shares outstanding, amortization, organic growth, other assets, other liabilities)
-  - Classifying non-operating items
-- Status values: checking (default), pending (processing), in_progress, completed, error, not_found
-- Progress updates via polling mechanism (every 3 seconds)
-- Progress tracker shows first, financial statements load only when all milestones are terminal
-- Database state inference when in-memory progress is unavailable
-
-**Re-run Functionality:**
-- Single "Re-run Extraction and Classification" button in document detail view
-- Re-runs entire pipeline (balance sheet + income statement)
-- Immediately sets all milestones to pending and starts polling
-- Button disabled during processing to prevent duplicate runs
-- Clears financial statement data before re-running
-
-**Delete Functionality:**
-- "Delete Financial Statements" button: Removes all financial statement data for a document
-- "Delete Document" button: Permanently deletes document and all associated data (financial statements, embeddings, files)
-- Navigates user back to company document list after deletion
-
-**Balance Sheet Validation:**
-- Two-stage validation approach (see sections 5.5 and 5.6 for complete details)
-- Stage 1: Completeness check (validates chunk text BEFORE extraction) with retry across chunk ranks 1, 2, 3
-  - LLM checks if chunk text contains a complete consolidated balance sheet
-  - Only extracts if chunk is complete, avoiding wasted tokens on incomplete sections
-  - Post-processes to add standard names for key line items
-- Stage 2: Calculation validation (sum verification) with LLM feedback retry loop
-  - Validates sums (current assets, total assets, current liabilities, total liabilities, balance sheet equation)
-  - Uses precise regex-based matching to identify totals
-  - Handles long line item names with notes in parentheses (e.g., "Accounts receivable, net (including consumer financing receivables...)")
-  - Validation runs in frontend (not persisted) to avoid blocking on validation errors
-  - Precise total identification using whole-word matching
-  - Handles descriptive line items with long notes without false positives
-  - Comprehensive sum verification for assets, liabilities, and equity
-  - LLM feedback includes calculated differences for better error correction
-
-**Income Statement Validation:**
-- Two-stage validation approach (see sections 5.5 and 5.6 for complete details)
-- Stage 1: Completeness check (validates chunk text BEFORE extraction) with retry across chunks before/after/2 after balance sheet
-  - LLM checks if chunk text contains a complete consolidated income statement
-  - Only extracts if chunk is complete, avoiding wasted tokens on incomplete sections
-  - Avoids smaller informational tables that don't have complete information
-- Stage 2: Post-processing validation (final_diff logic) with LLM feedback retry loop
-  - Post-processes line items (normalize cost format, identify key items with standard names)
-  - Validates gross profit, operating income, and net income calculations during normalization
-  - Checks for empty line items and key items before validation
-  - LLM feedback includes calculated differences and cost normalization explanation for better error correction
-
-**API Rate Limiting and Throttling:**
-- Centralized Gemini API client with throttling (500ms-2s delays between calls)
-- Semaphore-based processing queue:
-  - Max 1 concurrent LLM call
-  - Max 3 concurrent embedding calls
-- Exponential backoff retry logic (2s initial, up to 30s max delay)
-- Enhanced rate limit error handling with longer backoff
-- Document-level pre-filtering for embedding searches to optimize API calls
-- Migration from `google.generativeai` to `google.genai` (new API)
-
-**Balance Sheet Classification:**
-- Authoritative lookup table with normalization for binding decisions
-- Fallback heuristics when no lookup match
-- LLM classification for remaining items
-- Normalization: trim, case-insensitive, collapse whitespace, remove leading/trailing punctuation
-- Standard names: Key balance sheet line items are renamed with standardized names (original names preserved in parentheses) for consistency and traceability
-
-**Unit Support:**
-- Balance sheets and income statements extract and display units (ones, thousands, millions, billions, or ten_thousands)
-- Units are extracted by LLM from document notes (e.g., "in millions", "in thousands")
-- Units are displayed in financial statement headers (to the right of Currency)
-- Additional items each have their own unit field (displayed in Unit column)
-- Historical calculations store and display units for monetary values (ratios/percentages show "—")
-- Capital Turnover is annualized: For quarterly statements (Q1-Q4), revenue is multiplied by 4 before calculating capital turnover to ensure comparability between quarterly and annual data
-- Units are persisted in database and displayed throughout the UI
-
-<!-- Add any clarifications, decisions, or notes here as the project evolves -->
