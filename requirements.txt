@@ -49,3 +49,6 @@ ruff>=0.1.15
 bandit>=1.7.8
 detect-secrets>=1.5.0
 
+playwright>=1.40.0
+pytest-playwright>=0.4.0
+requests>=2.31.0

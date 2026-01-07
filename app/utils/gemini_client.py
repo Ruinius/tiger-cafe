@@ -2,6 +2,7 @@
 Gemini API client with rate limiting, retry logic, throttling, and processing queue
 """
 
+import os
 import random
 import threading
 import time
@@ -9,6 +10,7 @@ from functools import wraps
 
 from google import genai
 
+from app.utils.mock_llm_responses import MOCK_EMBEDDING_RESPONSE, get_mock_response
 from config.config import DEFAULT_MODEL, EMBEDDING_MODEL, GEMINI_API_KEY, TEMPERATURE
 
 # Initialize Gemini client
@@ -131,6 +133,10 @@ def generate_embedding_safe(
     Returns:
         List of floats representing the embedding vector
     """
+    # Check for mock environment
+    if os.environ.get("MOCK_LLM_RESPONSES") == "true":
+        return MOCK_EMBEDDING_RESPONSE
+
     # Acquire semaphore to limit concurrent calls
     _embedding_semaphore.acquire()
     try:
@@ -187,6 +193,10 @@ def generate_content_safe(
     Returns:
         Generated text response
     """
+    # Check for mock environment
+    if os.environ.get("MOCK_LLM_RESPONSES") == "true":
+        return get_mock_response(prompt)
+
     # Acquire semaphore to limit concurrent calls
     _llm_semaphore.acquire()
     try:
