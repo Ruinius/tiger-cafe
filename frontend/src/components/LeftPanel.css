@@ -292,9 +292,7 @@
   background-color: var(--primary-dark);
 }
 
-.document-detail {
-  padding: 0.5rem 0;
-}
+
 
 .document-info {
   margin-top: 1rem;
@@ -316,6 +314,11 @@
   gap: 1rem;
   overflow-y: auto;
   flex: 1;
+  padding: 0.5rem 0;
+  padding-right: 0.5rem;
+  /* Space between content and scrollbar */
+  margin-right: -0.5rem;
+  /* Pull scrollbar to edge to align with visual harmony, optional, but let's just use padding first */
 }
 
 .info-section {
@@ -501,8 +504,13 @@
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .duplicate-action {

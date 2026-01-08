@@ -1715,9 +1715,20 @@ function RightPanel({ selectedCompany, selectedDocument }) {
       },
       {
         label: 'ROIC',
-        render: (entry) => formatPercent(entry.roic, 100),
+        render: (entry) => {
+          const val = entry.roic
+          if (val === null || val === undefined) return 'N/A'
+          if (val < 0) return 'negative'
+          if (val > 1) return '>100%'
+          return formatPercent(val, 100)
+        },
         stats: calculateStats(e => e.roic),
-        formatStats: (val) => formatPercent(val, 100)
+        formatStats: (val) => {
+          if (val === null || val === undefined) return 'N/A'
+          if (val < 0) return 'negative'
+          if (val > 1) return '>100%'
+          return formatPercent(val, 100)
+        }
       },
       {
         label: 'Organic Revenue Growth',
@@ -1736,7 +1747,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
     return (
       <div className="right-panel">
         <div className="panel-content">
-          <h2>{selectedCompany.name} Analysis</h2>
+          <h2>{selectedCompany.name} Financial Analysis</h2>
           <div className="company-analysis">
             {companyHistoricalLoading && (
               <p className="placeholder-text">Loading historical calculations...</p>
@@ -1746,9 +1757,9 @@ function RightPanel({ selectedCompany, selectedDocument }) {
             )}
             {!companyHistoricalLoading && !companyHistoricalError && hasCompanyData && (
               <>
+                <h3>Historical Data</h3>
                 <div className="balance-sheet-container">
                   <div className="balance-sheet-header">
-                    <h3>Historical Calculations</h3>
                     <div className="balance-sheet-meta">
                       <span>
                         <strong>Currency:</strong> {companyHistoricalCalculations?.currency || 'N/A'}
@@ -1769,7 +1780,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                           {timePeriods.map((period) => (
                             <th key={period} className="text-right">{period}</th>
                           ))}
-                          <th className="text-right" style={{ borderLeft: '2px solid var(--border)' }}>Average</th>
+                          <th className="text-right" style={{ borderLeft: '1px solid var(--border)' }}>Average</th>
                           <th className="text-right">Median</th>
                         </tr>
                       </thead>
@@ -1782,7 +1793,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                 {row.render(entry)}
                               </td>
                             ))}
-                            <td className="text-right" style={{ borderLeft: '2px solid var(--border)', fontWeight: 500 }}>
+                            <td className="text-right" style={{ borderLeft: '1px solid var(--border)', fontWeight: 500 }}>
                               {row.formatStats(row.stats.average)}
                             </td>
                             <td className="text-right" style={{ fontWeight: 500 }}>

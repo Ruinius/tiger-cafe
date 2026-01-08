@@ -120,7 +120,6 @@ def calculate_dcf(historical_entries: list, assumptions: dict) -> dict:
 
         # 3. Invested Capital
         # Delta IC = Delta Revenue / Marginal Capital Turnover
-        # (Based on User input: Turnover = Rev/IC, so Delta IC = Delta Rev / MCT)
         if mct != 0:
             delta_ic = delta_revenue / mct
         else:
@@ -152,57 +151,11 @@ def calculate_dcf(historical_entries: list, assumptions: dict) -> dict:
             }
         )
 
-    # Prepare base year data (Year 0)
-    # Revenue, EBITA, NOPAT need to be derived from latest_entry or consistent with start_revenue
-    # start_revenue is already prepared (annualized if needed)
-
-    # We need EBITA and NOPAT for Year 0 to display complete column
-    # Use latest entry's actuals if available, or derive from margin?
-    # Ideally reuse logic from historical_calculations aggregator, but we only have latest_entry dict here.
-    # Latest entry has 'ebita', 'nopat', 'invested_capital'?
-
-    base_ebita = latest_entry.get("ebita")
-    if base_ebita is None:
-        # Fallback: estimate using latest margin?
-        # But we don't have a "latest margin" assumption, we have Stage 1 assumption.
-        # Let's derive from available revenue if possible, or leave None
-        base_ebita = Decimal(0)
-    else:
-        base_ebita = Decimal(str(base_ebita))
-        if is_quarterly:
-            base_ebita *= 4  # Annualize if needed
-
-    base_nopat = latest_entry.get("nopat")
-    if base_nopat is None:
-        # Fallback
-        base_nopat = base_ebita * (1 - tax_rate)
-    else:
-        base_nopat = Decimal(str(base_nopat))
-        if is_quarterly:
-            base_nopat *= 4
-
-    # Calculate base ROIC
-    base_roic = 0
-    if start_invested_capital and start_invested_capital != 0:
-        base_roic = base_nopat / start_invested_capital
-
-    base_year_data = {
-        "year": "Base",  # or 0
-        "revenue": start_revenue,
-        "growth_rate": None,  # Growth from previous year not calculated here
-        "ebita": base_ebita,
-        "nopat": base_nopat,
-        "invested_capital": start_invested_capital,
-        "roic": base_roic,
-        "fcf": None,  # FCF for base year usually not relevant for DCF sum
-        "discount_factor": None,
-        "pv_fcf": None,
-    }
-
-    # Terminal Value Calculation
-    # User Request:
-    # 1. Delta IC = Delta Revenue / MCT
-    # 2. FCF = NOPAT - Delta IC
+    # Terminal Value
+    # Using formula: TV = NOPAT_t+1 * (1 - g/ROIC) / (WACC - g)
+    # Or simpler perpetuity growth: TV = FCF_t+1 / (WACC - g)
+    # But user asked for "more robust formula including ROIC" -> Value Driver Formula
+    # TV = (NOPAT_t+1 * (1 - g/ROIC_new)) / (WACC - g)
 
     # Terminal Year Assumptions
     g_terminal = get_assumption("revenue_growth_terminal")
@@ -213,67 +166,54 @@ def calculate_dcf(historical_entries: list, assumptions: dict) -> dict:
     else:
         mct_terminal = Decimal(str(mct_terminal))
 
-    # Year 11 (Terminal Year) Values
-    revenue_terminal = current_revenue * (1 + g_terminal)
-    ebita_terminal = revenue_terminal * margin_terminal
-    nopat_terminal = ebita_terminal * (1 - tax_rate)
+    # Year 11 values
+    revenue_terminal_year = current_revenue * (1 + g_terminal)
+    ebita_terminal_year = revenue_terminal_year * margin_terminal
+    nopat_terminal_year = ebita_terminal_year * (1 - tax_rate)
 
-    # Marginal ROIC (RONIC)
-    # RONIC = Margin * (1 - Tax) * MCT (Turnover)
+    # Implied ROIC on new capital in terminal phase = Marginal Capital Turnover * Margin * (1-Tax) / Growth?
+    # Actually ROIC = NOPAT / Invested Capital.
+    # Marginal ROIC = Delta NOPAT / Delta IC ?
+    # Let's use the explicit ROIC from the model?
+    # Or simply:
+    # Investment Rate = g / ROIC
+    # FCF = NOPAT * (1 - Investment Rate) = NOPAT * (1 - g/ROIC)
+
+    # We can calculate ROIC from the assumptions:
+    # ROIC = NOPAT / IC.
+    # In terminal state, ROIC should converge.
+    # Let's use the ROIC from year 10 as the terminal ROIC?
+    # Or calculate it implied by Marginal Capital Turnover?
+    # New Capital = Delta Revenue / MCT
+    # Return on New Capital = (Delta Revenue * Margin * (1-Tax)) / (Delta Revenue / MCT)
+    # = Margin * (1-Tax) * MCT
+
     ronic = margin_terminal * (1 - tax_rate) * mct_terminal
 
-    # Reinvestment Rate Calculation
-    # Formula: reinvestment_rate = terminal_g / (terminal_ebita_margin * (1 - tax_rate) * terminal_capital_turnover)
-    # This matches exactly with IR = g / RONIC
-    if ronic != 0:
-        reinvestment_rate = g_terminal / ronic
+    if ronic == 0:
+        investment_rate = 0
     else:
-        reinvestment_rate = 0
+        investment_rate = g_terminal / ronic
 
-    # Terminal FCF using Value Driver Formula logic
-    # Formula: fcf = nopat * (1 - reinvestment_rate)
-    fcf_terminal = nopat_terminal * (1 - reinvestment_rate)
+    fcf_terminal_year = nopat_terminal_year * (1 - investment_rate)
 
-    # Calculate Terminal Invested Capital for display
-    # If we assume FCF = NOPAT - Net Investment, then Net Investment = NOPAT * IR
-    net_investment_terminal = nopat_terminal * reinvestment_rate
-    invested_capital_terminal = current_invested_capital + net_investment_terminal
-
-    # ROIC for Terminal Year display (Average ROIC)
-    roic_terminal = nopat_terminal / invested_capital_terminal if invested_capital_terminal else 0
-
-    # Terminal Value (at end of Year 10)
-    # User Formula: terminal_value = (nopat * (1 + terminal_g) * (1 - reinvestment_rate)) / (wacc - terminal_g)
-    # nopat_terminal is already (nopat_10 * (1+g)), so we just use nopat_terminal.
+    # Terminal Value at end of Year 10
     if (wacc - g_terminal) == 0:
-        terminal_value = 0
+        terminal_value = 0  # Avoid div by zero
     else:
-        terminal_value = fcf_terminal / (wacc - g_terminal)
+        terminal_value = fcf_terminal_year / (wacc - g_terminal)
 
-    # Discount Factor for Terminal Value (Year 10 end)
-    # Applying mid-year convention to align with Year 10 cash flow timing (9.5 years)
-    discount_factor_tv = 1 / ((1 + wacc) ** (Decimal(years_to_project) - Decimal("0.5")))
-
-    # PV of Terminal Value
+    # Discount Terminal Value to PV
+    # Discount factor for end of year 10 (not mid-year for TV usually, but let's be consistent with cash flow timing)
+    # Usually TV is at end of year 10.
+    discount_factor_tv = 1 / ((1 + wacc) ** Decimal(years_to_project))
     pv_terminal_value = terminal_value * discount_factor_tv
 
     sum_pv_fcf = sum(p["pv_fcf"] for p in projections)
     enterprise_value = sum_pv_fcf + pv_terminal_value
 
     return {
-        "base_year": base_year_data,
         "projections": projections,
-        "terminal_column": {
-            "revenue": revenue_terminal,
-            "growth_rate": g_terminal,
-            "ebita": ebita_terminal,
-            "nopat": nopat_terminal,
-            "invested_capital": invested_capital_terminal,
-            "roic": roic_terminal,
-            "fcf": terminal_value,
-            "discount_factor": discount_factor_tv,
-            "pv_fcf": pv_terminal_value,
-        },
         "terminal_value": terminal_value,
         "pv_terminal_value": pv_terminal_value,
         "enterprise_value": enterprise_value,

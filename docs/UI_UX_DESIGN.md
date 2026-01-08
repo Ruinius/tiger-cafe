@@ -43,15 +43,51 @@
 - **Padding**: Panels (24-32px), Cards (16-24px), Items (12px).
 - **Gap**: Consistently use `gap-2` (8px), `gap-4` (16px), `gap-6` (24px).
 
-## Table Design Specs
-- **Container**: Surface color, 12px radius, shadow-sm, 1px border.
-- **Rows**: Spacious (`48px` height), `border-bottom` using `var(--border-subtle)` (no high contrast lines).
-- **Metadata Header**: Display *Time Period*, *Currency*, and *Units* clearly above the grid (muted style).
-- **Column Structure**:
-  1. **Line Item**: Left-aligned. Weight 500 (Medium).
-  2. **Category**: Left-aligned. Muted/Secondary text color.
-  3. **Amount**: **Right-aligned**. Weight 500. Tabular nums.
-  4. **Type**: **Right-aligned**. Use **Status Pills** (Pill shape, capitalized, distinct colors for Operating/Non-Op).
+## Table Design ("The Gold Standard")
+*Reference Implementation: Document View (RightPanel)*
+
+- **Container Card**:
+  - **Background**: Surface color (`#FFFFFF` / `#1B1E24`).
+  - **Border**: `1px solid var(--border)`.
+  - **Radius**: `12px` (Medium).
+  - **Shadow**: Soft, layered (`0 1px 3px rgba(0,0,0,0.05)`).
+  - **Overflow**: Hidden (clips child content).
+
+- **Header (Thead)**:
+  - **Background**: `var(--bg-primary)` (Subtle contrast to surface).
+  - **Border**: Bottom `1px solid var(--border)`.
+  - **Text**: Uppercase, `0.75rem`, weight `600`, tracking `0.05em`.
+  - **Color**: `var(--text-secondary)` (Muted).
+  - **Padding**: `1rem 1.5rem` (Generous horizontal padding).
+
+- **Rows (Tr)**:
+  - **Height**: Fixed `48px` minimum for touch targets and breathability.
+  - **Border**: Bottom `1px solid var(--border-subtle)` (Very faint).
+  - **Hover**: Transitions to `var(--bg-primary)`.
+  - **"Key Total" Rows**:
+    - **Backround**: `var(--bg-primary)`.
+    - **Borders**: Top and Bottom `1px solid var(--border)`.
+    - **Font**: Weight `600` (Semi-bold).
+
+- **Cells (Td)**:
+  - **Padding**: `0.75rem 1.5rem`.
+  - **Alignment**:
+    - **Text**: Left.
+    - **Numbers**: Right (`font-variant-numeric: tabular-nums`).
+  - **Type/Status**: Right-aligned pills.
+
+- **Badges & Pills**:
+  - **Shape**: Full pill (`border-radius: 9999px`).
+  - **Typography**: `0.75rem`, weight `600`, tracking `0.025em`.
+  - **Operating**: Green (Emerald) background (10% opacity) + Text.
+  - **Non-Operating**: Amber background (10% opacity) + Text.
+  - **Void/Null**: Simple muted dash "—".
+
+## Spacing & Layout Structure
+- **Global Panel Padding**: `2rem` (vertical) `2.5rem` (horizontal).
+- **Section Spacing**: `gap: 2.5rem` between major extractions.
+- **Header Spacing**: Bottom margin `2rem` for main titles.
+- **Metadata**: Displayed in a flex row above tables, `0.875rem`, `text-secondary`.
 
 ## Workflow Reference
 For functional specs and user flows, see `docs/PRODUCT_SPECS.md`.

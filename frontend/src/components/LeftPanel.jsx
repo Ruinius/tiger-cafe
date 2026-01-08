@@ -438,7 +438,10 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
     }
 
     // Only start polling if there are active uploads or we're showing the progress view
-    const hasActiveUploads = uploadingDocuments.length > 0
+    const hasActiveUploads = uploadingDocuments.some(doc => {
+      const status = doc.indexing_status?.toLowerCase()
+      return status !== 'indexed' && status !== 'error'
+    })
     const shouldPoll = hasActiveUploads || showUploadProgress
 
     if (shouldPoll) {
@@ -1308,7 +1311,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
             {(pdfUrl || selectedDocument?.indexing_status === 'indexed' || selectedDocument?.indexing_status === 'INDEXED') && (
               <div className="info-section raw-document-section">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <h3>Document</h3>
+                  <h3 style={{ marginBottom: 0 }}>Document</h3>
                   {documentChunks && documentChunks.chunks && documentChunks.chunks.length > 0 && (
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <button

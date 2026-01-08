@@ -35,19 +35,19 @@ The system currently supports:
 ## Active Roadmap
 
 ### Phase 8: Financial Modeling
-- [ ] Fix the company level historical table to give insights
+- [x] Fix the company level historical table to give insights
   1. Add the missing fields, so the company level table looks like the one in the document-level Summary Table
   2. Add averages and medians
   3. Add YOY marginal capital turnover
 
-- [ ] Add changeable assumptions
+- [x] Add changeable assumptions
   1. Organic revenue growth, allow for first 5 years (default recent average growth), second 5 years (default between first 5 years and terminal), and then terminal growth (default 3%)
   2. EBITA margin, allowing for first 5 years, second 5 years, and then terminal. All defaulting to recent averages
   3. Marginal capital turnover, allowing for first 5 years, second 5 years, and then terminal. All defaulting to average Capital Turnover, Annualized
   4. Adjusted tax rate, single number. Defaulting to recent averages
   5. WACC, single number. Defaulting to 8%
 
-- [ ] Add calculations
+- [x] Add calculations
   1. Revenue, based on growth assumption. Starting value is recent FY or Quarterly annualized.
   2. EBITA and NOPAT, calculated
   3. Invested Capital, calculated using marginal capital turnover. Starting point is average of recent four values
@@ -59,7 +59,28 @@ The system currently supports:
   11. Fair value per share (DO NOT CODE)
   12. Compare with latest share price, pull from Yahoo Finance API
 
-- [ ] Add UI elements on the company-level page
+- [x] Add UI elements on the company-level page
+
+- [ ] Minor UI edits for the right panel in company view - DO NOT CHECK COMPLETE AS I WILL ADD MORE
+  1. The top level title should change from "{company} Analysis" to {company} Financial Analysis"
+  2. Change "Historical Calculations" to "Historical Data"
+  3. Move Currency, Unit, and the short blurb to right under "Historical Data" (should look just like Balance Sheet in the document view)
+  4. Remove the title "Financial Modeling"
+  5. Move "Assumptions" outside the container to serve as title. Fix the spacing between title and the container (should look just like Balance Sheet in document view)
+  6. Add dividers between "Revenue Growth", "EBITA Margin", Marginal Capital Turnover", and "Other" sections
+  7. Rename "Revenue Growth" to "Organic Revenue Growth"
+  8. Rename "Tax Rate" to "Operating Tax Rate"
+  9. Fix the coloring of "Recalculate Model" and rename it to "Re-run Valuation"
+  10. Rename "DCF Projections" to "Discounted Cash Flow Model." Fix the spacing between title and the container (should look just like Balance Sheet in document view)
+  11. Add a column after column 10 called "Terminal" and fill it with the correct data. The FCF should be Terminal Value and PV of FCF should be PV of Terminal Value
+  12. Rename "PV of FCF" to "Present Value"
+  13. Rename "Valuation" to "Intrinsic Value" Fix the spacing between title and the container (should look just like Balance Sheet in document view)
+  14. In each of the assumption cells, remove the ugly up or down buttons
+  15. Fix the number formatting for the numbers in the assumption cells
+  16. Remove the code that recalculates every time I change one small assumption and only recalculate when I hit the Re-run button
+  17. This may require backend changes as well. The Terminal column should be treated just like any other annual column until the FCF row. Then FCF row should use the above numbers to calculate the Terminal value. Then the discount factor should be filled as well. Then the Present Value uses the Terminal Value and discount factor to calculate. Look at the function formula for how to calculate Terminal value or which discount factor to use.
+  18. For the Company Financial Analysis page, for the ROIC value, for frontend purposes, if the number is negative, then just show "negative" if the number is positive but >100%, then just show ">100%"
+
 
 ### Phase 9: App-wide Analysis and Dashboard (right panel of the Top-level page)
 - [ ] TBD

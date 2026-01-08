@@ -28,12 +28,16 @@
   /* Increased gap */
 }
 
-.document-extractions h3 {
+
+.panel-content h3,
+.document-extractions h3,
+.model-results h3 {
   font-family: 'Inter', sans-serif;
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 1.25rem;
+  margin-top: 2rem;
   letter-spacing: -0.015em;
 }
 
@@ -138,13 +142,25 @@
 }
 
 .balance-sheet-table th {
-  padding: 1rem 1.5rem;
+  padding: 0.75rem 1.5rem;
   text-align: left;
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
+  font-size: 0.75rem;
   letter-spacing: 0.05em;
   color: var(--text-secondary);
+}
+
+.balance-sheet-table th:last-child {
+  width: 15%;
+}
+
+.balance-sheet-table th:nth-last-child(2) {
+  width: 10%;
+}
+
+.balance-sheet-table th:nth-last-child(3) {
+  width: 20%;
 }
 
 .balance-sheet-table th.text-right {
@@ -199,8 +215,8 @@
 /* Key Total Rows (e.g. Total Assets) */
 .balance-sheet-table tbody tr.key-total-row {
   background-color: var(--bg-primary);
-  border-top: 2px solid var(--border);
-  border-bottom: 2px solid var(--border);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   font-weight: 600;
 }
 
