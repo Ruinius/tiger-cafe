@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { useAuth } from '../../contexts/AuthContext'
-import FinancialModel from '../FinancialModel'
+import FinancialModel from './FinancialModel'
 
 const API_BASE_URL = 'http://localhost:8000/api'
 

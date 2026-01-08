@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import axios from 'axios'
 import { useAuth } from '../contexts/AuthContext'
-import LineItemTable from './LineItemTable'
-import OrganicGrowthTable from './OrganicGrowthTable'
-import StandardizedBreakdownTable from './StandardizedBreakdownTable'
-import SharesOutstandingTable from './SharesOutstandingTable'
-import FinancialModel from './FinancialModel'
+import LineItemTable from './common/LineItemTable'
+import OrganicGrowthTable from './common/OrganicGrowthTable'
+import StandardizedBreakdownTable from './common/StandardizedBreakdownTable'
+import SharesOutstandingTable from './common/SharesOutstandingTable'
 import CompanyAnalysisView from './analysis/CompanyAnalysisView'
 import DocumentExtractionView from './analysis/DocumentExtractionView'
+import WelcomeView from './dashboard/WelcomeView'
 import './RightPanel.css'
 
 function RightPanel({ selectedCompany, selectedDocument }) {
@@ -1621,18 +1621,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
     return <CompanyAnalysisView selectedCompany={selectedCompany} />
   }
 
-  return (
-    <div className="right-panel">
-      <div className="panel-content">
-        <h2>Latest Analyses</h2>
-        <div className="home-content">
-          <p className="placeholder-text">
-            Latest completed company analyses will be displayed here.
-          </p>
-        </div>
-      </div>
-    </div>
-  )
+  return <WelcomeView />
 }
 
 export default RightPanel
