@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import SplitScreen from '../components/SplitScreen'
@@ -21,36 +21,36 @@ function Dashboard() {
     localStorage.setItem('tiger-cafe-split-ratio', splitRatio.toString())
   }, [splitRatio])
 
-  const handleSplitChange = (newRatio) => {
+  const handleSplitChange = useCallback((newRatio) => {
     setSplitRatio(newRatio)
-  }
+  }, [])
 
-  const handleCompanySelect = (company) => {
+  const handleCompanySelect = useCallback((company) => {
     setSelectedCompany(company)
     setSelectedDocument(null)
-  }
+  }, [])
 
-  const handleDocumentSelect = (document) => {
+  const handleDocumentSelect = useCallback((document) => {
     setSelectedDocument(document)
-  }
+  }, [])
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     if (selectedDocument) {
       setSelectedDocument(null)
     } else if (selectedCompany) {
       setSelectedCompany(null)
     }
-  }
+  }, [selectedDocument, selectedCompany])
 
-  const handleUploadSuccess = (newDocument) => {
+  const handleUploadSuccess = useCallback((newDocument) => {
     // Refresh the view - could trigger a reload of companies/documents
     // This will be handled by LeftPanel's refresh
-  }
+  }, [])
 
   return (
     <div className="dashboard">
-      <Header 
-        user={user} 
+      <Header
+        user={user}
         onLogout={logout}
         theme={theme}
         onThemeToggle={toggleTheme}

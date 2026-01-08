@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import axios from 'axios'
 import { useAuth } from '../contexts/AuthContext'
+import { useUpload } from '../contexts/UploadContext'
 import UploadModal from './UploadModal'
 import './LeftPanel.css'
 
@@ -12,12 +13,12 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
-  const [showUploadProgress, setShowUploadProgress] = useState(false)
-  const [uploadingDocuments, setUploadingDocuments] = useState([])
   const [isUploading, setIsUploading] = useState(false) // Track upload state to disable button immediately
   const [pdfUrl, setPdfUrl] = useState(null)
   const pdfUrlRef = useRef(null)
-  const progressIntervalRef = useRef(null)
+
+  // Use Upload Context
+  const { uploadingDocuments, showUploadProgress, setShowUploadProgress, loadUploadProgress } = useUpload()
   const [isProcessing, setIsProcessing] = useState(false)
   const [isCheckingProcessingStatus, setIsCheckingProcessingStatus] = useState(true) // Default to true to disable buttons until status is checked
   const [hasFinancialStatements, setHasFinancialStatements] = useState(false)
@@ -71,44 +72,28 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
     }
   }, [])
 
-  const loadUploadProgress = useCallback(async () => {
-    try {
-      const endpoint = isAuthenticated ? 'upload-progress' : 'upload-progress-test'
-      const response = await axios.get(`${API_BASE_URL}/documents/${endpoint}`, {
-        headers: isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+  // Handle navigation when uploads finish
+  useEffect(() => {
+    const allFinished = uploadingDocuments.length === 0 ||
+      uploadingDocuments.every(doc => {
+        const status = doc.indexing_status?.toLowerCase()
+        return status === 'indexed' || status === 'error'
       })
-      setUploadingDocuments(response.data)
 
-      // Check if all documents have finished indexing (no active uploads/processing)
-      const allFinished = response.data.length === 0 ||
-        response.data.every(doc => {
-          const status = doc.indexing_status?.toLowerCase()
-          return status === 'indexed' || status === 'error'
-        })
-
-      // If all documents finished and we're showing progress, automatically redirect
-      if (allFinished && showUploadProgress) {
-        // Stop polling since all uploads are done
-        if (progressIntervalRef.current) {
-          clearInterval(progressIntervalRef.current)
-          progressIntervalRef.current = null
+    // If all documents finished and we're showing progress, automatically redirect
+    if (allFinished && showUploadProgress) {
+      setShowUploadProgress(false)
+      // Clear any selected company/document to ensure we're on companies list
+      if (selectedCompany || selectedDocument) {
+        onBack()
+        // If we had a selected document, we need to go back twice (document -> company -> companies)
+        if (selectedDocument && selectedCompany) {
+          setTimeout(() => onBack(), 100)
         }
-
-        setShowUploadProgress(false)
-        // Clear any selected company/document to ensure we're on companies list
-        if (selectedCompany || selectedDocument) {
-          onBack()
-          // If we had a selected document, we need to go back twice (document -> company -> companies)
-          if (selectedDocument && selectedCompany) {
-            setTimeout(() => onBack(), 100)
-          }
-        }
-        loadCompanies() // Refresh companies list
       }
-    } catch (error) {
-      console.error('Error loading upload progress:', error)
+      loadCompanies() // Refresh companies list
     }
-  }, [isAuthenticated, token, showUploadProgress, selectedCompany, selectedDocument, onBack])
+  }, [uploadingDocuments, showUploadProgress, selectedCompany, selectedDocument, onBack])
 
   // Check if financial statements exist for the selected document
   const checkFinancialStatements = useCallback(async (documentId) => {
@@ -425,39 +410,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
 
   useEffect(() => {
     loadCompanies()
-    // Initial load of upload progress
-    loadUploadProgress()
-  }, [loadUploadProgress])
-
-  // Poll for upload progress only when there are active uploads or when showing progress
-  useEffect(() => {
-    // Clear any existing interval
-    if (progressIntervalRef.current) {
-      clearInterval(progressIntervalRef.current)
-      progressIntervalRef.current = null
-    }
-
-    // Only start polling if there are active uploads or we're showing the progress view
-    const hasActiveUploads = uploadingDocuments.some(doc => {
-      const status = doc.indexing_status?.toLowerCase()
-      return status !== 'indexed' && status !== 'error'
-    })
-    const shouldPoll = hasActiveUploads || showUploadProgress
-
-    if (shouldPoll) {
-      // Poll every 3 seconds (reduced frequency from 2 seconds)
-      progressIntervalRef.current = setInterval(() => {
-        loadUploadProgress()
-      }, 3000)
-    }
-
-    return () => {
-      if (progressIntervalRef.current) {
-        clearInterval(progressIntervalRef.current)
-        progressIntervalRef.current = null
-      }
-    }
-  }, [uploadingDocuments.length, showUploadProgress, loadUploadProgress])
+  }, [])
 
   useEffect(() => {
     if (selectedCompany) {
