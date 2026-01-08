@@ -21,7 +21,7 @@ Build AI agents that can analyze equity investments using principles from Tim Ko
 - [ ] **UI Interactivity**: Implementation capability to change "Category" and "Type" directly in the UI.
 - [ ] Explore using small specialized embedding / encoder models to replace the AUTHORITATIVE_LOOKUP and the classify using LLM
 
-## Current Status (Phases 1-9 Complete)
+## Current Status (Phases 1-8 Complete)
 *See `docs/COMPLETED_TASKS.md` for detailed history.*
 
 The system currently supports:
@@ -35,11 +35,9 @@ The system currently supports:
 
 ## Active Roadmap
 
-### ✅ Phase 8: Financial Modeling (COMPLETE)
-All tasks completed. See `docs/COMPLETED_TASKS.md` for details.
-
-### ✅ Phase 9: Frontend Refactor & Code Organization (COMPLETE)
-All tasks completed. See `docs/COMPLETED_TASKS.md` and `docs/REFACTOR_PLAN.md` for details.
+### Phase 9: Financial Modeling (COMPLETE)
+Partially completed. See `docs/COMPLETED_TASKS.md` for completed tasks
+- [ ] More tasks to be defined
 
 ### Phase 10: App-wide Analysis and Dashboard
 - [ ] Latest completed analyses on home page

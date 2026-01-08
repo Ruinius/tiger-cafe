@@ -72,9 +72,16 @@ This approach optimizes processing costs and focuses detailed extraction on docu
 ### Frontend (React + Vite)
 
 - **Entry point:** `frontend/src/`
-- **Pages:** `frontend/src/pages/`
-- **Components:** `frontend/src/components/`
+- **Pages:** `frontend/src/pages/` (`Dashboard.jsx` as main layout)
 - **Global state:** `frontend/src/contexts/`
+  - `AuthContext`: User session management
+  - `UploadContext`: Global upload progress and polling
+- **Components:** `frontend/src/components/`
+  - `navigation/`: Sidebars, lists (`CompanyList`, `DocumentList`)
+  - `documents/`: PDF viewing, upload controls (`PdfViewer`, `UploadProgress`)
+  - `analysis/`: Financial tables, models (`CompanyAnalysisView`, `FinancialModel`)
+  - `dashboard/`: Top-level views (`WelcomeView`)
+  - `common/`: Reusable UI elements (`LineItemTable`, etc.)
 
 ## Core Workflows
 
@@ -141,7 +148,23 @@ Triggered automatically after extraction milestones:
     - **Performance**: NOPAT and ROIC (annualized).
 4.  **Persistence**: Results saved to `historical_calculations` table.
 
-### 4) Analysis & Reporting
+### 4) Financial Modeling (DCF Valuation)
+
+1.  **Assumptions Management**:
+    - Users input 3-stage growth assumptions (Revenue, Margins, Turnover) via UI.
+    - Assumptions are stored in `financial_assumptions` table.
+2.  **Projections Engine**:
+    - Generates 10-year forecasts for P&L and Balance Sheet (Invested Capital).
+    - Calculates Free Cash Flow (FCF) for each projected year.
+3.  **Terminal Value**:
+    - Uses Value Driver Formula: `NOPAT * (1 - g/RONIC) / (WACC - g)`.
+    - Handles transition from explicit forecast period to steady state.
+4.  **Valuation**:
+    - Discounts FCF and Terminal Value using WACC (mid-year convention).
+    - Sums PVs to derive Company Intrinsic Value.
+    - Compares against Shares Outstanding for per-share value.
+
+### 5) Analysis & Reporting
 
 1. Metrics are derived from extracted statements.
 2. Analysis results are stored in `analysis_results`.

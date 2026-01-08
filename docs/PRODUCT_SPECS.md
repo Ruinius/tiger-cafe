@@ -194,3 +194,36 @@ The application automatically computes and displays the following based on extra
 ### 5. Summary Table
 - Aggregates key metrics across all available time periods.
 - Includes: Revenue, Growth, EBITA, Margins, Tax Rates, Capital Turnover, ROIC, and Diluted Shares.
+
+## Financial Modeling & Valuation (DCF)
+
+The application provides an interactive Discounted Cash Flow (DCF) model for each company.
+
+### 1. Assumptions Framework
+Users can modify key assumptions to drive the valuation model.
+- **Organic Revenue Growth**: 3-stage input (Years 1-5, Years 6-10, Terminal Rate).
+- **EBITA Margin**: 3-stage input (Years 1-5, Years 6-10, Terminal Rate).
+- **Marginal Capital Turnover**: 3-stage input (Years 1-5, Years 6-10, Terminal Rate).
+- **Operating Tax Rate**: Single inputs for projected tax rate.
+- **WACC**: Weighted Average Cost of Capital (default 8%).
+- **Defaults**: System auto-populates defaults based on historical averages (Recent 4 years/quarters).
+
+### 2. Projections Engine (10-Year Forecast)
+The model generates a 10-year forecast based on the inputs:
+- **Revenue**: Projected using growth rates off the Base Year.
+- **EBITA**: Projected using Margin * Revenue.
+- **NOPAT**: EBITA * (1 - Tax Rate).
+- **Invested Capital**: Projected using the Marginal Capital Turnover ratio (Delta Revenue / MCT).
+- **Free Cash Flow (FCF)**: NOPAT - Increase in Invested Capital.
+
+### 3. Terminal Value
+Calculated using the **Value Driver Formula** to ensure consistency between growth and ROIC:
+- Formula: `Terminal Value = NOPAT_terminal * (1 - g / RONIC) / (WACC - g)`
+- **g**: Terminal Growth Rate
+- **RONIC**: Return on New Invested Capital (implies marginal efficiency in perpetuity)
+
+### 4. Valuation Output
+- **Enterprise Value**: Sum of PV of implicit forecast period FCFs + PV of Terminal Value.
+- **Discounting**: Uses **Mid-Year Convention** for cash flows.
+- **Intrinsic Value**: Enterprise Value + Non-Operating Assets - Debt (simplified in current phase).
+- **Interactive UI**: "Re-run Valuation" button triggers server-side recalculation using preserved assumptions.

@@ -83,6 +83,26 @@ Stores calculated metrics for companies.
 - `source_document_id` (String, Foreign Key → `documents.id`, Nullable): Source document
 - `calculated_at` (DateTime): Calculation timestamp
 
+### `financial_assumptions`
+Stores user-defined assumptions for financial modeling (DCF).
+
+- `id` (String, Primary Key): Unique identifier
+- `company_id` (String, Foreign Key → `companies.id`, Indexed, Unique): Associated company
+- `revenue_growth_stage1` (Numeric 10,4): Revenue growth rate for years 1-5
+- `revenue_growth_stage2` (Numeric 10,4): Revenue growth rate for years 6-10
+- `revenue_growth_terminal` (Numeric 10,4): Terminal revenue growth rate
+- `ebita_margin_stage1` (Numeric 10,4): EBITA margin for years 1-5
+- `ebita_margin_stage2` (Numeric 10,4): EBITA margin for years 6-10
+- `ebita_margin_terminal` (Numeric 10,4): Terminal EBITA margin
+- `marginal_capital_turnover_stage1` (Numeric 10,4): MCT for years 1-5
+- `marginal_capital_turnover_stage2` (Numeric 10,4): MCT for years 6-10
+- `marginal_capital_turnover_terminal` (Numeric 10,4): Terminal MCT
+- `adjusted_tax_rate` (Numeric 10,4): Projected tax rate
+- `wacc` (Numeric 10,4): Weighted Average Cost of Capital
+
+**Relationships:**
+- One-to-one with `companies`
+
 ### `analysis_results`
 Stores analysis results (valuation, sensitivity, etc.).
 
@@ -104,14 +124,19 @@ Stores calculated historical financial metrics for documents.
 - `unit` (String, Nullable): Unit of measurement ("ones", "thousands", "millions", "billions", or "ten_thousands")
 - `calculated_at` (DateTime): Calculation timestamp
 - `net_working_capital` (Numeric(20, 2), Nullable): Calculated net working capital
-- `net_working_capital_breakdown` (Text, Nullable): JSON string containing detailed breakdown of current assets and liabilities used in net working capital calculation
+- `net_working_capital_breakdown` (Text, Nullable): JSON string breakdown
 - `net_long_term_operating_assets` (Numeric(20, 2), Nullable): Calculated net long-term operating assets
+- `net_long_term_operating_assets_breakdown` (Text, Nullable): JSON string breakdown
 - `invested_capital` (Numeric(20, 2), Nullable): Calculated invested capital
 - `capital_turnover` (Numeric(10, 4), Nullable): Calculated capital turnover ratio
-- `ebita` (Numeric(20, 2), Nullable): Calculated EBITA (Earnings Before Interest, Taxes, and Amortization)
-- `ebita_margin` (Numeric(10, 4), Nullable): Calculated EBITA margin (stored as decimal, e.g., 0.15 for 15%)
-- `effective_tax_rate` (Numeric(10, 4), Nullable): Effective tax rate (stored as decimal, e.g., 0.25 for 25%)
-- `adjusted_tax_rate` (Numeric(10, 4), Nullable): Adjusted tax rate (stored as decimal, e.g., 0.25 for 25%)
+- `ebita` (Numeric(20, 2), Nullable): Calculated EBITA
+- `ebita_breakdown` (Text, Nullable): JSON string breakdown
+- `ebita_margin` (Numeric(10, 4), Nullable): Calculated EBITA margin
+- `effective_tax_rate` (Numeric(10, 4), Nullable): Effective tax rate
+- `adjusted_tax_rate` (Numeric(10, 4), Nullable): Adjusted tax rate
+- `adjusted_tax_rate_breakdown` (Text, Nullable): JSON string breakdown
+- `nopat` (Numeric(20, 2), Nullable): Net Operating Profit After Tax
+- `roic` (Numeric(10, 4), Nullable): Return on Invested Capital
 - `calculation_notes` (Text, Nullable): JSON string for any calculation notes or warnings
 
 **Relationships:**
@@ -147,9 +172,11 @@ Stores calculated historical financial metrics for documents.
 - `companies.ticker`: Index for ticker symbol lookups
 - `documents.user_id`: Index for user document queries
 - `documents.company_id`: Index for company document queries
+- `documents.unique_id`: Unique index for deduplication
 - `financial_metrics.company_id`: Index for company metric queries
 - `financial_metrics.metric_name`: Index for metric type queries
 - `financial_metrics.period`: Index for time period queries
+- `financial_assumptions.company_id`: Unique index for company assumptions
 - `analysis_results.company_id`: Index for company analysis queries
 - `historical_calculations.document_id`: Unique index for document calculation queries
 
