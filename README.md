@@ -162,7 +162,7 @@ Tiger-Cafe provides three main user journey epics:
 - Chunk-based document indexing with Gemini embeddings (2-page chunks, persisted for reuse)
 - Priority-based processing queue (classification/indexing prioritized over financial statement extraction)
 
-### Financial Statement Processing (Phase 5.1 & 5.2 - Complete)
+### Financial Statement Processing
 - Automatic balance sheet and income statement extraction from **earnings announcements only** (quarterly/annual filings not yet implemented)
 - **Document type-specific processing:**
   - **Earnings Announcements**: 
@@ -183,12 +183,43 @@ Tiger-Cafe provides three main user journey epics:
   - Income statement: Gross profit, operating income, and net income calculation verification via post-processing validation
 - Operating/non-operating classification for each line item (authoritative lookup table with LLM fallback)
 - Additional items extraction: Prior period revenue, YOY revenue growth, amortization, basic shares outstanding, diluted shares outstanding (each with unit fields)
-- Historical calculations: Automatic calculation and display of Net Working Capital, Invested Capital, EBITA, and other key metrics with unit support
+- Historical calculations: Automatic calculation and display of Net Working Capital, Invested Capital, EBITA, NOPAT, ROIC, and other key metrics with unit support
   - Capital Turnover is annualized for quarterly statements (Q1-Q4) by multiplying revenue by 4
 - Real-time progress tracking with 5 milestones:
   - Extracting balance sheet, Classifying balance sheet
   - Extracting income statement, Extracting additional items, Classifying income statement
 - Re-run and delete functionality for financial statements
+
+### Financial Modeling & Valuation (Phase 8)
+- **DCF (Discounted Cash Flow) Model** with customizable assumptions:
+  - 3-stage revenue growth (Years 1-5, 6-10, Terminal)
+  - 3-stage EBITA margin projections
+  - 3-stage marginal capital turnover
+  - Operating tax rate and WACC inputs
+- **Intrinsic Value Calculation**:
+  - 10-year cash flow projections
+  - Terminal value using Value Driver Formula
+  - Mid-year convention for discounting
+  - Present value calculations
+- **Company-Level Historical Analysis**:
+  - Comprehensive historical metrics table
+  - Statistical analysis (averages, medians)
+  - YOY marginal capital turnover
+  - Custom ROIC formatting
+
+### Frontend Architecture (Phase 9)
+- **Modular Component Structure**:
+  - Separated navigation, documents, analysis, and dashboard components
+  - Clean component hierarchy with single responsibilities
+  - Context-based state management (UploadContext)
+- **Improved Stability**:
+  - Fixed infinite polling bug
+  - Stable callback references with useCallback
+  - Proper dependency management in useEffect hooks
+- **Enhanced Maintainability**:
+  - 10 new focused components
+  - Reduced monolithic component sizes by ~11-12%
+  - Clear directory organization (common/, navigation/, documents/, analysis/, dashboard/)
 
 For detailed planning and user journey specifications, see [docs/PLANNING.md](docs/PLANNING.md).
 
