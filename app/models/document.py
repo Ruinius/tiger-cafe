@@ -62,9 +62,6 @@ class Document(Base):
     summary = Column(Text, nullable=True)  # LLM-generated summary from initial upload
     page_count = Column(Integer, nullable=True)
     character_count = Column(Integer, nullable=True)
-    chunk_index_version = Column(String, nullable=True)
-    chunk_count = Column(Integer, nullable=True)
-    embedding_model = Column(String, nullable=True)
 
     # Timestamps
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())

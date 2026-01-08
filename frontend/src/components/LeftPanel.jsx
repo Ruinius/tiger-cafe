@@ -435,10 +435,11 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
 
     // Poll every 2 seconds for indexing status
     const pollInterval = setInterval(async () => {
+      if (!isAuthenticated) return
+
       for (const doc of indexingDocuments) {
         try {
-          const endpoint = isAuthenticated ? 'status' : 'status-test'
-          const response = await axios.get(`${API_BASE_URL}/documents/${doc.id}/${endpoint}`)
+          const response = await axios.get(`${API_BASE_URL}/documents/${doc.id}/status`)
           // Update the document in the list if status changed
           setDocuments(prevDocs =>
             prevDocs.map(d =>
@@ -455,26 +456,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
   }, [documents, selectedCompany])
 
   // Load PDF when document is selected
-  useEffect(() => {
-    if (selectedDocument) {
-      loadPdfDocument(selectedDocument.id)
-    } else {
-      // Revoke URL when document is deselected
-      if (pdfUrlRef.current) {
-        URL.revokeObjectURL(pdfUrlRef.current)
-        pdfUrlRef.current = null
-      }
-      setPdfUrl(null)
-    }
 
-    // Cleanup: revoke object URL when component unmounts or document changes
-    return () => {
-      if (pdfUrlRef.current) {
-        URL.revokeObjectURL(pdfUrlRef.current)
-        pdfUrlRef.current = null
-      }
-    }
-  }, [selectedDocument?.id]) // Only depend on document ID to avoid infinite loops
 
   // Track loading state to prevent duplicate calls
   const chunksLoadingRef = useRef(false)
@@ -596,37 +578,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
     setExpandedChunks(new Set())
   }
 
-  const loadPdfDocument = async (documentId) => {
-    try {
-      // Revoke previous URL if exists
-      if (pdfUrlRef.current) {
-        URL.revokeObjectURL(pdfUrlRef.current)
-        pdfUrlRef.current = null
-      }
 
-      // Use test endpoint if not authenticated (for development)
-      const endpoint = isAuthenticated ? 'file' : 'file-test'
-      const url = `${API_BASE_URL}/documents/${documentId}/${endpoint}`
-
-      // Fetch PDF as blob to include authentication headers
-      const response = await axios.get(url, {
-        responseType: 'blob',
-        headers: isAuthenticated && token ? {
-          'Authorization': `Bearer ${token}`
-        } : {}
-      })
-
-      // Create object URL from blob
-      const blob = new Blob([response.data], { type: 'application/pdf' })
-      const objectUrl = URL.createObjectURL(blob)
-      pdfUrlRef.current = objectUrl
-      setPdfUrl(objectUrl)
-    } catch (error) {
-      console.error('Error loading PDF:', error)
-      setPdfUrl(null)
-      pdfUrlRef.current = null
-    }
-  }
 
   const loadCompanies = async () => {
     try {
@@ -1115,162 +1067,149 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
               </div>
             </div>
             {/* Unified Document Viewer Section */}
-            {(pdfUrl || selectedDocument?.indexing_status === 'indexed' || selectedDocument?.indexing_status === 'INDEXED') && (
-              <div className="info-section raw-document-section">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <h3 style={{ marginBottom: 0 }}>Document</h3>
-                  {documentChunks && documentChunks.chunks && documentChunks.chunks.length > 0 && (
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button
-                        className="button-secondary"
-                        onClick={expandAllChunks}
-                        style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
-                      >
-                        Expand All
-                      </button>
-                      <button
-                        className="button-secondary"
-                        onClick={collapseAllChunks}
-                        style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
-                      >
-                        Collapse All
-                      </button>
-                    </div>
-                  )}
-                </div>
 
-                {/* Original PDF Viewer */}
-                {pdfUrl ? (
-                  <div className="chunk-item">
+            <div className="info-section raw-document-section">
+              <div style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', width: '100%' }}>
+                <h3 style={{ margin: 0 }}>Document</h3>
+                {documentChunks && documentChunks.chunks && documentChunks.chunks.length > 0 && (
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     <button
-                      className="chunk-header"
-                      onClick={() => setIsDocumentExpanded(!isDocumentExpanded)}
-                      style={{
-                        width: '100%',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        padding: '0.75rem',
-                        background: 'var(--bg-elevated)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 'var(--radius-md)',
-                        cursor: 'pointer',
-                        textAlign: 'left',
-                        marginBottom: '0.5rem'
-                      }}
+                      className="button-secondary"
+                      onClick={expandAllChunks}
+                      style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
                     >
-                      <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                        Original PDF {selectedDocument.page_count ? `(Pages 1-${selectedDocument.page_count})` : ''}
-                      </span>
-                      {selectedDocument.character_count ? (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                          {selectedDocument.character_count.toLocaleString()} chars
-                        </span>
-                      ) : (
-                        <span></span>
-                      )}
-                      <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                        {isDocumentExpanded ? '▼' : '▶'}
-                      </span>
+                      Expand All
                     </button>
-                    {isDocumentExpanded && (
-                      <div className="chunk-content" style={{ padding: '0', border: 'none', background: 'transparent' }}>
-                        <div className="pdf-viewer-container" style={{ height: '500px', marginTop: '0.5rem' }}>
-                          <iframe
-                            src={pdfUrl}
-                            title={selectedDocument.filename}
-                            className="pdf-viewer"
-                            style={{ height: '100%', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}
-                          />
-                        </div>
-                      </div>
-                    )}
+                    <button
+                      className="button-secondary"
+                      onClick={collapseAllChunks}
+                      style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                    >
+                      Collapse All
+                    </button>
                   </div>
-                ) : (
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem' }}>
-                    Loading document PDF...
-                  </p>
-                )}
-
-                {/* Chunks List */}
-                {(selectedDocument?.indexing_status === 'indexed' || selectedDocument?.indexing_status === 'INDEXED') && (
-                  <>
-                    {chunksLoading ? (
-                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Loading chunks...</p>
-                    ) : documentChunks && documentChunks.chunks ? (
-                      <div className="chunks-container">
-                        {documentChunks.chunks.map((chunk) => {
-                          const isExpanded = expandedChunks.has(chunk.chunk_index)
-                          return (
-                            <div key={chunk.chunk_index} className="chunk-item">
-                              <button
-                                className="chunk-header"
-                                onClick={() => toggleChunk(chunk.chunk_index)}
-                                style={{
-                                  width: '100%',
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center',
-                                  padding: '0.75rem',
-                                  background: 'var(--bg-elevated)',
-                                  border: '1px solid var(--border)',
-                                  borderRadius: 'var(--radius-md)',
-                                  cursor: 'pointer',
-                                  textAlign: 'left',
-                                  marginBottom: '0.5rem'
-                                }}
-                              >
-                                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                                  Chunk {chunk.chunk_index} (Pages {chunk.start_page}-{chunk.end_page})
-                                </span>
-                                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                                  {chunk.character_count.toLocaleString()} chars
-                                </span>
-                                <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                                  {isExpanded ? '▼' : '▶'}
-                                </span>
-                              </button>
-                              {isExpanded && (
-                                <div
-                                  className="chunk-content"
-                                  style={{
-                                    padding: '1rem',
-                                    background: 'var(--bg-surface)',
-                                    border: '1px solid var(--border)',
-                                    borderRadius: 'var(--radius-md)',
-                                    marginBottom: '0.5rem',
-                                    maxHeight: '400px',
-                                    overflowY: 'auto',
-                                    fontSize: '0.875rem',
-                                    lineHeight: '1.6',
-                                    color: 'var(--text-primary)',
-                                    whiteSpace: 'pre-wrap',
-                                    wordBreak: 'break-word',
-                                    contentVisibility: 'auto',
-                                    containIntrinsicSize: 'auto 400px'
-                                  }}
-                                >
-                                  {chunk.error ? (
-                                    <p style={{ color: 'var(--error)' }}>Error loading chunk: {chunk.error}</p>
-                                  ) : chunk.text ? (
-                                    chunk.text
-                                  ) : (
-                                    <p style={{ color: 'var(--text-secondary)' }}>No text available</p>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    ) : (
-                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                        No chunks available. Document may not be fully indexed.
-                      </p>
-                    )}
-                  </>
                 )}
               </div>
+
+              {/* Original PDF Viewer */}
+              <div className="chunk-item">
+                <button
+                  className="chunk-header"
+                  onClick={() => setIsDocumentExpanded(!isDocumentExpanded)}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '0.75rem',
+                    background: 'var(--bg-elevated)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-md)',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    marginBottom: '0.5rem'
+                  }}
+                >
+                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                    Original PDF {selectedDocument.page_count ? `(Pages 1-${selectedDocument.page_count})` : ''}
+                  </span>
+                  {selectedDocument.character_count ? (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      {selectedDocument.character_count.toLocaleString()} chars
+                    </span>
+                  ) : (
+                    <span></span>
+                  )}
+                  <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                    {isDocumentExpanded ? '▼' : '▶'}
+                  </span>
+                </button>
+                {isDocumentExpanded && (
+                  <div className="chunk-content" style={{ padding: '0', border: 'none', background: 'transparent' }}>
+                    <PdfViewer documentId={selectedDocument.id} />
+                  </div>
+                )}
+              </div>
+
+              {/* Chunks List */}
+              {(selectedDocument?.indexing_status === 'indexed' || selectedDocument?.indexing_status === 'INDEXED') && (
+                <>
+                  {chunksLoading ? (
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Loading chunks...</p>
+                  ) : documentChunks && documentChunks.chunks ? (
+                    <div className="chunks-container">
+                      {documentChunks.chunks.map((chunk) => {
+                        const isExpanded = expandedChunks.has(chunk.chunk_index)
+                        return (
+                          <div key={chunk.chunk_index} className="chunk-item">
+                            <button
+                              className="chunk-header"
+                              onClick={() => toggleChunk(chunk.chunk_index)}
+                              style={{
+                                width: '100%',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                padding: '0.75rem',
+                                background: 'var(--bg-elevated)',
+                                border: '1px solid var(--border)',
+                                borderRadius: 'var(--radius-md)',
+                                cursor: 'pointer',
+                                textAlign: 'left',
+                                marginBottom: '0.5rem'
+                              }}
+                            >
+                              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                Chunk {chunk.chunk_index} (Pages {chunk.start_page}-{chunk.end_page})
+                              </span>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                {chunk.character_count.toLocaleString()} chars
+                              </span>
+                              <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                                {isExpanded ? '▼' : '▶'}
+                              </span>
+                            </button>
+                            {isExpanded && (
+                              <div
+                                className="chunk-content"
+                                style={{
+                                  padding: '1rem',
+                                  background: 'var(--bg-surface)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: 'var(--radius-md)',
+                                  marginBottom: '0.5rem',
+                                  maxHeight: '400px',
+                                  overflowY: 'auto',
+                                  fontSize: '0.875rem',
+                                  lineHeight: '1.6',
+                                  color: 'var(--text-primary)',
+                                  whiteSpace: 'pre-wrap',
+                                  wordBreak: 'break-word',
+                                  contentVisibility: 'auto',
+                                  containIntrinsicSize: 'auto 400px'
+                                }}
+                              >
+                                {chunk.error ? (
+                                  <p style={{ color: 'var(--error)' }}>Error loading chunk: {chunk.error}</p>
+                                ) : chunk.text ? (
+                                  chunk.text
+                                ) : (
+                                  <p style={{ color: 'var(--text-secondary)' }}>No text available</p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                      No chunks available. Document may not be fully indexed.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
             )}
           </div>
         </div>

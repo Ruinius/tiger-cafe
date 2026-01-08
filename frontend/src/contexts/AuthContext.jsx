@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import axios from 'axios'
 
-const AuthContext = createContext()
+export const AuthContext = createContext()
 
 const API_BASE_URL = 'http://localhost:8000/api'
 
@@ -44,7 +44,7 @@ export function AuthProvider({ children }) {
           // Skip if this is from the auth/me endpoint (initial verification)
           // or if we're still in the initial load phase
           const isAuthEndpoint = error.config?.url?.includes('/auth/me')
-          
+
           if (!isAuthEndpoint && !isInitialLoad.current) {
             // Only log out if we were previously authenticated (avoid loops)
             const currentToken = localStorage.getItem('tiger-cafe-token')
@@ -83,12 +83,12 @@ export function AuthProvider({ children }) {
     } else {
       setLoading(false)
     }
-    
+
     // Mark initial load as complete after a short delay
     const timer = setTimeout(() => {
       isInitialLoad.current = false
     }, 3000) // Allow 3 seconds for initial token verification
-    
+
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -112,13 +112,13 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ 
-      isAuthenticated, 
-      user, 
-      loading, 
-      login, 
+    <AuthContext.Provider value={{
+      isAuthenticated,
+      user,
+      loading,
+      login,
       logout,
-      token 
+      token
     }}>
       {children}
     </AuthContext.Provider>

@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 
-const UploadContext = createContext()
+export const UploadContext = createContext()
 
 export const useUpload = () => {
     const context = useContext(UploadContext)
@@ -21,10 +21,11 @@ export const UploadProvider = ({ children }) => {
     const progressIntervalRef = useRef(null)
 
     const loadUploadProgress = useCallback(async () => {
+        if (!isAuthenticated || !token) return
+
         try {
-            const endpoint = isAuthenticated ? 'upload-progress' : 'upload-progress-test'
-            const response = await axios.get(`${API_BASE_URL}/documents/${endpoint}`, {
-                headers: isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+            const response = await axios.get(`${API_BASE_URL}/documents/upload-progress`, {
+                headers: { 'Authorization': `Bearer ${token}` }
             })
             setUploadingDocuments(response.data)
 

@@ -24,12 +24,7 @@ function CompanyList({ companies, searchQuery, onCompanySelect, onShowUploadProg
                     <p>No companies found matching "{searchQuery}"</p>
                 </div>
             )}
-            <button
-                className="check-uploads-btn"
-                onClick={onShowUploadProgress}
-            >
-                Check Uploads
-            </button>
+
         </div>
     )
 }
