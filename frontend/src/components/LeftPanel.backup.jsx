@@ -3,10 +3,6 @@ import axios from 'axios'
 import { useAuth } from '../contexts/AuthContext'
 import { useUpload } from '../contexts/UploadContext'
 import UploadModal from './UploadModal'
-import UploadProgress from './documents/UploadProgress'
-import CompanyList from './navigation/CompanyList'
-import DocumentList from './navigation/DocumentList'
-import PdfViewer from './documents/PdfViewer'
 import './LeftPanel.css'
 
 const API_BASE_URL = 'http://localhost:8000/api'
@@ -18,7 +14,8 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
   const [searchQuery, setSearchQuery] = useState('')
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
   const [isUploading, setIsUploading] = useState(false) // Track upload state to disable button immediately
-  // PDF viewer is now handled by PdfViewer component
+  const [pdfUrl, setPdfUrl] = useState(null)
+  const pdfUrlRef = useRef(null)
 
   // Use Upload Context
   const { uploadingDocuments, showUploadProgress, setShowUploadProgress, loadUploadProgress } = useUpload()
@@ -747,21 +744,95 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
   return (
     <div className="left-panel">
       {showUploadProgress && (
-        <UploadProgress
-          uploadingDocuments={uploadingDocuments}
-          onClose={() => {
-            setShowUploadProgress(false)
-            // Clear any selected company/document to ensure we're on companies list
-            if (selectedCompany || selectedDocument) {
-              onBack()
-              if (selectedDocument && selectedCompany) {
-                setTimeout(() => onBack(), 100)
-              }
-            }
-          }}
-          onReplaceAndIndex={handleReplaceAndIndex}
-          onCancelDuplicate={handleCancelDuplicate}
-        />
+        <div className="panel-content">
+          <div className="panel-header">
+            <div className="breadcrumb">
+              <button className="breadcrumb-link" onClick={() => {
+                setShowUploadProgress(false)
+                // Clear any selected company/document to ensure we're on companies list
+                if (selectedCompany || selectedDocument) {
+                  onBack()
+                  if (selectedDocument && selectedCompany) {
+                    setTimeout(() => onBack(), 100)
+                  }
+                }
+              }}>Companies</button>
+              <span className="breadcrumb-separator">›</span>
+              <span className="breadcrumb-current">Upload Progress</span>
+            </div>
+          </div>
+          {uploadingDocuments.length === 0 ? (
+            <div className="empty-state">
+              <p>All uploads have completed. Redirecting...</p>
+            </div>
+          ) : (
+            <div className="upload-progress-list">
+              {uploadingDocuments.map(document => (
+                <div key={document.id} className="upload-progress-item">
+                  <div className="upload-progress-header">
+                    <div className="upload-progress-filename">{document.filename}</div>
+                    {document.duplicate_detected && (
+                      <div className="duplicate-warning-badge">⚠️ Duplicate</div>
+                    )}
+                  </div>
+                  <div className="progress-bar-container">
+                    <div
+                      className="progress-bar"
+                      style={{ width: `${getProgressPercentage(document.indexing_status)}%` }}
+                    />
+                  </div>
+                  <div className="milestones">
+                    <div className={`milestone ${getMilestoneStatus(document.indexing_status, 'uploading')}`}>
+                      <span className="milestone-icon">
+                        {getMilestoneStatus(document.indexing_status, 'uploading') === 'completed' ? '✓' :
+                          getMilestoneStatus(document.indexing_status, 'uploading') === 'active' ? <span className="status-spinner" aria-hidden="true" /> : '○'}
+                      </span>
+                      <span className="milestone-label">Uploading</span>
+                    </div>
+                    <div className={`milestone ${getMilestoneStatus(document.indexing_status, 'classification')}`}>
+                      <span className="milestone-icon">
+                        {getMilestoneStatus(document.indexing_status, 'classification') === 'completed' ? '✓' :
+                          getMilestoneStatus(document.indexing_status, 'classification') === 'active' ? <span className="status-spinner" aria-hidden="true" /> : '○'}
+                      </span>
+                      <span className="milestone-label">Classification</span>
+                    </div>
+                    <div className={`milestone ${getMilestoneStatus(document.indexing_status, 'indexing')}`}>
+                      <span className="milestone-icon">
+                        {getMilestoneStatus(document.indexing_status, 'indexing') === 'completed' ? '✓' :
+                          getMilestoneStatus(document.indexing_status, 'indexing') === 'active' ? <span className="status-spinner" aria-hidden="true" /> : '○'}
+                      </span>
+                      <span className="milestone-label">Indexing</span>
+                    </div>
+                  </div>
+                  {document.duplicate_detected &&
+                    (document.indexing_status?.toLowerCase() === 'classifying' ||
+                      document.indexing_status === 'CLASSIFYING') && (
+                      <div className="duplicate-action">
+                        <div className="duplicate-warning-text">
+                          <strong>⚠️ Duplicate Document Detected</strong>
+                          <p>This document appears to be a duplicate. Click "Replace & Index" to replace the existing document and proceed with indexing, or "Cancel" to remove this upload.</p>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+                          <button
+                            className="button-warning"
+                            onClick={() => handleReplaceAndIndex(document.id)}
+                          >
+                            Replace & Index
+                          </button>
+                          <button
+                            className="button-secondary"
+                            onClick={() => handleCancelDuplicate(document.id)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {!showUploadProgress && !selectedCompany && !selectedDocument && (
@@ -781,28 +852,42 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
           {loading ? (
             <div className="loading">Loading companies...</div>
           ) : (
-            <>
-              <CompanyList
-                companies={companies}
-                searchQuery={searchQuery}
-                onCompanySelect={onCompanySelect}
-                onShowUploadProgress={() => setShowUploadProgress(true)}
-              />
-              <button
-                className={`add-document-button ${hasActiveUploads ? 'has-uploads' : ''}`}
-                onClick={hasActiveUploads ? () => setShowUploadProgress(true) : handleAddDocument}
-              >
-                {hasActiveUploads ? (
-                  <>
-                    <span className="button-spinner" aria-hidden="true" />
-                    Check Uploads ({uploadingDocuments.length})
-                  </>
-                ) : (
-                  '+ Add Document'
-                )}
-              </button>
-            </>
+            <div className="company-list">
+              {filteredCompanies.map(company => (
+                <div
+                  key={company.id}
+                  className="company-item"
+                  onClick={() => onCompanySelect(company)}
+                >
+                  <div className="company-info">
+                    <div className="company-name">{company.name}</div>
+                    {company.ticker && (
+                      <div className="company-ticker">{company.ticker}</div>
+                    )}
+                  </div>
+                  {company.document_count !== undefined && company.document_count > 0 && (
+                    <span className="document-count-badge">{company.document_count}</span>
+                  )}
+                </div>
+              ))}
+              {filteredCompanies.length === 0 && (
+                <div className="empty-state">No companies found</div>
+              )}
+            </div>
           )}
+          <button
+            className={`add-document-button ${hasActiveUploads ? 'has-uploads' : ''}`}
+            onClick={hasActiveUploads ? () => setShowUploadProgress(true) : handleAddDocument}
+          >
+            {hasActiveUploads ? (
+              <>
+                <span className="button-spinner" aria-hidden="true" />
+                Check Uploads ({uploadingDocuments.length})
+              </>
+            ) : (
+              '+ Add Document'
+            )}
+          </button>
         </div>
       )}
 
@@ -821,14 +906,75 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
               <span className="breadcrumb-current">{selectedCompany.name}</span>
             </div>
           </div>
-          <DocumentList
-            documents={documents}
-            onDocumentSelect={onDocumentSelect}
-            onAddDocument={handleAddDocument}
-            hasActiveUploads={hasActiveUploads}
-            uploadingDocuments={uploadingDocuments}
-            onShowUploadProgress={() => setShowUploadProgress(true)}
-          />
+          <div className="document-list">
+            {documents.map(document => (
+              <div
+                key={document.id}
+                className="document-item"
+                onClick={() => onDocumentSelect(document)}
+              >
+                <div className="document-name">
+                  {document.document_type ? (
+                    <span className="document-type-display">
+                      {document.document_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    </span>
+                  ) : (
+                    <span className="document-type-display">Document</span>
+                  )}
+                  {document.time_period && (
+                    <span className="document-time-period"> • {document.time_period}</span>
+                  )}
+                </div>
+                <div className="document-meta">
+                  <span className={`status-badge status-${document.indexing_status?.toLowerCase()}`}>
+                    {document.indexing_status || 'pending'}
+                  </span>
+                  {document.balance_sheet_status && document.balance_sheet_status !== 'not_extracted' && (
+                    <span
+                      className={`status-badge status-${document.balance_sheet_status === 'valid' ? 'indexed' : 'classified'}`}
+                      title={`Balance Sheet: ${document.balance_sheet_status}`}
+                    >
+                      BS
+                    </span>
+                  )}
+                  {document.income_statement_status && document.income_statement_status !== 'not_extracted' && (
+                    <span
+                      className={`status-badge status-${document.income_statement_status === 'valid' ? 'indexed' : 'classified'}`}
+                      title={`Income Statement: ${document.income_statement_status}`}
+                    >
+                      IS
+                    </span>
+                  )}
+                  {document.uploader_name && (
+                    <span className="document-uploader">
+                      Uploaded by {document.uploader_name}
+                    </span>
+                  )}
+                  {document.uploaded_at && (
+                    <span className="document-date">
+                      {new Date(document.uploaded_at).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+            {documents.length === 0 && (
+              <div className="empty-state">No documents for this company</div>
+            )}
+          </div>
+          <button
+            className={`add-document-button ${hasActiveUploads ? 'has-uploads' : ''}`}
+            onClick={hasActiveUploads ? () => setShowUploadProgress(true) : handleAddDocument}
+          >
+            {hasActiveUploads ? (
+              <>
+                <span className="button-spinner" aria-hidden="true" />
+                Check Uploads ({uploadingDocuments.length})
+              </>
+            ) : (
+              '+ Add Document'
+            )}
+          </button>
         </div>
       )}
 
