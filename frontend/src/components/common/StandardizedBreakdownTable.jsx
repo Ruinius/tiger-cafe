@@ -1,5 +1,5 @@
 import React from 'react'
-import { normalizeLineName } from '../utils/textUtils'
+import { normalizeLineName } from '../../utils/textUtils'
 
 export default function StandardizedBreakdownTable({ data, balanceSheet, formatNumber, standardReferences }) {
   if (!data || !data.line_items) return null
