@@ -7,6 +7,7 @@ import re
 
 from agents.extractor_utils import (
     call_llm_and_parse_json,
+    call_llm_with_retry,
     check_section_completeness_llm,
     get_llm_insights_generic,
 )
@@ -17,7 +18,6 @@ from app.utils.financial_statement_progress import (
 )
 from app.utils.line_item_utils import extract_original_name_from_standardized as get_orig_name
 from app.utils.line_item_utils import normalize_line_name
-from app.utils.pdf_extractor import extract_text_from_pdf
 
 
 def extract_balance_sheet(
@@ -60,29 +60,18 @@ def extract_balance_sheet(
                 document_id, file_path, time_period, document_type, chunk_rank=section_attempt
             )
 
-            if not balance_sheet_text:
-                # Fallback: extract full document if embedding search fails
-                fallback_msg = "Embedding search failed, extracting full document..."
-                print(fallback_msg)
-                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, fallback_msg)
-                balance_sheet_text, _, _ = extract_text_from_pdf(file_path, max_pages=None)
-                balance_sheet_text = balance_sheet_text[:50000]  # Limit to 50k chars
-                extracted_msg = f"Extracted {len(balance_sheet_text)} characters from full document"
-                print(extracted_msg)
-                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, extracted_msg)
-            else:
-                # Log chunk/page information if available
-                if log_info:
-                    rank_text = f" (rank {section_attempt + 1})" if section_attempt > 0 else ""
-                    chunk_msg = f"Best match{rank_text}: chunk {log_info['best_chunk_index']} (pages {log_info['chunk_start_page']}-{log_info['chunk_end_page']})"
-                    print(chunk_msg)
-                    add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, chunk_msg)
-                    pages_msg = f"Found balance sheet section (pages {log_info['start_extract_page']}-{log_info['end_extract_page']})"
-                    print(pages_msg)
-                    add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, pages_msg)
-                found_msg = f"Found balance sheet section starting at page {start_page}, extracted {len(balance_sheet_text)} characters"
-                print(found_msg)
-                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, found_msg)
+            # Log chunk/page information if available
+            if log_info:
+                rank_text = f" (rank {section_attempt + 1})" if section_attempt > 0 else ""
+                chunk_msg = f"Best match{rank_text}: chunk {log_info['best_chunk_index']} (pages {log_info['chunk_start_page']}-{log_info['chunk_end_page']})"
+                print(chunk_msg)
+                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, chunk_msg)
+                pages_msg = f"Found balance sheet section (pages {log_info['start_extract_page']}-{log_info['end_extract_page']})"
+                print(pages_msg)
+                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, pages_msg)
+            found_msg = f"Found balance sheet section starting at page {start_page}, extracted {len(balance_sheet_text)} characters"
+            print(found_msg)
+            add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, found_msg)
 
             # Stage 1 validation: Check completeness of chunk text using LLM (before extraction)
             completeness_check_msg = (
@@ -113,14 +102,10 @@ def extract_balance_sheet(
                         "line_items": [],
                         "currency": None,
                         "unit": None,
+                        "is_valid": False,
+                        "validation_errors": ["Balance sheet completeness check failed"],
                         "time_period": time_period,
                     }
-                    classified_items = classify_line_items_llm(extracted_data["line_items"])
-                    extracted_data["line_items"] = classified_items
-                    extracted_data["is_valid"] = False
-                    extracted_data["validation_errors"] = [
-                        "Balance sheet completeness check failed"
-                    ]
                     return extracted_data
 
             # Extract balance sheet using LLM (only if chunk is complete)
@@ -191,7 +176,6 @@ def extract_balance_sheet(
         raise Exception("Failed to find balance sheet section after all attempts")
 
     # Stage 2: Validate extraction calculations (retry extraction with LLM feedback)
-    EXTRACTION_MAX_RETRIES = 3
     # extracted_data was already set in Stage 1 and validated for completeness
     calc_errors = []  # Will be set by validation
 
@@ -200,102 +184,171 @@ def extract_balance_sheet(
         extracted_data["balance_sheet_chunk_index"] = successful_chunk_index
         extracted_data["chunk_index"] = successful_chunk_index  # Also store for persistence
 
-    for extraction_attempt in range(EXTRACTION_MAX_RETRIES):
-        try:
-            if extraction_attempt == 0:
-                # First attempt: use initial extraction from Stage 1
-                extraction_msg = "Stage 2: Validating extraction calculations"
-                print(extraction_msg)
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.BALANCE_SHEET,
-                    extraction_msg,
+    try:
+        # Step 0: Initial Validation
+        extraction_msg = "Stage 2: Validating extraction calculations"
+        print(extraction_msg)
+        add_log(
+            document_id,
+            FinancialStatementMilestone.BALANCE_SHEET,
+            extraction_msg,
+        )
+
+        # Post-process to add standard names
+        extracted_data["line_items"] = post_process_balance_sheet_line_items(
+            extracted_data["line_items"]
+        )
+
+        calc_valid, calc_errors = validate_balance_sheet_calculations(extracted_data["line_items"])
+
+        # Step 1: If validation fails, check time periods and remove out-of-place items
+        if not calc_valid:
+            validation_error_str = "; ".join(calc_errors)
+            time_check_msg = f"Validation failed ({validation_error_str}). Checking for out-of-period line items."
+            print(time_check_msg)
+            add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, time_check_msg)
+
+            time_check_result = check_line_item_time_periods_balance_sheet(
+                extracted_data["line_items"], time_period
+            )
+            mismatched_items = time_check_result.get("mismatched_items", [])
+
+            if mismatched_items:
+                # Remove out-of-place items
+                mismatched_names = {item["line_name"] for item in mismatched_items}
+                original_count = len(extracted_data["line_items"])
+                extracted_data["line_items"] = [
+                    item
+                    for item in extracted_data["line_items"]
+                    if item["line_name"] not in mismatched_names
+                ]
+
+                removed_msg = f"Removed {len(mismatched_items)} out-of-period items from {original_count} total items. Re-validating."
+                print(removed_msg)
+                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, removed_msg)
+
+                # Post-process and Re-validate after removal
+                extracted_data["line_items"] = post_process_balance_sheet_line_items(
+                    extracted_data["line_items"]
                 )
-                # extracted_data is already set from Stage 1
-            else:
-                # Retry with feedback from previous attempt
-                retry_msg = f"Stage 2: Retry extraction {extraction_attempt + 1}/{EXTRACTION_MAX_RETRIES} with LLM feedback"
-                print(retry_msg)
-                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, retry_msg)
-                # Re-extract with validation error feedback from previous attempt
-                extracted_data = extract_balance_sheet_llm_with_feedback(
-                    balance_sheet_text,
-                    time_period,
-                    extracted_data,  # Previous extraction
-                    calc_errors,  # Validation errors with differences from previous attempt
+                calc_valid, calc_errors = validate_balance_sheet_calculations(
+                    extracted_data["line_items"]
                 )
 
-            # Post-process to add standard names (ensure naming convention is maintained)
+        # Step 2: If validation still fails, try one last retry with feedback
+        if not calc_valid:
+            retry_msg = "Validation still failed. Attempting final extraction with LLM feedback."
+            print(retry_msg)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.BALANCE_SHEET,
+                retry_msg,
+            )
+
+            # Re-extract with validation error feedback
+            extracted_data = extract_balance_sheet_llm_with_feedback(
+                balance_sheet_text,
+                time_period,
+                extracted_data,  # Previous extraction
+                calc_errors,
+            )
+
+            # Post-process and Re-validate final attempt
             extracted_data["line_items"] = post_process_balance_sheet_line_items(
                 extracted_data["line_items"]
             )
-
-            # Stage 2 validation: Check calculations (sums)
             calc_valid, calc_errors = validate_balance_sheet_calculations(
                 extracted_data["line_items"]
             )
 
-            if calc_valid:
-                calc_valid_msg = "Stage 2 validation passed (calculations are correct)"
-                print(calc_valid_msg)
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.BALANCE_SHEET,
-                    calc_valid_msg,
-                )
-                # Both stages passed, classify and return
-                classified_items = classify_line_items_llm(extracted_data["line_items"])
-                extracted_data["line_items"] = classified_items
-                extracted_data["is_valid"] = True
-                extracted_data["validation_errors"] = []
-                # Ensure chunk_index is included in the return value
-                if successful_chunk_index is not None:
-                    extracted_data["chunk_index"] = successful_chunk_index
-                return extracted_data
-            else:
-                calc_failed_msg = f"Stage 2 validation failed: {', '.join(calc_errors[:2])}"
-                print(calc_failed_msg)
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.BALANCE_SHEET,
-                    calc_failed_msg,
-                )
-                if extraction_attempt < EXTRACTION_MAX_RETRIES - 1:
-                    continue  # Retry with feedback
-                else:
-                    # All extraction attempts failed, return with errors
-                    classified_items = classify_line_items_llm(extracted_data["line_items"])
-                    extracted_data["line_items"] = classified_items
-                    extracted_data["is_valid"] = False
-                    extracted_data["validation_errors"] = calc_errors
-                    # Ensure chunk_index and balance_sheet_chunk_index are included in the return value
-                    if successful_chunk_index is not None:
-                        extracted_data["chunk_index"] = successful_chunk_index
-                        extracted_data["balance_sheet_chunk_index"] = successful_chunk_index
-                    return extracted_data
-
-        except Exception as e:
-            error_str = str(e).lower()
-            is_api_error = any(
-                keyword in error_str
-                for keyword in [
-                    "rate limit",
-                    "quota",
-                    "429",
-                    "503",
-                    "resource exhausted",
-                    "service unavailable",
-                    "too many requests",
-                ]
+        # Final Result Processing
+        if calc_valid:
+            success_msg = "Stage 2 validation passed"
+            if calc_errors:
+                success_msg += " (deduced valid despite warnings)"
+            print(success_msg)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.BALANCE_SHEET,
+                success_msg,
             )
-            if is_api_error:
-                print(f"API error on extraction attempt {extraction_attempt + 1}: {str(e)}")
-                raise
-            print(f"Error on extraction attempt {extraction_attempt + 1}: {str(e)}")
-            if extraction_attempt == EXTRACTION_MAX_RETRIES - 1:
-                raise
+        else:
+            fail_msg = f"Stage 2 validation failed after retries: {', '.join(calc_errors[:2])}"
+            print(fail_msg)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.BALANCE_SHEET,
+                fail_msg,
+            )
 
-    raise Exception("Failed to extract balance sheet after all attempts")
+        extracted_data["is_valid"] = calc_valid
+        extracted_data["validation_errors"] = calc_errors
+
+        # Classify final items
+        classified_items = classify_line_items_llm(extracted_data["line_items"])
+        extracted_data["line_items"] = classified_items
+
+        # Ensure chunk indices are included
+        if successful_chunk_index is not None:
+            extracted_data["chunk_index"] = successful_chunk_index
+            extracted_data["balance_sheet_chunk_index"] = successful_chunk_index
+
+        # Final sanity check: if no line items, it cannot be valid
+        if not extracted_data.get("line_items"):
+            extracted_data["is_valid"] = False
+            if "validation_errors" not in extracted_data:
+                extracted_data["validation_errors"] = []
+            if "No line items extracted" not in extracted_data["validation_errors"]:
+                extracted_data["validation_errors"].append("No line items extracted")
+
+        return extracted_data
+
+    except Exception as e:
+        print(f"Error in Stage 2 extraction: {str(e)}")
+        extracted_data["is_valid"] = False
+        extracted_data["validation_errors"] = [str(e)]
+        if successful_chunk_index is not None:
+            extracted_data["chunk_index"] = successful_chunk_index
+        return extracted_data
+
+
+def _is_balance_sheet_total_line_name(name_lower: str) -> bool:
+    """Check if line name represents a total (more precise matching)"""
+    total_phrases = [
+        "total current assets",
+        "total assets",
+        "total current liabilities",
+        "total liabilities",
+        "total equity",
+        "total liabilities and equity",
+        "total liabilities and shareholders",
+        "total stockholder",
+        "total shareholder",
+    ]
+    for phrase in total_phrases:
+        if name_lower.startswith(phrase) or name_lower.startswith(phrase + " "):
+            return True
+    if re.search(r"\btotal\b|\bsubtotal\b|\bsum\b", name_lower):
+        if (
+            name_lower.startswith("total ")
+            or "total current" in name_lower
+            or "total assets" in name_lower
+            or "total liabilities" in name_lower
+            or "total equity" in name_lower
+            or "subtotal" in name_lower
+            or "sum" in name_lower
+        ):
+            return True
+    return False
+
+
+def _is_total_or_subtotal_item(item: dict) -> bool:
+    """Check if an item is a total/subtotal line based on name and category."""
+    category = (item.get("line_category") or "").lower()
+    if "total" in category:
+        return True
+    line_name = (item.get("line_name") or "").lower()
+    return _is_balance_sheet_total_line_name(line_name)
 
 
 def find_balance_sheet_section(
@@ -365,7 +418,7 @@ def find_balance_sheet_section(
         ]
         rerank_query_texts = [normalize_line_name(term) for term in rerank_query_texts]
 
-        result = find_document_section(
+        return find_document_section(
             document_id=document_id,
             file_path=file_path,
             query_texts=query_texts,
@@ -379,10 +432,6 @@ def find_balance_sheet_section(
             ignore_back_fraction=ignore_back_fraction,
             chunk_rank=chunk_rank,
         )
-        # Handle both old (2-tuple) and new (3-tuple) return formats for backward compatibility
-        if len(result) == 2:
-            return result[0], result[1], None
-        return result
 
     except Exception as e:
         print(f"Error finding balance sheet section: {str(e)}")
@@ -648,8 +697,8 @@ def post_process_balance_sheet_line_items(line_items: list[dict]) -> list[dict]:
                 if current_name == llm_line_name or normalize_line_name(
                     current_name
                 ) == normalize_line_name(llm_line_name):
-                    # Extract original name if it was already standardized
-                    original_name = get_orig_name(current_name)
+                    # Extract original name if it was already standardized, otherwise use current name
+                    original_name = get_orig_name(current_name) or current_name
 
                     # Rename: "Standard Name (Original Name)"
                     # Only apply if it's not already standardized to THIS standard name
@@ -709,129 +758,6 @@ def get_balance_sheet_llm_insights(
     return get_llm_insights_generic(line_items, "a balance sheet", json_structure, guidance)
 
 
-def validate_balance_sheet(line_items: list[dict]) -> tuple[bool, list[str]]:
-    """
-    Combined validation function for backward compatibility.
-    Validates both section and calculations.
-
-    Args:
-        line_items: List of balance sheet line items
-
-    Returns:
-        Tuple of (is_valid, list_of_errors)
-    """
-    # First validate section
-    section_valid, section_errors = validate_balance_sheet_section(line_items)
-    if not section_valid:
-        return False, section_errors
-
-    # Then validate calculations
-    calc_valid, calc_errors = validate_balance_sheet_calculations(line_items)
-    return calc_valid, calc_errors
-
-
-def validate_balance_sheet_section(line_items: list[dict]) -> tuple[bool, list[str]]:
-    """
-    Validate balance sheet section (Stage 1): Check minimum line count and presence of key lines.
-    This is used to validate that the correct section was found before proceeding to extraction validation.
-
-    Args:
-        line_items: List of balance sheet line items
-
-    Returns:
-        Tuple of (is_valid, list_of_errors)
-    """
-    errors = []
-
-    # Check if line_items is empty
-    if not line_items or len(line_items) == 0:
-        errors.append("Balance sheet is empty - no line items extracted")
-        return False, errors
-
-    # Check if we have at least some meaningful line items (not just empty strings)
-    valid_items = [
-        item for item in line_items if item.get("line_name") and item.get("line_name").strip()
-    ]
-    if len(valid_items) == 0:
-        errors.append("Balance sheet has no valid line items")
-        return False, errors
-
-    # Check minimum number of lines required
-    MIN_LINES_REQUIRED = 10
-    if len(valid_items) < MIN_LINES_REQUIRED:
-        errors.append(
-            f"Balance sheet must have at least {MIN_LINES_REQUIRED} line items, found {len(valid_items)}"
-        )
-        return False, errors
-
-    # Check for key totals (at least one should be present)
-    items_dict = {item["line_name"].lower(): item["line_value"] for item in line_items}
-
-    def is_total_line_name(name_lower):
-        """Check if line name represents a total (more precise matching)"""
-        total_phrases = [
-            "total current assets",
-            "total assets",
-            "total current liabilities",
-            "total liabilities",
-            "total equity",
-            "total liabilities and equity",
-            "total liabilities and shareholders",
-            "total stockholder",
-            "total shareholder",
-        ]
-        for phrase in total_phrases:
-            if name_lower.startswith(phrase) or name_lower.startswith(phrase + " "):
-                return True
-        if re.search(r"\btotal\b", name_lower):
-            if (
-                name_lower.startswith("total ")
-                or "total current" in name_lower
-                or "total assets" in name_lower
-                or "total liabilities" in name_lower
-                or "total equity" in name_lower
-            ):
-                return True
-        return False
-
-    has_key_total = False
-    has_cash = False
-    for key, _value in items_dict.items():
-        if is_total_line_name(key):
-            if (
-                "total assets" in key
-                and "non-current" not in key
-                and "current" not in key
-                and "liabilities" not in key
-            ):
-                has_key_total = True
-            elif (
-                "total liabilities" in key
-                and "non-current" not in key
-                and "current" not in key
-                and "equity" not in key
-            ):
-                has_key_total = True
-            elif "total equity" in key and "liabilities" not in key:
-                has_key_total = True
-
-        # Check for cash line item (case-insensitive)
-        if "cash" in key.lower():
-            has_cash = True
-
-    if not has_key_total:
-        errors.append(
-            "Balance sheet is missing key totals (Total Assets, Total Liabilities, or Total Equity)"
-        )
-        return False, errors
-
-    if not has_cash:
-        errors.append("Balance sheet is missing a cash line item")
-        return False, errors
-
-    return True, []
-
-
 def validate_balance_sheet_calculations(line_items: list[dict]) -> tuple[bool, list[str]]:
     """
     Validate balance sheet calculations (Stage 2): Check that sums match reported totals.
@@ -856,44 +782,9 @@ def validate_balance_sheet_calculations(line_items: list[dict]) -> tuple[bool, l
     total_equity = None
     total_liabilities_equity = None
 
-    # Helper function to check if a line name is a total line
-    # More precise: checks if "total" appears as a distinct word at the start or as part of a total phrase
-    def is_total_line_name(name_lower):
-        """Check if line name represents a total (more precise matching)"""
-        # Check for exact total phrases at the start of the name
-        total_phrases = [
-            "total current assets",
-            "total assets",
-            "total current liabilities",
-            "total liabilities",
-            "total equity",
-            "total liabilities and equity",
-            "total liabilities and shareholders",
-            "total stockholder",
-            "total shareholder",
-        ]
-        # Check if name starts with any total phrase
-        for phrase in total_phrases:
-            if name_lower.startswith(phrase) or name_lower.startswith(phrase + " "):
-                return True
-        # Also check if "total" appears as a distinct word (not part of another word)
-        # Match "total" as a whole word (not part of "totally", "totaled", etc.)
-        if re.search(r"\btotal\b", name_lower):
-            # But exclude if it's clearly not a total line (e.g., "accounts receivable, net (total...")
-            # Only consider it a total if "total" appears near the start or with key financial terms
-            if (
-                name_lower.startswith("total ")
-                or "total current" in name_lower
-                or "total assets" in name_lower
-                or "total liabilities" in name_lower
-                or "total equity" in name_lower
-            ):
-                return True
-        return False
-
     for key, value in items_dict.items():
         # Use more precise matching for totals
-        if is_total_line_name(key):
+        if _is_balance_sheet_total_line_name(key):
             # Check for "total current assets" - must contain both "total" and "current assets", but NOT "non-current"
             if (
                 "current assets" in key
@@ -939,23 +830,7 @@ def validate_balance_sheet_calculations(line_items: list[dict]) -> tuple[bool, l
     # Only sum base line items, exclude any totals or subtotals
     # Exclude items that are totals themselves (by name or category)
     def is_total_item(item):
-        """Check if an item is a total/subtotal line (more precise)"""
-        name_lower = item["line_name"].lower()
-        category = item.get("line_category", "")
-
-        # Use the same precise matching function
-        if is_total_line_name(name_lower):
-            return True
-
-        # Also check category
-        if "Total" in category:
-            return True
-
-        # Check for other total indicators (subtotal, sum) as whole words
-        if re.search(r"\bsubtotal\b", name_lower) or re.search(r"\bsum\b", name_lower):
-            return True
-
-        return False
+        return _is_total_or_subtotal_item(item)
 
     # Only include base line items (not totals) in the EXACT correct category
     # Be very explicit about category matching to avoid confusion
@@ -1134,14 +1009,7 @@ def classify_line_items_llm(line_items: list[dict]) -> list[dict]:
 HIGHEST PRIORITY: Use the AUTHORITATIVE_LOOKUP below as a binding decision table.
 - If a provided line item matches a key in AUTHORITATIVE_LOOKUP after normalization, you MUST use that value.
 - Normalization: trim, case-insensitive, collapse repeated whitespace, remove leading/trailing punctuation.
-- If no match: use the fallback heuristics.
-- If still uncertain: use best judgement.
-
-FALLBACK HEURISTICS (only when no lookup match):
-- Cash, marketable securities, debt, equity, goodwill, intangibles, lease ROU assets/liabilities -> Non-Operating
-- Working capital items (AR, inventory, AP, accrued op expenses), PPE -> Operating
-- Deferred taxes -> Operating (unless clearly financing-related)
-- If mixed/ambiguous -> Unknown
+- If no match: use best judgement.
 
 AUTHORITATIVE_LOOKUP:
 {{
@@ -1159,93 +1027,87 @@ Return a JSON array with the same order as the input, where each item has:
 
 Return only valid JSON array, no additional text."""
 
+    def _classify_with_lookup(name: str) -> bool:
+        """Helper to classify using the authoritative lookup."""
+        normalized = normalize_line_name(name)
+        if normalized in normalized_lookup:
+            return normalized_lookup[normalized] == "Operating"
+        return True  # Default for lookup failure (if LLM also fails)
+
     try:
         # Use temperature 0.0 for extraction to prevent hallucination
         classifications = call_llm_and_parse_json(prompt, temperature=0.0)
-
-        # Map classifications back to line items
         classification_map = {item["line_name"]: item["is_operating"] for item in classifications}
 
-        # Add is_operating to each line item, using lookup first if available
         for item in line_items:
             line_name = item["line_name"]
             normalized_name = normalize_line_name(line_name)
 
-            # First try authoritative lookup
+            # Check authoritative lookup first
             if normalized_name in normalized_lookup:
-                lookup_value = normalized_lookup[normalized_name]
-                item["is_operating"] = lookup_value == "Operating"
-            # Then use LLM classification if available
+                item["is_operating"] = normalized_lookup[normalized_name] == "Operating"
             elif line_name in classification_map:
                 item["is_operating"] = classification_map[line_name]
             else:
-                # Default fallback: use heuristics
-                # Cash, marketable securities, debt, equity, goodwill, intangibles, lease ROU -> Non-Operating
-                line_lower = line_name.lower()
-                if any(
-                    keyword in line_lower
-                    for keyword in [
-                        "cash",
-                        "marketable",
-                        "securities",
-                        "short-term investment",
-                        "restricted cash",
-                        "debt",
-                        "loan",
-                        "borrowing",
-                        "equity",
-                        "stock",
-                        "treasury",
-                        "goodwill",
-                        "intangible",
-                        "lease",
-                        "right-of-use",
-                        "rou asset",
-                        "rou liability",
-                    ]
-                ):
-                    item["is_operating"] = False
-                # Working capital items, PPE -> Operating
-                elif any(
-                    keyword in line_lower
-                    for keyword in [
-                        "accounts receivable",
-                        "inventory",
-                        "inventories",
-                        "accounts payable",
-                        "accrued",
-                        "prepaid",
-                        "ppe",
-                        "property",
-                        "plant",
-                        "equipment",
-                        "pass",
-                    ]
-                ):
-                    item["is_operating"] = True
-                # Default to operating
-                else:
-                    item["is_operating"] = True
+                item["is_operating"] = True  # Default fallback
 
         for item in line_items:
-            if _is_total_or_subtotal(item):
+            if _is_total_or_subtotal_item(item):
                 item["is_operating"] = None
         return line_items
 
     except Exception as e:
         print(f"Error classifying line items: {str(e)}")
-        # Fallback: use lookup if available, otherwise default to operating
         for item in line_items:
-            line_name = item["line_name"]
-            normalized_name = normalize_line_name(line_name)
-
-            if normalized_name in normalized_lookup:
-                lookup_value = normalized_lookup[normalized_name]
-                item["is_operating"] = lookup_value == "Operating"
-            else:
-                # Default to operating if classification fails
-                item["is_operating"] = True
-        for item in line_items:
-            if _is_total_or_subtotal(item):
+            item["is_operating"] = _classify_with_lookup(item["line_name"])
+            if _is_total_or_subtotal_item(item):
                 item["is_operating"] = None
         return line_items
+
+
+def check_line_item_time_periods_balance_sheet(
+    line_items: list[dict], expected_time_period: str
+) -> dict:
+    """
+    Use LLM to check if each line item belongs to the expected time period.
+    Returns items that don't match the expected period.
+
+    Args:
+        line_items: List of line items to check
+        expected_time_period: Expected time period (e.g., "Q3 2024")
+
+    Returns:
+        Dictionary with mismatched items and their detected periods
+    """
+    items_json = json.dumps(line_items, indent=2)
+
+    prompt = f"""Analyze the following balance sheet line items and determine if each one belongs to the time period: {expected_time_period}
+
+Line items:
+{items_json}
+
+For each line item, check:
+1. Does the line_name or any associated context suggest a different time period?
+2. Are there any year/quarter/month indicators that don't match {expected_time_period}?
+3. Is it clearly from a different column (e.g., "Prior Year", "Dec 31, 2022" when we want "2023")?
+
+Return a JSON object with:
+{{
+    "mismatched_items": [
+        {{
+            "line_name": "name of item that doesn't match",
+            "detected_period": "the period this item appears to belong to",
+            "reason": "why it doesn't match"
+        }}
+    ]
+}}
+
+If all items match the expected period, return an empty mismatched_items array.
+Return only valid JSON, no additional text."""
+
+    try:
+        result = call_llm_with_retry(prompt, max_retries=2, temperature=0.0)
+        return result
+    except Exception as e:
+        print(f"Error checking time periods: {str(e)}")
+        return {"mismatched_items": []}

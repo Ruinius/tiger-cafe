@@ -68,7 +68,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
   }, [financialStatementProgress])
 
   const loadFinancialStatementProgress = useCallback(async () => {
-    if (!selectedDocument || !isEligibleForFinancialStatements) return
+    if (!selectedDocument?.id || !isEligibleForFinancialStatements) return
 
     try {
       const endpoint = isAuthenticated ? 'financial-statement-progress' : 'financial-statement-progress-test'
@@ -82,10 +82,10 @@ function RightPanel({ selectedCompany, selectedDocument }) {
       // If endpoint doesn't exist or error, set to null
       setFinancialStatementProgress(null)
     }
-  }, [selectedDocument, isEligibleForFinancialStatements, isAuthenticated, token])
+  }, [selectedDocument?.id, isEligibleForFinancialStatements, isAuthenticated, token])
 
   const loadBalanceSheet = useCallback(async () => {
-    if (!selectedDocument) return
+    if (!selectedDocument?.id) return
     if (balanceSheetLoadingRef.current) return // Prevent concurrent calls
     if (balanceSheetAttemptsRef.current >= MAX_LOAD_ATTEMPTS) return // Don't retry if max attempts reached
 
@@ -119,10 +119,10 @@ function RightPanel({ selectedCompany, selectedDocument }) {
     } finally {
       balanceSheetLoadingRef.current = false
     }
-  }, [selectedDocument, isAuthenticated, token])
+  }, [selectedDocument?.id, isAuthenticated, token])
 
   const loadIncomeStatement = useCallback(async () => {
-    if (!selectedDocument) return
+    if (!selectedDocument?.id) return
     if (incomeStatementLoadingRef.current) return // Prevent concurrent calls
     if (incomeStatementAttemptsRef.current >= MAX_LOAD_ATTEMPTS) return // Don't retry if max attempts reached
 
@@ -156,10 +156,10 @@ function RightPanel({ selectedCompany, selectedDocument }) {
     } finally {
       incomeStatementLoadingRef.current = false
     }
-  }, [selectedDocument, isAuthenticated, token])
+  }, [selectedDocument?.id, isAuthenticated, token])
 
   const loadAdditionalItems = useCallback(async () => {
-    if (!selectedDocument || !isEligibleForFinancialStatements) return
+    if (!selectedDocument?.id || !isEligibleForFinancialStatements) return
 
     const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
 
@@ -202,7 +202,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
         }
       }
     })
-  }, [selectedDocument, isEligibleForFinancialStatements, isAuthenticated, token])
+  }, [selectedDocument?.id, selectedDocument?.document_type, isEligibleForFinancialStatements, isAuthenticated, token])
 
   // Load progress tracker first when document is selected
   useEffect(() => {
@@ -230,7 +230,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
       progressPollingIntervalRef.current = null
     }
 
-    if (selectedDocument && isEligibleForFinancialStatements) {
+    if (selectedDocument?.id && isEligibleForFinancialStatements) {
       // Always load progress tracker first
       loadFinancialStatementProgress()
     }
@@ -238,7 +238,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
 
   // Poll for progress when there are active milestones
   useEffect(() => {
-    if (!selectedDocument || !isEligibleForFinancialStatements) return
+    if (!selectedDocument?.id || !isEligibleForFinancialStatements) return
 
     // Check if any milestone is in progress or pending
     const hasActiveMilestones = financialStatementProgress &&
@@ -271,7 +271,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
   }, [financialStatementProgress, selectedDocument?.id, isEligibleForFinancialStatements, loadFinancialStatementProgress])
 
   const loadHistoricalCalculations = useCallback(async () => {
-    if (!selectedDocument || !isEligibleForFinancialStatements) return
+    if (!selectedDocument?.id || !isEligibleForFinancialStatements) return
 
     try {
       const endpoint = isAuthenticated ? 'historical-calculations' : 'historical-calculations/test'
@@ -289,20 +289,27 @@ function RightPanel({ selectedCompany, selectedDocument }) {
         setHistoricalCalculations(null)
       }
     }
-  }, [selectedDocument, isEligibleForFinancialStatements, isAuthenticated, token])
+  }, [selectedDocument?.id, isEligibleForFinancialStatements, isAuthenticated, token])
 
   // Load balance sheet and income statement only when all milestones are terminal
   useEffect(() => {
-    if (!selectedDocument || !isEligibleForFinancialStatements) return
+    if (!selectedDocument?.id || !isEligibleForFinancialStatements) return
     if (!areAllMilestonesTerminal()) return
 
     // Only load if attempts haven't exceeded max and data isn't already loaded and not currently loading
+    // AND the milestone indicates it might exist (completed or error, but not 'not_found')
+    const bsStatus = financialStatementProgress?.milestones?.balance_sheet?.status
     if (balanceSheetAttemptsRef.current < MAX_LOAD_ATTEMPTS && !balanceSheet && !balanceSheetLoadingRef.current) {
-      loadBalanceSheet()
+      if (bsStatus === 'completed' || bsStatus === 'error') {
+        loadBalanceSheet()
+      }
     }
 
+    const isStatus = financialStatementProgress?.milestones?.income_statement?.status
     if (incomeStatementAttemptsRef.current < MAX_LOAD_ATTEMPTS && !incomeStatement && !incomeStatementLoadingRef.current) {
-      loadIncomeStatement()
+      if (isStatus === 'completed' || isStatus === 'error') {
+        loadIncomeStatement()
+      }
     }
 
     if (!additionalItemsLoadAttempted) {
@@ -505,7 +512,9 @@ function RightPanel({ selectedCompany, selectedDocument }) {
     // Check if we should show "nothing to see here" (no data and all attempts exhausted or no progress)
     const hasNoData = !balanceSheet && !incomeStatement
     const allAttemptsExhausted = balanceSheetLoadAttempts >= MAX_LOAD_ATTEMPTS && incomeStatementLoadAttempts >= MAX_LOAD_ATTEMPTS
-    const showNothingMessage = hasNoData && (allAttemptsExhausted || (areAllMilestonesTerminal() && !financialStatementProgress))
+    // Show nothing message if we have no data AND (we tried enough times OR we are done processing)
+    // This covers cases where we skipped loading because milestones were 'not_found'
+    const showNothingMessage = hasNoData && (allAttemptsExhausted || areAllMilestonesTerminal())
 
     return (
       <div className="right-panel">
@@ -809,7 +818,7 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                   {amortization && (
                     <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
                       <h3>Non-GAAP Reconciliation</h3>
-                      <LineItemTable data={amortization} formatNumber={formatNumber} showCategory={false} />
+                      <LineItemTable data={amortization} formatNumber={formatNumber} showCategory={true} />
                     </div>
                   )}
 
@@ -1157,24 +1166,24 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                 <div style={{ marginTop: '0.5rem', paddingTop: '0.25rem' }}>
                                   <div className="balance-sheet-table-container">
                                     <table className="balance-sheet-table">
+                                      <thead>
+                                        <tr>
+                                          <th className="col-name">Line Item</th>
+                                          <th className="text-right col-value">Amount</th>
+                                        </tr>
+                                      </thead>
                                       <tbody>
                                         <tr style={{ fontWeight: 600 }}>
                                           <td className="col-name">Net Working Capital</td>
-                                          <td className="col-category"></td>
                                           <td className="text-right col-value">{formatNumber(netWorkingCapital, balanceSheet?.unit || historicalCalculations?.unit)}</td>
-                                          <td></td>
                                         </tr>
                                         <tr style={{ fontWeight: 600 }}>
                                           <td className="col-name">+ Net Long Term Operating Assets</td>
-                                          <td className="col-category"></td>
                                           <td className="text-right col-value">{formatNumber(netLongTerm, balanceSheet?.unit || historicalCalculations?.unit)}</td>
-                                          <td></td>
                                         </tr>
                                         <tr className="key-total-row">
                                           <td className="col-name">= Invested Capital</td>
-                                          <td className="col-category"></td>
                                           <td className="text-right col-value">{formatNumber(historicalCalculations.invested_capital, historicalCalculations.unit)}</td>
-                                          <td></td>
                                         </tr>
                                       </tbody>
                                     </table>
@@ -1191,141 +1200,75 @@ function RightPanel({ selectedCompany, selectedDocument }) {
 
                       {/* EBITA Breakdown */}
                       {historicalCalculations.ebita != null && incomeStatement && (
-                        <div style={{ marginTop: '1rem' }}>
+                        <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
 
                           {(() => {
-                            // Find operating income
-                            let operatingIncome = null
-                            let operatingIncomeItem = null
-                            if (incomeStatement.line_items) {
-                              for (const item of incomeStatement.line_items) {
-                                if (item.line_name.includes('Operating Income (')) {
-                                  operatingIncome = parseFloat(item.line_value || 0)
-                                  operatingIncomeItem = item
-                                  break
-                                }
-                              }
-                              // Fallback search
-                              if (operatingIncome === null) {
-                                for (const item of incomeStatement.line_items) {
-                                  const nameLower = item.line_name.toLowerCase()
-                                  if ((nameLower.includes('operating income') || nameLower.includes('income from operations') || nameLower.includes('operating profit')) &&
-                                    !nameLower.includes('total') && !nameLower.includes('subtotal')) {
-                                    operatingIncome = parseFloat(item.line_value || 0)
-                                    operatingIncomeItem = item
-                                    break
-                                  }
-                                }
-                              }
-                            }
+                            const breakdown = historicalCalculations.ebita_breakdown
 
-                            // Find revenue item
-                            let revenueItem = null
-                            if (incomeStatement.line_items) {
-                              for (const item of incomeStatement.line_items) {
-                                if (item.line_name.includes('Total Net Revenue')) {
-                                  revenueItem = item
-                                  break
-                                }
-                              }
-                              if (!revenueItem) {
-                                for (const item of incomeStatement.line_items) {
-                                  const nameLower = item.line_name.toLowerCase()
-                                  if ((nameLower.includes('revenue') || nameLower.includes('sales') || nameLower.includes('net sales')) && item.line_value > 0) {
-                                    revenueItem = item
-                                    break
-                                  }
-                                }
-                              }
-                            }
-
-                            // Find non-operating items between revenue and operating income
-                            const nonOperatingItems = []
-                            if (incomeStatement.line_items && revenueItem && operatingIncomeItem) {
-                              const sortedItems = [...incomeStatement.line_items].sort((a, b) => a.line_order - b.line_order)
-                              for (const item of sortedItems) {
-                                if (item.line_order > revenueItem.line_order && item.line_order < operatingIncomeItem.line_order) {
-                                  if (item.is_operating === false) {
-                                    nonOperatingItems.push(item)
-                                  }
-                                }
-                              }
-                            }
-
-                            // Get amortization
-                            const amortizationValue = incomeStatement.amortization ? parseFloat(incomeStatement.amortization) : null
-
-                            const nonOperatingSum = nonOperatingItems.reduce((sum, item) => sum - parseFloat(item.line_value || 0), 0)
-                            const ebitaCalc = operatingIncome + nonOperatingSum + (amortizationValue || 0)
-
-                            return (
-                              <div className="balance-sheet-container" style={{ marginTop: '1rem' }}>
-                                <div className="balance-sheet-table-container">
-                                  <table className="balance-sheet-table">
-                                    <thead>
-                                      <tr>
-                                        <th className="col-name">Line Item</th>
-                                        <th className="col-category">Category</th>
-                                        <th className="text-right col-value">Amount</th>
-                                        <th className="col-type text-right">Type</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {operatingIncomeItem && (
+                            if (breakdown) {
+                              return (
+                                <div className="balance-sheet-container" style={{ marginTop: '1rem' }}>
+                                  <div className="balance-sheet-table-container">
+                                    <table className="balance-sheet-table">
+                                      <thead>
                                         <tr>
-                                          <td className="col-name">{operatingIncomeItem.line_name}</td>
-                                          <td className="col-category">{operatingIncomeItem.line_category || 'N/A'}</td>
-                                          <td className="text-right col-value">{formatNumber(operatingIncome, incomeStatement.unit)}</td>
+                                          <th className="col-name">Line Item</th>
+                                          <th className="col-category">Category</th>
+                                          <th className="text-right col-value">Amount</th>
+                                          <th className="col-type text-right">Type</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        <tr>
+                                          <td className="col-name">Operating Income</td>
+                                          <td className="col-category">Total</td>
+                                          <td className="text-right col-value">{formatNumber(breakdown.operating_income, historicalCalculations.unit)}</td>
                                           <td className="col-type text-right">
-                                            {operatingIncomeItem.is_operating === true ? (
-                                              <span className="type-badge operating">Operating</span>
-                                            ) : operatingIncomeItem.is_operating === false ? (
-                                              <span className="type-badge non-operating">Non-Operating</span>
-                                            ) : (
-                                              <span className="text-muted">N/A</span>
-                                            )}
+                                            <span className="type-badge operating">Operating</span>
                                           </td>
                                         </tr>
-                                      )}
-                                      {nonOperatingItems.length > 0 && (
-                                        <>
-                                          <tr>
-                                            <td colSpan="4" style={{ fontWeight: 600, paddingTop: '0.5rem' }}>Non-Operating Items (between Revenue and Operating Income)</td>
-                                          </tr>
-                                          {nonOperatingItems.map((item, idx) => (
-                                            <tr key={`no-${idx}`}>
-                                              <td className="col-name">{item.line_name}</td>
-                                              <td className="col-category">{item.line_category || 'N/A'}</td>
-                                              <td className="text-right col-value">{formatNumber(-item.line_value, incomeStatement.unit)}</td>
-                                              <td className="col-type text-right">
-                                                {item.is_operating === false ? (
-                                                  <span className="type-badge non-operating">Non-Operating</span>
-                                                ) : (
-                                                  <span className="text-muted">N/A</span>
-                                                )}
-                                              </td>
+                                        {breakdown.adjustments && breakdown.adjustments.length > 0 && (
+                                          <>
+                                            <tr>
+                                              <td colSpan="4" style={{ fontWeight: 600, paddingTop: '0.5rem' }}>Non-GAAP Adjustments</td>
                                             </tr>
-                                          ))}
-                                          <tr>
-                                            <td colSpan="2" style={{ fontStyle: 'italic', fontWeight: 500 }}>Sum of Non-Operating Items</td>
-                                            <td className="text-right col-value">{formatNumber(nonOperatingSum, incomeStatement.unit)}</td>
-                                            <td></td>
-                                          </tr>
-                                        </>
-                                      )}
-                                      {amortizationValue !== null && (
-                                        <tr>
-                                          <td className="col-name">Amortization</td>
-                                          <td className="col-category">N/A</td>
-                                          <td className="text-right col-value">{formatNumber(amortizationValue, incomeStatement.amortization_unit || incomeStatement.unit)}</td>
-                                          <td className="col-type text-right">N/A</td>
+                                            {breakdown.adjustments.map((item, idx) => (
+                                              <tr key={`adj-${idx}`}>
+                                                <td className="col-name">{item.line_name}</td>
+                                                <td className="col-category">{item.category || 'One-Time'}</td>
+                                                <td className="text-right col-value">{formatNumber(item.line_value, historicalCalculations.unit)}</td>
+                                                <td className="col-type text-right">
+                                                  <span className="type-badge non-operating">Non-Operating</span>
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </>
+                                        )}
+                                        <tr className="key-total-row">
+                                          <td className="col-name">= EBITA</td>
+                                          <td className="col-category">Total</td>
+                                          <td className="text-right col-value">{formatNumber(breakdown.total, historicalCalculations.unit)}</td>
+                                          <td></td>
                                         </tr>
-                                      )}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              )
+                            }
+
+                            // Fallback for older calculations without breakdown
+                            return (
+                              <div className="balance-sheet-container" style={{ marginTop: '1rem' }}>
+                                <p style={{ fontStyle: 'italic', color: 'var(--text-secondary)', padding: '1rem' }}>
+                                  Detailed breakdown not available. Please re-run historical calculations to see the breakdown of Operating Income and Non-GAAP Adjustments.
+                                </p>
+                                <div className="balance-sheet-table-container">
+                                  <table className="balance-sheet-table">
+                                    <tbody>
                                       <tr className="key-total-row">
-                                        <td className="col-name">= EBITA</td>
-                                        <td className="col-category"></td>
+                                        <td className="col-name">EBITA</td>
                                         <td className="text-right col-value">{formatNumber(historicalCalculations.ebita, historicalCalculations.unit)}</td>
-                                        <td></td>
                                       </tr>
                                     </tbody>
                                   </table>
@@ -1336,14 +1279,195 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                         </div>
                       )}
 
-                      {/* Adjusted Tax Rate - Moved below EBITA */}
-                      <div style={{ marginTop: '0.5rem' }}>
-                        <p className="placeholder-text">Adjusted tax rate breakdown will appear here.</p>
-                      </div>
+                      {historicalCalculations.adjusted_tax_rate != null && (
+                        <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
+                          {(() => {
+                            const breakdown = historicalCalculations.adjusted_tax_rate_breakdown
 
-                      <div style={{ marginTop: '0.5rem' }}>
-                        <p className="placeholder-text">NOPAT and ROIC calculations will appear here.</p>
-                      </div>
+                            if (breakdown) {
+                              return (
+                                <div className="balance-sheet-container" style={{ marginTop: '1rem' }}>
+                                  <div className="balance-sheet-table-container">
+                                    <table className="balance-sheet-table">
+                                      <thead>
+                                        <tr>
+                                          <th className="col-name">Line Item</th>
+                                          <th className="col-category">Category</th>
+                                          <th className="text-right col-value">Amount</th>
+                                          <th className="col-type text-right">Type</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {/* Reported Tax */}
+                                        <tr>
+                                          <td className="col-name">Reported Tax Expense</td>
+                                          <td className="col-category">Total</td>
+                                          <td className="text-right col-value">{formatNumber(breakdown.reported_tax_expense, historicalCalculations.unit)}</td>
+                                          <td className="col-type text-right">
+                                            <span className="type-badge operating">Operating</span>
+                                          </td>
+                                        </tr>
+
+                                        {/* Adjustments */}
+                                        {breakdown.adjustments && breakdown.adjustments.length > 0 && (
+                                          <>
+                                            <tr>
+                                              <td colSpan="4" style={{ fontWeight: 600, paddingTop: '0.5rem' }}>Deductible Adjustments</td>
+                                            </tr>
+                                            {breakdown.adjustments.map((item, idx) => (
+                                              <tr key={`tax-adj-${idx}`}>
+                                                <td className="col-name">{item.line_name}</td>
+                                                <td className="col-category">Deductible</td>
+                                                <td className="text-right col-value">{formatNumber(item.line_value, historicalCalculations.unit)}</td>
+                                                <td className="col-type text-right">
+                                                  <span className="type-badge non-operating">Non-Operating</span>
+                                                </td>
+                                              </tr>
+                                            ))}
+
+                                            {/* Summary Calculation Block */}
+                                            <tr style={{ borderTop: '1px solid var(--border-light)' }}>
+                                              <td className="col-name">Total Deductible Items</td>
+                                              <td className="col-category">Sum</td>
+                                              <td className="text-right col-value">
+                                                {formatNumber(breakdown.adjustments.reduce((sum, item) => sum + (item.line_value || 0), 0), historicalCalculations.unit)}
+                                              </td>
+                                              <td></td>
+                                            </tr>
+                                            <tr>
+                                              <td className="col-name">× Marginal Tax Rate</td>
+                                              <td className="col-category">Rate</td>
+                                              <td className="text-right col-value">25%</td>
+                                              <td></td>
+                                            </tr>
+                                            <tr>
+                                              <td className="col-name">= Tax Effect</td>
+                                              <td className="col-category">Benefit/Cost</td>
+                                              <td className="text-right col-value">
+                                                {formatNumber(breakdown.adjustments.reduce((sum, item) => sum + (item.line_value || 0), 0) * 0.25, historicalCalculations.unit)}
+                                              </td>
+                                              <td></td>
+                                            </tr>
+                                          </>
+                                        )}
+
+                                        {/* Adjusted Tax */}
+                                        <tr className="key-total-row">
+                                          <td className="col-name">= Adjusted Tax</td>
+                                          <td className="col-category">Total</td>
+                                          <td className="text-right col-value">{formatNumber(breakdown.adjusted_tax_expense, historicalCalculations.unit)}</td>
+                                          <td></td>
+                                        </tr>
+
+                                        {/* EBITA Division Line */}
+                                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                                          <td className="col-name">/ EBITA</td>
+                                          <td className="col-category">Total</td>
+                                          <td className="text-right col-value">{formatNumber(breakdown.ebita, historicalCalculations.unit)}</td>
+                                          <td></td>
+                                        </tr>
+
+                                        {/* Adjusted Tax Rate */}
+                                        <tr className="key-total-row" style={{ borderTop: 'none' }}>
+                                          <td className="col-name">= Adjusted Tax Rate</td>
+                                          <td className="col-category">Rate</td>
+                                          <td className="text-right col-value">{formatPercent(breakdown.adjusted_tax_rate, 100)}</td>
+                                          <td></td>
+                                        </tr>
+
+                                        {/* Effective Tax Rate Comparison */}
+                                        <tr>
+                                          <td className="col-name" style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>Effective Tax Rate (Comparison)</td>
+                                          <td className="col-category" style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>Rate</td>
+                                          <td className="text-right col-value" style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                                            {formatPercent(historicalCalculations.effective_tax_rate, 100)}
+                                          </td>
+                                          <td></td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              )
+                            }
+
+                            // Fallback
+                            return (
+                              <div className="balance-sheet-container" style={{ marginTop: '1rem' }}>
+                                <p style={{ fontStyle: 'italic', color: 'var(--text-secondary)', padding: '1rem' }}>
+                                  Detailed breakdown not available. Please re-run historical calculations.
+                                </p>
+                                <div className="balance-sheet-table-container">
+                                  <table className="balance-sheet-table">
+                                    <tbody>
+                                      <tr className="key-total-row">
+                                        <td className="col-name">Adjusted Tax Rate</td>
+                                        <td className="text-right col-value">{formatPercent(historicalCalculations.adjusted_tax_rate, 100)}</td>
+                                      </tr>
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )
+                          })()}
+                        </div>
+                      )}
+
+                      {historicalCalculations.nopat != null && (
+                        <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
+                          <div className="balance-sheet-container" style={{ marginTop: '1rem' }}>
+                            <div className="balance-sheet-table-container">
+                              <table className="balance-sheet-table">
+                                <thead>
+                                  <tr>
+                                    <th className="col-name">Line Item</th>
+                                    <th className="text-right col-value">Amount</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  <tr>
+                                    <td className="col-name">EBITA</td>
+                                    <td className="text-right col-value">{formatNumber(historicalCalculations.ebita, historicalCalculations.unit)}</td>
+                                  </tr>
+                                  <tr>
+                                    <td className="col-name">– Adjusted Taxes (EBITA × {formatPercent(historicalCalculations.adjusted_tax_rate, 100)})</td>
+                                    <td className="text-right col-value" style={{ color: 'var(--text-secondary)' }}>
+                                      ({formatNumber((historicalCalculations.ebita || 0) * (historicalCalculations.adjusted_tax_rate || 0), historicalCalculations.unit)})
+                                    </td>
+                                  </tr>
+                                  <tr className="key-total-row">
+                                    <td className="col-name">= NOPAT</td>
+                                    <td className="text-right col-value">{formatNumber(historicalCalculations.nopat, historicalCalculations.unit)}</td>
+                                  </tr>
+
+                                  {/* Show Annualized NOPAT if Quarterly */}
+                                  {historicalCalculations.time_period &&
+                                    (historicalCalculations.time_period.toUpperCase().includes('Q') && !historicalCalculations.time_period.toUpperCase().startsWith('FY')) && (
+                                      <tr>
+                                        <td className="col-name">Annualized NOPAT</td>
+                                        <td className="text-right col-value">
+                                          {formatNumber((historicalCalculations.nopat || 0) * 4, historicalCalculations.unit)}
+                                        </td>
+                                      </tr>
+                                    )}
+
+                                  <tr>
+                                    <td className="col-name" style={{ paddingTop: '1rem' }}>Invested Capital</td>
+                                    <td className="text-right col-value" style={{ paddingTop: '1rem' }}>
+                                      {formatNumber(historicalCalculations.invested_capital, historicalCalculations.unit)}
+                                    </td>
+                                  </tr>
+
+                                  <tr className="key-total-row" style={{ borderTop: 'none' }}>
+                                    <td className="col-name">= ROIC, Annualized</td>
+                                    <td className="text-right col-value">{formatPercent(historicalCalculations.roic, 100)}</td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       <div style={{ marginTop: '2rem', borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
                         <h3>Summary Table</h3>
@@ -1363,7 +1487,6 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                 <tr>
                                   <th className="col-name">Line Item</th>
                                   <th className="text-right col-value">Amount</th>
-                                  <th className="col-category">Unit</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -1371,70 +1494,86 @@ function RightPanel({ selectedCompany, selectedDocument }) {
                                   <tr>
                                     <td className="col-name">Revenue</td>
                                     <td className="text-right col-value">{formatNumber(organicGrowth.current_period_revenue, organicGrowth.current_period_revenue_unit)}</td>
-                                    <td className="col-category">{organicGrowth.current_period_revenue_unit ? organicGrowth.current_period_revenue_unit.replace('_', ' ') : 'N/A'}</td>
                                   </tr>
                                 )}
                                 {incomeStatement && incomeStatement.revenue_growth_yoy != null && (
                                   <tr>
                                     <td className="col-name">YOY Revenue Growth</td>
                                     <td className="text-right col-value">{formatPercent(incomeStatement.revenue_growth_yoy, 1)}</td>
-                                    <td className="col-category">—</td>
                                   </tr>
                                 )}
                                 {organicGrowth && organicGrowth.organic_revenue_growth != null && (
                                   <tr>
                                     <td className="col-name">Organic Growth</td>
                                     <td className="text-right col-value">{formatPercent(organicGrowth.organic_revenue_growth, 1)}</td>
-                                    <td className="col-category">—</td>
                                   </tr>
                                 )}
                                 {historicalCalculations && historicalCalculations.ebita != null && (
                                   <tr>
                                     <td className="col-name">EBITA</td>
                                     <td className="text-right col-value">{formatNumber(historicalCalculations.ebita, historicalCalculations.unit)}</td>
-                                    <td className="col-category">{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
                                   </tr>
                                 )}
                                 {historicalCalculations && historicalCalculations.ebita_margin != null && (
                                   <tr>
                                     <td className="col-name">EBITA Margin</td>
                                     <td className="text-right col-value">{formatPercent(historicalCalculations.ebita_margin, 100)}</td>
-                                    <td className="col-category">—</td>
+                                  </tr>
+                                )}
+                                {historicalCalculations && historicalCalculations.effective_tax_rate != null && (
+                                  <tr>
+                                    <td className="col-name">Effective Tax Rate</td>
+                                    <td className="text-right col-value">{formatPercent(historicalCalculations.effective_tax_rate, 100)}</td>
                                   </tr>
                                 )}
                                 {historicalCalculations && historicalCalculations.adjusted_tax_rate != null && (
                                   <tr>
                                     <td className="col-name">Adjusted Tax Rate</td>
                                     <td className="text-right col-value">{formatPercent(historicalCalculations.adjusted_tax_rate, 100)}</td>
-                                    <td className="col-category">—</td>
+                                  </tr>
+                                )}
+                                {historicalCalculations && historicalCalculations.nopat != null && (
+                                  <tr>
+                                    <td className="col-name">NOPAT</td>
+                                    <td className="text-right col-value">{formatNumber(historicalCalculations.nopat, historicalCalculations.unit)}</td>
                                   </tr>
                                 )}
                                 {historicalCalculations && historicalCalculations.net_working_capital != null && (
                                   <tr>
                                     <td className="col-name">Net Working Capital</td>
                                     <td className="text-right col-value">{formatNumber(historicalCalculations.net_working_capital, historicalCalculations.unit)}</td>
-                                    <td className="col-category">{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
                                   </tr>
                                 )}
                                 {historicalCalculations && historicalCalculations.net_long_term_operating_assets != null && (
                                   <tr>
                                     <td className="col-name">Net Long Term Operating Assets</td>
                                     <td className="text-right col-value">{formatNumber(historicalCalculations.net_long_term_operating_assets, historicalCalculations.unit)}</td>
-                                    <td className="col-category">{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
                                   </tr>
                                 )}
                                 {historicalCalculations && historicalCalculations.invested_capital != null && (
                                   <tr>
                                     <td className="col-name">Invested Capital</td>
                                     <td className="text-right col-value">{formatNumber(historicalCalculations.invested_capital, historicalCalculations.unit)}</td>
-                                    <td className="col-category">{historicalCalculations.unit ? historicalCalculations.unit.replace('_', ' ') : 'N/A'}</td>
                                   </tr>
                                 )}
                                 {historicalCalculations && historicalCalculations.capital_turnover != null && (
                                   <tr>
                                     <td className="col-name">Capital Turnover, Annualized</td>
                                     <td className="text-right col-value">{formatDecimal(historicalCalculations.capital_turnover, 4)}</td>
-                                    <td className="col-category">—</td>
+                                  </tr>
+                                )}
+                                {historicalCalculations && historicalCalculations.roic != null && (
+                                  <tr>
+                                    <td className="col-name">ROIC, Annualized</td>
+                                    <td className="text-right col-value">{formatPercent(historicalCalculations.roic, 100)}</td>
+                                  </tr>
+                                )}
+                                {incomeStatement && (incomeStatement.diluted_shares_outstanding != null || incomeStatement.basic_shares_outstanding != null) && (
+                                  <tr>
+                                    <td className="col-name">{incomeStatement.diluted_shares_outstanding != null ? 'Diluted Shares Outstanding' : 'Basic Shares Outstanding'}</td>
+                                    <td className="text-right col-value">
+                                      {(incomeStatement.diluted_shares_outstanding || incomeStatement.basic_shares_outstanding).toLocaleString()}
+                                    </td>
                                   </tr>
                                 )}
                               </tbody>

@@ -1196,7 +1196,7 @@ def _build_financial_statement_progress(document_id: str, db: Session) -> dict:
         if not progress:
             return None
         milestone = progress.get("milestones", {}).get(key)
-        if milestone and milestone.get("status") in ["pending", "in_progress"]:
+        if milestone and milestone.get("status") in ["pending", "in_progress", "error"]:
             return milestone
         return None
 
@@ -1352,7 +1352,11 @@ def _build_financial_statement_progress(document_id: str, db: Session) -> dict:
         else:
             additional_item_missing.append("other liabilities")
 
-    if not income_statement and not _active_progress_milestone("extracting_additional_items"):
+    if _active_progress_milestone("extracting_additional_items"):
+        milestones["extracting_additional_items"] = _active_progress_milestone(
+            "extracting_additional_items"
+        )
+    elif not income_statement:
         milestones["extracting_additional_items"] = {
             "status": "not_found",
             "message": "Additional items not found",
@@ -1366,10 +1370,6 @@ def _build_financial_statement_progress(document_id: str, db: Session) -> dict:
             if income_statement and income_statement.extraction_date
             else None,
         }
-    elif _active_progress_milestone("extracting_additional_items"):
-        milestones["extracting_additional_items"] = _active_progress_milestone(
-            "extracting_additional_items"
-        )
     elif not additional_item_missing and additional_item_errors:
         milestones["extracting_additional_items"] = {
             "status": "error",
@@ -1388,7 +1388,11 @@ def _build_financial_statement_progress(document_id: str, db: Session) -> dict:
         }
 
     # Non-operating classification milestone
-    if non_operating and non_operating.line_items and len(non_operating.line_items) > 0:
+    if _active_progress_milestone("classifying_non_operating_items"):
+        milestones["classifying_non_operating_items"] = _active_progress_milestone(
+            "classifying_non_operating_items"
+        )
+    elif non_operating and non_operating.line_items and len(non_operating.line_items) > 0:
         milestones["classifying_non_operating_items"] = {
             "status": "completed",
             "message": "Non-operating items classified",
@@ -1396,10 +1400,6 @@ def _build_financial_statement_progress(document_id: str, db: Session) -> dict:
             if non_operating.extraction_date
             else None,
         }
-    elif _active_progress_milestone("classifying_non_operating_items"):
-        milestones["classifying_non_operating_items"] = _active_progress_milestone(
-            "classifying_non_operating_items"
-        )
     elif non_operating:
         milestones["classifying_non_operating_items"] = {
             "status": "error",

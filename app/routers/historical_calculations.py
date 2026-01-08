@@ -3,6 +3,7 @@ Historical calculations routes
 """
 
 import uuid
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -45,33 +46,55 @@ def calculate_and_save_historical_calculations(
         raise HTTPException(status_code=404, detail="Income statement not found for this document")
 
     amortization = db.query(Amortization).filter(Amortization.document_id == document_id).first()
-    amortization_value = None
+    non_gaap_items = None
     if amortization and amortization.line_items:
-        amortization_value = sum(item.line_value for item in amortization.line_items)
+        non_gaap_items = amortization.line_items
 
     # Calculate all metrics
     results = calculate_all_historical_metrics(
-        balance_sheet, income_statement, amortization_value=amortization_value
+        balance_sheet, income_statement, non_gaap_items=non_gaap_items
     )
 
     # Convert calculation notes list to JSON string
     import json
 
+    class DecimalEncoder(json.JSONEncoder):
+        def default(self, obj):
+            if isinstance(obj, Decimal):
+                return float(obj)
+            return super().default(obj)
+
     calculation_notes_json = (
-        json.dumps(results["calculation_notes"]) if results["calculation_notes"] else None
+        json.dumps(results["calculation_notes"], cls=DecimalEncoder)
+        if results["calculation_notes"]
+        else None
     )
 
     # Convert net working capital breakdown to JSON string for storage
     net_working_capital_breakdown_json = (
-        json.dumps(results["net_working_capital_breakdown"])
+        json.dumps(results["net_working_capital_breakdown"], cls=DecimalEncoder)
         if results.get("net_working_capital_breakdown")
         else None
     )
 
     # Convert net long term operating assets breakdown to JSON string for storage
     net_long_term_operating_assets_breakdown_json = (
-        json.dumps(results["net_long_term_operating_assets_breakdown"])
+        json.dumps(results["net_long_term_operating_assets_breakdown"], cls=DecimalEncoder)
         if results.get("net_long_term_operating_assets_breakdown")
+        else None
+    )
+
+    # Convert EBITA breakdown to JSON string for storage
+    ebita_breakdown_json = (
+        json.dumps(results["ebita_breakdown"], cls=DecimalEncoder)
+        if results.get("ebita_breakdown")
+        else None
+    )
+
+    # Convert Adjusted Tax Rate breakdown to JSON string for storage
+    adjusted_tax_rate_breakdown_json = (
+        json.dumps(results["adjusted_tax_rate_breakdown"], cls=DecimalEncoder)
+        if results.get("adjusted_tax_rate_breakdown")
         else None
     )
 
@@ -92,10 +115,12 @@ def calculate_and_save_historical_calculations(
         )
         existing_calc.invested_capital = results["invested_capital"]
         existing_calc.capital_turnover = results["capital_turnover"]
-        existing_calc.ebita = results["ebita"]
         existing_calc.ebita_margin = results["ebita_margin"]
         existing_calc.effective_tax_rate = results["effective_tax_rate"]
         existing_calc.adjusted_tax_rate = results["adjusted_tax_rate"]
+        existing_calc.adjusted_tax_rate_breakdown = adjusted_tax_rate_breakdown_json
+        existing_calc.nopat = results["nopat"]
+        existing_calc.roic = results["roic"]
         existing_calc.calculation_notes = calculation_notes_json
         existing_calc.time_period = document.time_period
         existing_calc.currency = balance_sheet.currency or income_statement.currency
@@ -115,9 +140,13 @@ def calculate_and_save_historical_calculations(
             invested_capital=results["invested_capital"],
             capital_turnover=results["capital_turnover"],
             ebita=results["ebita"],
+            ebita_breakdown=ebita_breakdown_json,
             ebita_margin=results["ebita_margin"],
             effective_tax_rate=results["effective_tax_rate"],
             adjusted_tax_rate=results["adjusted_tax_rate"],
+            adjusted_tax_rate_breakdown=adjusted_tax_rate_breakdown_json,
+            nopat=results["nopat"],
+            roic=results["roic"],
             calculation_notes=calculation_notes_json,
             time_period=document.time_period,
             currency=balance_sheet.currency or income_statement.currency,
@@ -175,9 +204,15 @@ def get_historical_calculations(
         "invested_capital": calc.invested_capital,
         "capital_turnover": calc.capital_turnover,
         "ebita": calc.ebita,
+        "ebita_breakdown": json.loads(calc.ebita_breakdown) if calc.ebita_breakdown else None,
         "ebita_margin": calc.ebita_margin,
         "effective_tax_rate": calc.effective_tax_rate,
         "adjusted_tax_rate": calc.adjusted_tax_rate,
+        "adjusted_tax_rate_breakdown": json.loads(calc.adjusted_tax_rate_breakdown)
+        if calc.adjusted_tax_rate_breakdown
+        else None,
+        "nopat": calc.nopat,
+        "roic": calc.roic,
         "calculation_notes": calc.calculation_notes,
         "calculated_at": calc.calculated_at,
     }
@@ -219,9 +254,15 @@ def recalculate_historical_calculations(
             "invested_capital": calc.invested_capital,
             "capital_turnover": calc.capital_turnover,
             "ebita": calc.ebita,
+            "ebita_breakdown": json.loads(calc.ebita_breakdown) if calc.ebita_breakdown else None,
             "ebita_margin": calc.ebita_margin,
             "effective_tax_rate": calc.effective_tax_rate,
             "adjusted_tax_rate": calc.adjusted_tax_rate,
+            "adjusted_tax_rate_breakdown": json.loads(calc.adjusted_tax_rate_breakdown)
+            if calc.adjusted_tax_rate_breakdown
+            else None,
+            "nopat": calc.nopat,
+            "roic": calc.roic,
             "calculation_notes": calc.calculation_notes,
             "calculated_at": calc.calculated_at,
         }
@@ -282,9 +323,15 @@ def get_historical_calculations_test(document_id: str, db: Session = Depends(get
         "invested_capital": calc.invested_capital,
         "capital_turnover": calc.capital_turnover,
         "ebita": calc.ebita,
+        "ebita_breakdown": json.loads(calc.ebita_breakdown) if calc.ebita_breakdown else None,
         "ebita_margin": calc.ebita_margin,
         "effective_tax_rate": calc.effective_tax_rate,
         "adjusted_tax_rate": calc.adjusted_tax_rate,
+        "adjusted_tax_rate_breakdown": json.loads(calc.adjusted_tax_rate_breakdown)
+        if calc.adjusted_tax_rate_breakdown
+        else None,
+        "nopat": calc.nopat,
+        "roic": calc.roic,
         "calculation_notes": calc.calculation_notes,
         "calculated_at": calc.calculated_at,
     }

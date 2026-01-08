@@ -38,6 +38,8 @@ class HistoricalCalculation(Base):
     adjusted_tax_rate = Column(
         Numeric(10, 4), nullable=True
     )  # Stored as decimal (e.g., 0.25 for 25%)
+    nopat = Column(Numeric(20, 2), nullable=True)  # Net Operating Profit After Tax
+    roic = Column(Numeric(10, 4), nullable=True)  # Return on Invested Capital (decimal)
 
     # Calculation notes/errors
     calculation_notes = Column(Text, nullable=True)  # JSON string for any notes or warnings
@@ -47,6 +49,10 @@ class HistoricalCalculation(Base):
     net_long_term_operating_assets_breakdown = Column(
         Text, nullable=True
     )  # JSON string for net long term operating assets breakdown
+    ebita_breakdown = Column(Text, nullable=True)  # JSON string for EBITA breakdown
+    adjusted_tax_rate_breakdown = Column(
+        Text, nullable=True
+    )  # JSON string for adjusted tax rate breakdown
 
     # Relationships
     document = relationship("Document", back_populates="historical_calculation")

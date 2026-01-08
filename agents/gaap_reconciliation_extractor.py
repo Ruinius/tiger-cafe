@@ -131,7 +131,7 @@ def extract_gaap_reconciliation(
         document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, extracted_count_msg
     )
 
-    # Validate: sum of all items except last should equal last item
+    # Validate: sum of all items except last should equal last item (excluding intermediate totals)
     is_valid, validation_error = validate_reconciliation_table(line_items)
 
     if not is_valid and line_items:
@@ -142,63 +142,84 @@ def extract_gaap_reconciliation(
             document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, validation_msg
         )
 
-        # Check completeness and extract correct table if incomplete
-        completeness_msg = (
-            "Checking if reconciliation table is complete and extracting correct table if needed"
-        )
-        print(completeness_msg)
+        # Step 1: Check if line items are from wrong time period
+        time_check_msg = "Checking if line items belong to correct time period"
+        print(time_check_msg)
         add_log(
-            document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, completeness_msg
+            document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, time_check_msg
         )
 
-        completeness_result = check_completeness_and_extract(
-            text, time_period, line_items, validation_error
-        )
+        time_check_result = check_line_item_time_periods(line_items, time_period)
+        mismatched_items = time_check_result.get("mismatched_items", [])
 
-        # Use the extracted line items from completeness check (whether complete or not)
-        new_line_items = completeness_result.get("line_items", [])
+        if mismatched_items:
+            # Remove out-of-place items
+            mismatched_names = {item["line_name"] for item in mismatched_items}
+            line_items = [item for item in line_items if item["line_name"] not in mismatched_names]
 
-        if completeness_result.get("is_complete", False):
-            # LLM determined table is complete, use the corrected extraction
-            line_items = new_line_items
-            corrected_msg = (
-                f"Table is complete. Using corrected extraction with {len(line_items)} line items"
-            )
-            print(corrected_msg)
+            removed_msg = f"Removed {len(mismatched_items)} out-of-period items: {', '.join(mismatched_names)}"
+            print(removed_msg)
             add_log(
-                document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, corrected_msg
+                document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, removed_msg
             )
-        else:
-            # Table was incomplete, use the new extraction
-            missing_items = completeness_result.get("missing_items", [])
-            if missing_items:
-                missing_msg = f"Table was incomplete. Missing items: {', '.join(missing_items)}"
-                print(missing_msg)
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                    missing_msg,
-                )
 
-            line_items = new_line_items
+            # Re-validate after removing mismatched items
             if line_items:
-                corrected_msg = f"Extracted complete table with {len(line_items)} line items"
-                print(corrected_msg)
+                is_valid, validation_error = validate_reconciliation_table(line_items)
+                if is_valid:
+                    validation_errors = []  # Clear errors if validation now passes
+                    success_msg = "Validation passed after removing out-of-period items"
+                    print(success_msg)
+                    add_log(
+                        document_id,
+                        FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
+                        success_msg,
+                    )
+                else:
+                    validation_errors.append(
+                        f"Validation still failed after removing out-of-period items: {validation_error}"
+                    )
+
+        # Step 2: If still invalid, try final retry with full feedback
+        if not is_valid and line_items:
+            final_retry_msg = "Attempting final extraction with validation feedback"
+            print(final_retry_msg)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
+                final_retry_msg,
+            )
+
+            retry_result = retry_extraction_with_feedback(
+                text, time_period, line_items, validation_error
+            )
+
+            final_line_items = retry_result.get("line_items", [])
+            if final_line_items:
+                line_items = final_line_items
+                final_msg = f"Final retry extracted {len(line_items)} line items"
+                print(final_msg)
                 add_log(
                     document_id,
                     FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                    corrected_msg,
+                    final_msg,
                 )
 
-        # Re-validate the new/corrected extraction
-        if line_items:
-            is_valid, validation_error = validate_reconciliation_table(line_items)
-            if not is_valid:
-                validation_errors.append(
-                    f"Validation failed after completeness check: {validation_error}"
-                )
-            else:
-                validation_errors = []  # Clear errors if validation now passes
+                # Final validation
+                is_valid, validation_error = validate_reconciliation_table(line_items)
+                if is_valid:
+                    validation_errors = []
+                    success_msg = "Validation passed after final retry"
+                    print(success_msg)
+                    add_log(
+                        document_id,
+                        FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
+                        success_msg,
+                    )
+                else:
+                    validation_errors.append(
+                        f"Validation failed after final retry: {validation_error}"
+                    )
 
     if not line_items:
         validation_errors.append("No reconciliation line items extracted")
@@ -375,13 +396,13 @@ def check_table_completeness(text: str, time_period: str) -> tuple[bool, str]:
     """
     prompt = f"""Analyze the following document text for the time period: {time_period} and determine if it contains a COMPLETE GAAP to non-GAAP reconciliation table for either:
 - EBITDA (Earnings Before Interest, Taxes, Depreciation, and Amortization)
-- Operating Income
+- Operating Income or something similar
 
 A complete reconciliation table should:
-1. Start with a GAAP measure (GAAP operating income, GAAP net income, or similar)
+1. Start with an operating income, or something similar
 2. List all adjustments/addbacks (amortization, depreciation, stock-based compensation, etc.)
 3. End with the non-GAAP measure (non-GAAP operating income, EBITDA, adjusted EBITDA, etc.)
-4. The sum of the starting GAAP measure plus all adjustments should equal the ending non-GAAP measure
+4. The sum of the starting measure plus all adjustments should equal the ending non-GAAP measure
 
 IMPORTANT: The table must be for EBITDA or operating income reconciliation.
 DO NOT consider:
@@ -441,6 +462,11 @@ Focus on extracting all line items from the operating income or EBITDA reconcili
 - Restructuring charges
 - Other adjustments that reconcile GAAP operating income or GAAP net income to non-GAAP operating income or EBITDA
 
+For each line item, classify it as:
+- "Recurring": Normal business operations that occur regularly (e.g., depreciation, amortization, stock-based compensation)
+- "One-Time": Unusual or infrequent events (e.g., restructuring charges, impairment, acquisition costs)
+- "Total": Summary/total line items (e.g., "Total Adjustments", "Adjusted EBITDA", "Non-GAAP Operating Income")
+
 CRITICAL ANTI-HALLUCINATION RULES:
 - ONLY extract values that are EXPLICITLY shown in the document text below
 - DO NOT invent, infer, calculate, estimate, or approximate any values
@@ -454,78 +480,8 @@ Return a JSON object with the following structure:
     {{
       "line_name": "exact name as it appears in the document",
       "line_value": numeric value (as number, not string),
-      "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (null if not stated)
-    }}
-  ]
-}}
-
-Document text:
-{text[:30000]}
-
-Return only valid JSON, no additional text."""
-
-    response_text = generate_content_safe(prompt, temperature=0.0)
-    if response_text.startswith("```"):
-        response_text = response_text.split("```")[1]
-        if response_text.startswith("json"):
-            response_text = response_text[4:]
-        response_text = response_text.strip()
-    return json.loads(response_text)
-
-
-def check_completeness_and_extract(
-    text: str, time_period: str, extracted_line_items: list[dict], validation_error: str
-) -> dict:
-    """
-    Check if the reconciliation table is complete, and if not, extract a new correct one.
-
-    Args:
-        text: Text containing GAAP reconciliation table
-        time_period: Time period (e.g., "Q3 2024")
-        extracted_line_items: Previously extracted line items
-        validation_error: Validation error message with numbers
-
-    Returns:
-        Dictionary with extracted line items or indication that table is incomplete
-    """
-    items_json = json.dumps(extracted_line_items, indent=2)
-    prompt = f"""I extracted the following line items from what I thought was an operating income or EBITDA reconciliation table:
-
-{items_json}
-
-However, validation failed with this error:
-{validation_error}
-
-Please analyze the document text below and answer:
-1. Do I have a COMPLETE operating income or EBITDA reconciliation table? (The sum of all items except the last should equal the last item)
-2. If not, what line items am I missing?
-3. If the table is incomplete, extract the complete and correct reconciliation table.
-
-IMPORTANT: Extract ONLY from operating income reconciliation or EBITDA reconciliation tables.
-DO NOT extract from:
-- Net income reconciliation tables
-- Margin reconciliation tables
-- EPS (earnings per share) reconciliation tables
-- Any other type of reconciliation table
-
-If the table in the document is complete, return the same line items.
-If the table is incomplete, extract ALL line items from the complete reconciliation table.
-
-CRITICAL ANTI-HALLUCINATION RULES:
-- ONLY extract values that are EXPLICITLY shown in the document text below
-- DO NOT invent, infer, calculate, estimate, or approximate any values
-- DO NOT create line items that do not appear in the document
-- If a value is not visible in the document text, use null
-
-Return a JSON object with the following structure:
-{{
-  "is_complete": true or false,
-  "missing_items": ["list of missing item names if incomplete"],
-  "line_items": [
-    {{
-      "line_name": "exact name as it appears in the document",
-      "line_value": numeric value (as number, not string),
-      "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (null if not stated)
+      "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (null if not stated),
+      "line_category": "Recurring", "One-Time", or "Total"
     }}
   ]
 }}
@@ -547,6 +503,7 @@ Return only valid JSON, no additional text."""
 def validate_reconciliation_table(line_items: list[dict]) -> tuple[bool, str]:
     """
     Validate that the sum of all line items except the last equals the last line item.
+    Excludes any "Total" line items from the middle of the calculation.
 
     Args:
         line_items: List of line items from reconciliation table
@@ -557,11 +514,30 @@ def validate_reconciliation_table(line_items: list[dict]) -> tuple[bool, str]:
     if len(line_items) < 2:
         return False, "Reconciliation table must have at least 2 line items"
 
-    # Get all items except the last
-    items_to_sum = line_items[:-1]
+    # Filter out any "Total" items from the middle (not the last item)
+    # The last item is expected to be the final total
+    items_to_sum = []
+    for i, item in enumerate(line_items[:-1]):
+        # Always include the first item (the starting GAAP measure) as it is the base for the reconciliation
+        if i == 0:
+            items_to_sum.append(item)
+            continue
+
+        line_category = item.get("line_category", "")
+        # Skip items with line_category "Total" (these are intermediate totals)
+        # Fallback to checking line_name if line_category is not set or not "Total"
+        if line_category == "Total":
+            continue  # Skip this item if its category is "Total"
+        else:
+            # If line_category is not "Total" (e.g., Recurring, One-Time, or empty),
+            # then check line_name as a fallback for older/less structured extractions
+            line_name = item.get("line_name", "").lower()
+            if "total" not in line_name:
+                items_to_sum.append(item)
+
     last_item = line_items[-1]
 
-    # Sum all values except the last
+    # Sum all values except the last (excluding intermediate totals)
     total_sum = 0.0
     for item in items_to_sum:
         value = item.get("line_value")
@@ -584,6 +560,126 @@ def validate_reconciliation_table(line_items: list[dict]) -> tuple[bool, str]:
         )
 
     return True, ""
+
+
+def check_line_item_time_periods(line_items: list[dict], expected_time_period: str) -> dict:
+    """
+    Use LLM to check if each line item belongs to the expected time period.
+    Returns items that don't match the expected period.
+
+    Args:
+        line_items: List of line items to check
+        expected_time_period: Expected time period (e.g., "Q3 2024")
+
+    Returns:
+        Dictionary with mismatched items and their detected periods
+    """
+    items_json = json.dumps(line_items, indent=2)
+
+    prompt = f"""Analyze the following line items and determine if each one belongs to the time period: {expected_time_period}
+
+Line items:
+{items_json}
+
+For each line item, check:
+1. Does the line_name or any associated context suggest a different time period?
+2. Are there any year/quarter/month indicators that don't match {expected_time_period}?
+
+Return a JSON object with:
+{{
+    "mismatched_items": [
+        {{
+            "line_name": "name of item that doesn't match",
+            "detected_period": "the period this item appears to belong to",
+            "reason": "why it doesn't match"
+        }}
+    ]
+}}
+
+If all items match the expected period, return an empty mismatched_items array.
+Return only valid JSON, no additional text."""
+
+    try:
+        result = call_llm_with_retry(prompt, max_retries=2, temperature=0.0)
+        return result
+    except Exception as e:
+        print(f"Error checking time periods: {str(e)}")
+        return {"mismatched_items": []}
+
+
+def retry_extraction_with_feedback(
+    text: str,
+    time_period: str,
+    current_line_items: list[dict],
+    validation_error: str,
+) -> dict:
+    """
+    Final retry attempt: pass full context, validation error, and current table to LLM
+    for one last extraction attempt.
+
+    Args:
+        text: Document text containing reconciliation table
+        time_period: Expected time period
+        current_line_items: Current extracted line items that failed validation
+        validation_error: The validation error message
+
+    Returns:
+        Dictionary with new line items
+    """
+    items_json = json.dumps(current_line_items, indent=2)
+
+    prompt = f"""I attempted to extract an operating income or EBITDA reconciliation table for {time_period}, but validation failed.
+
+Current extraction:
+{items_json}
+
+Validation error:
+{validation_error}
+
+Please re-extract the reconciliation table from the document text below, ensuring:
+1. The table is for {time_period} (not other periods)
+2. All line items are from the same reconciliation table
+3. The sum of all items (excluding any intermediate "Total" items) equals the final total
+4. Start with the GAAP measure (operating income, net income, or similar)
+5. List all adjustments/addbacks
+6. End with the non-GAAP measure (non-GAAP operating income, EBITDA, adjusted EBITDA, etc.)
+
+IMPORTANT: Extract ONLY from operating income or EBITDA reconciliation tables.
+DO NOT extract from:
+- Net income reconciliation tables
+- Margin reconciliation tables
+- EPS (earnings per share) reconciliation tables
+- Any other type of reconciliation table
+
+CRITICAL ANTI-HALLUCINATION RULES:
+- ONLY extract values that are EXPLICITLY shown in the document text below
+- DO NOT invent, infer, calculate, estimate, or approximate any values
+- DO NOT create line items that do not appear in the document
+- If a value is not visible in the document text, use null
+
+Return a JSON object with:
+{{
+    "line_items": [
+        {{
+            "line_name": "exact name as it appears in the document",
+            "line_value": numeric value (as number, not string),
+            "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (null if not stated),
+            "line_category": "Recurring", "One-Time", or "Total"
+        }}
+    ]
+}}
+
+Document text:
+{text[:30000]}
+
+Return only valid JSON, no additional text."""
+
+    try:
+        result = call_llm_with_retry(prompt, max_retries=2, temperature=0.0)
+        return result
+    except Exception as e:
+        print(f"Error in final retry extraction: {str(e)}")
+        return {"line_items": []}
 
 
 def classify_line_items_llm(line_items: list[dict], max_retries: int = 3) -> list[dict]:
@@ -630,7 +726,7 @@ def classify_line_items_llm(line_items: list[dict], max_retries: int = 3) -> lis
     # Prepare context for LLM
     items_text = "\n".join([f"- {item['line_name']}" for item in line_items])
 
-    prompt = f"""Classify each line item as operating or non-operating, and as recurring, one-time, or total.
+    prompt = f"""Classify each line item as operating or non-operating.
 
 HIGHEST PRIORITY: Use the AUTHORITATIVE_LOOKUP below as a binding decision table.
 - If a provided line item matches a key in AUTHORITATIVE_LOOKUP after normalization, you MUST use that value.
@@ -642,18 +738,15 @@ AUTHORITATIVE_LOOKUP:
 {lookup_context}
 }}
 
-Recurring items are normal business operations that occur regularly:
+Operating items are normal business operations:
 - Revenue, Cost of Revenue, Operating Expenses, Depreciation, Interest Expense, Taxes
 - Regular business operations that happen every period
 
-One-time items are unusual or infrequent events:
+Non-operating items are unusual or outside core operations:
 - Restructuring Charges, Impairment Charges, Gain/Loss on Sale of Assets
 - Legal Settlements, Acquisition Costs, Discontinued Operations
-- Other unusual gains or losses that are not expected to recur
-
-Total items are summary/total line items:
-- "Total Net Revenue", "Total Revenue", "Total Expenses", "Total Operating Expenses", "Total Costs", etc.
-- IMPORTANT: For total items, set is_operating to null (do not provide true or false), EXCEPT for "Total Net Revenue" which should be is_operating: true
+- Amortization of Intangible Assets
+- Other unusual gains or losses
 
 Line items:
 {items_text}
@@ -663,8 +756,7 @@ Return a JSON object with the following structure:
     "classifications": [
         {{
             "line_name": "exact line name as provided",
-            "is_operating": true, false, or null (null for totals except "Total Net Revenue"),
-            "line_category": "Recurring", "One-Time", or "Total"
+            "is_operating": true, false, or null (null for totals except "Total Net Revenue")
         }},
         ...
     ]
@@ -676,7 +768,6 @@ Return only valid JSON, no additional text."""
         classifications = {
             item["line_name"]: {
                 "is_operating": item.get("is_operating"),
-                "line_category": item.get("line_category", "Recurring"),
             }
             for item in result.get("classifications", [])
         }
@@ -699,9 +790,10 @@ Return only valid JSON, no additional text."""
                 # Fallback to LLM
                 item_copy["is_operating"] = classification.get("is_operating", None)
 
-            # Handle Totals special case
+            # Handle Totals special case - check existing line_category first
+            existing_category = item_copy.get("line_category", "")
             line_name_lower = line_name.lower()
-            is_total = classification.get("line_category") == "Total" or "total" in line_name_lower
+            is_total = existing_category == "Total" or "total" in line_name_lower
 
             if is_total:
                 if "total net revenue" in line_name_lower or "total revenue" in line_name_lower:
@@ -709,8 +801,11 @@ Return only valid JSON, no additional text."""
                 else:
                     item_copy["is_operating"] = None
 
+            # Preserve line_category if it exists from initial extraction
+            # Only set default if missing
             if "line_category" not in item_copy or not item_copy.get("line_category"):
-                item_copy["line_category"] = classification.get("line_category", "Recurring")
+                item_copy["line_category"] = "Recurring"  # Default fallback
+
             classified_items.append(item_copy)
 
         return classified_items

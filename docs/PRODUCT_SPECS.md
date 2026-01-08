@@ -76,16 +76,19 @@ The login page is the landing page during development and is the gateway to the 
   - Changes to **Check Uploads** during active uploads
 - Selecting a company shows company documents
 - Selecting a document shows document details
+  - **Original PDF** viewer (collapsible, default collapsed)
+  - Document metadata and status
 
 ### Right Panel (Content)
 
 - Default: recent completed analysis list
 - Company selected: company analysis dashboard
 - Document selected: extracted data + progress view
-  - Financial statements tables
+  - Financial statements tables (Balance Sheet, Income Statement)
+  - Historical Calculations (Invested Capital, EBITA, Adjusted Tax, NOPAT, ROIC)
   - Validation indicators
   - Operating vs. non-operating classification
-  - Additional items table
+  - Additional items table (Organic Growth, Amortization, Shares)
   - Re-run and delete actions
 
 ### Day/Night Toggle
@@ -163,3 +166,31 @@ When a document is selected:
   4. Classifying non-operating items
 - Real-time status: `checking`, `pending`, `in_progress`, `completed`, `error`, `not_found`
 - Tables include validation status and operating/non-operating labels
+- Tables include validation status and operating/non-operating labels
+
+## Historical Metrics & Analysis
+
+The application automatically computes and displays the following based on extracted data:
+
+### 1. Invested Capital
+- **Net Working Capital**: Operating Current Assets - Operating Current Liabilities.
+  - Breakdowns for components.
+- **Net Long-Term Operating Assets**: Operating Non-Current Assets - Operating Non-Current Liabilities.
+- **Total Invested Capital**: Sum of the above.
+
+### 2. EBITA & Margins
+- **EBITA**: Operating Income adjusted for non-operating items and amortization.
+- breakdown of non-GAAP adjustments.
+
+### 3. Adjusted Taxes
+- **Adjusted Tax Rate**: Calculated using statutory rate (25%) on deductible adjustments.
+- Detailed breakdown of tax effects.
+- Comparison with Effective Tax Rate.
+
+### 4. ROI & NOPAT
+- **NOPAT**: EBITA * (1 - Adjusted Tax Rate).
+- **ROIC**: NOPAT / Invested Capital (Annualized).
+
+### 5. Summary Table
+- Aggregates key metrics across all available time periods.
+- Includes: Revenue, Growth, EBITA, Margins, Tax Rates, Capital Turnover, ROIC, and Diluted Shares.

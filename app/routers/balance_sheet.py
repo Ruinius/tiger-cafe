@@ -254,18 +254,23 @@ def process_balance_sheet_async(document_id: str, db: Session):
         # Update milestone to error
         current_progress = get_progress(document_id)
         if current_progress:
-            # Find which milestone was in progress and mark it as error
+            # Find which milestones were in progress or pending and mark them as error
             milestones = current_progress.get("milestones", {})
             for milestone_key, milestone_data in milestones.items():
-                if milestone_data.get("status") == MilestoneStatus.IN_PROGRESS.value:
+                if milestone_data.get("status") in [
+                    MilestoneStatus.IN_PROGRESS.value,
+                    MilestoneStatus.PENDING.value,
+                ]:
                     try:
                         milestone = FinancialStatementMilestone(milestone_key)
                         update_milestone(
-                            document_id, milestone, MilestoneStatus.ERROR, f"Error: {str(e)}"
+                            document_id,
+                            milestone,
+                            MilestoneStatus.ERROR,
+                            f"Process failed: {str(e)}",
                         )
                     except Exception:
                         pass
-                    break
 
         if document:
             document.analysis_status = ProcessingStatus.ERROR

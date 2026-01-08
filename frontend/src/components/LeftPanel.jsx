@@ -26,6 +26,50 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
   const [expandedChunks, setExpandedChunks] = useState(new Set())
   const { isAuthenticated, token } = useAuth()
   const processingTriggeredRef = useRef(false)
+  const processingActionRef = useRef(null)
+
+  // Debouncing state to prevent duplicate button clicks
+  const [buttonDebouncing, setButtonDebouncing] = useState({})
+
+  // Document visibility state
+  const [isDocumentExpanded, setIsDocumentExpanded] = useState(false)
+  const debounceTimers = useRef({})
+
+  // Debounce utility function
+  const debounceAction = useCallback((actionKey, action, delay = 1000) => {
+    // If already debouncing this action, ignore
+    if (buttonDebouncing[actionKey]) {
+      return
+    }
+
+    // Set debouncing state
+    setButtonDebouncing(prev => ({ ...prev, [actionKey]: true }))
+
+    // Execute the action
+    action()
+
+    // Clear any existing timer for this action
+    if (debounceTimers.current[actionKey]) {
+      clearTimeout(debounceTimers.current[actionKey])
+    }
+
+    // Set timer to clear debouncing state
+    debounceTimers.current[actionKey] = setTimeout(() => {
+      setButtonDebouncing(prev => {
+        const newState = { ...prev }
+        delete newState[actionKey]
+        return newState
+      })
+      delete debounceTimers.current[actionKey]
+    }, delay)
+  }, [buttonDebouncing])
+
+  // Cleanup debounce timers on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(debounceTimers.current).forEach(timer => clearTimeout(timer))
+    }
+  }, [])
 
   const loadUploadProgress = useCallback(async () => {
     try {
@@ -301,6 +345,84 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
     }
   }, [])
 
+  // Failsafe: Re-enable buttons after 60 seconds if processing gets stuck
+  useEffect(() => {
+    let timeoutId
+
+    if (isProcessing) {
+      if (processingActionRef.current === 'delete-document') {
+        timeoutId = setTimeout(() => {
+          console.warn('Processing timeout reached (60s). Re-enabling buttons.')
+          setIsProcessing(false)
+          processingTriggeredRef.current = false
+          waitingForIndexingRef.current = false
+        }, 60000)
+      }
+    }
+
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+    }
+  }, [isProcessing])
+
+  // Poll for analysis_status changes when document is processing
+  // This ensures buttons re-enable when processing completes (even with errors)
+  useEffect(() => {
+    if (!selectedDocument || selectedDocument.analysis_status !== 'processing') {
+      return
+    }
+
+    let isMounted = true
+
+    // Poll every 3 seconds while processing
+    const pollInterval = setInterval(async () => {
+      try {
+        const endpoint = isAuthenticated ? 'status' : 'status-test'
+        const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+        const response = await axios.get(
+          `${API_BASE_URL}/documents/${selectedDocument.id}/${endpoint}`,
+          { headers }
+        )
+
+        if (!isMounted) return
+
+        if (response.data && onDocumentSelect) {
+          const newAnalysisStatus = response.data.analysis_status
+
+          // If processing completed (status changed from 'processing')
+          if (newAnalysisStatus !== 'processing') {
+            // Update document
+            onDocumentSelect(response.data)
+
+            // Reset processing state
+            setIsProcessing(false)
+            processingTriggeredRef.current = false
+
+            // Re-check financial statements to update button states
+            const eligibleTypes = ['earnings_announcement', 'quarterly_filing', 'annual_filing']
+            if (selectedDocument.document_type && eligibleTypes.includes(selectedDocument.document_type)) {
+              await checkFinancialStatements(selectedDocument.id)
+            }
+
+            // Stop polling
+            clearInterval(pollInterval)
+          }
+        }
+      } catch (error) {
+        if (isMounted) {
+          console.error(`Error polling analysis status for document ${selectedDocument.id}:`, error)
+        }
+      }
+    }, 3000)
+
+    return () => {
+      isMounted = false
+      clearInterval(pollInterval)
+    }
+  }, [selectedDocument?.id, selectedDocument?.analysis_status, isAuthenticated, token, onDocumentSelect, checkFinancialStatements])
+
   useEffect(() => {
     loadCompanies()
     // Initial load of upload progress
@@ -504,12 +626,14 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
   }
 
   const expandAllChunks = () => {
+    setIsDocumentExpanded(true)
     if (documentChunks && documentChunks.chunks) {
-      setExpandedChunks(new Set(documentChunks.chunks.map((_, index) => index)))
+      setExpandedChunks(new Set(documentChunks.chunks.map(chunk => chunk.chunk_index)))
     }
   }
 
   const collapseAllChunks = () => {
+    setIsDocumentExpanded(false)
     setExpandedChunks(new Set())
   }
 
@@ -964,10 +1088,11 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
                     <button
                       className="button-secondary"
-                      disabled={isCheckingProcessingStatus || isProcessing || selectedDocument.indexing_status === 'indexing' || selectedDocument.analysis_status === 'processing'}
-                      onClick={async () => {
+                      disabled={isCheckingProcessingStatus || isProcessing || selectedDocument.indexing_status === 'indexing' || selectedDocument.analysis_status === 'processing' || buttonDebouncing['rerun-indexing']}
+                      onClick={() => debounceAction('rerun-indexing', async () => {
                         setIsProcessing(true)
                         processingTriggeredRef.current = true
+                        processingActionRef.current = 'rerun-indexing'
                         try {
                           const endpoint = isAuthenticated ? 'rerun-indexing' : 'rerun-indexing-test'
                           const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -999,7 +1124,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                           alert(err.response?.data?.detail || 'Failed to re-run indexing')
                           setIsProcessing(false)
                         }
-                      }}
+                      }, 2000)}
                       style={{ width: '100%', textAlign: 'left' }}
                     >
                       Re-run Indexing
@@ -1012,11 +1137,13 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                         isProcessing ||
                         selectedDocument.analysis_status === 'processing' ||
                         !selectedDocument.document_type ||
-                        !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)
+                        !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type) ||
+                        buttonDebouncing['rerun-extraction']
                       }
-                      onClick={async () => {
+                      onClick={() => debounceAction('rerun-extraction', async () => {
                         setIsProcessing(true)
                         processingTriggeredRef.current = true
+                        processingActionRef.current = 'rerun-extraction'
                         // Immediately set all milestones to PENDING in RightPanel
                         window.dispatchEvent(new CustomEvent('resetProgressToPending', {
                           detail: { documentId: selectedDocument.id }
@@ -1037,7 +1164,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                           alert(err.response?.data?.detail || 'Failed to re-run extraction and classification')
                           setIsProcessing(false)
                         }
-                      }}
+                      }, 2000)}
                       style={{ width: '100%', textAlign: 'left' }}
                     >
                       Re-run Extraction and Classification
@@ -1051,13 +1178,15 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                         selectedDocument.analysis_status === 'processing' ||
                         !hasFinancialStatements ||
                         !selectedDocument.document_type ||
-                        !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type)
+                        !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(selectedDocument.document_type) ||
+                        buttonDebouncing['rerun-historical']
                       }
                       style={{ width: '100%', textAlign: 'left' }}
-                      onClick={async () => {
+                      onClick={() => debounceAction('rerun-historical', async () => {
                         if (!hasFinancialStatements) return
                         setIsProcessing(true)
                         processingTriggeredRef.current = true
+                        processingActionRef.current = 'rerun-historical'
                         try {
                           const endpoint = isAuthenticated ? 'historical-calculations/recalculate' : 'historical-calculations/recalculate/test'
                           const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -1074,7 +1203,7 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                           setIsProcessing(false)
                           processingTriggeredRef.current = false
                         }
-                      }}
+                      }, 2000)}
                     >
                       Re-run Historical Calculations
                     </button>
@@ -1087,18 +1216,19 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                 <strong>Danger Zone</strong>
                 <button
                   className="button-warning"
-                  disabled={!hasFinancialStatements || isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing'}
+                  disabled={!hasFinancialStatements || isCheckingProcessingStatus || isProcessing || selectedDocument.analysis_status === 'processing' || buttonDebouncing['delete-statements']}
                   style={{
                     width: '100%',
                     textAlign: 'left',
                     marginTop: '0.75rem'
                   }}
-                  onClick={async () => {
+                  onClick={() => debounceAction('delete-statements', async () => {
                     if (!hasFinancialStatements) return
                     if (!window.confirm('Are you sure you want to delete all financial statements for this document? This action cannot be undone.')) {
                       return
                     }
                     setIsProcessing(true)
+                    processingActionRef.current = 'delete-statements'
                     try {
                       const endpoint = isAuthenticated ? 'financial-statements' : 'financial-statements/test'
                       const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -1127,13 +1257,13 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                     } finally {
                       setIsProcessing(false)
                     }
-                  }}
+                  }, 2000)}
                 >
                   Delete Financial Statements
                 </button>
                 <button
                   className="button-warning"
-                  disabled={isCheckingProcessingStatus || isProcessing || selectedDocument.indexing_status === 'indexing' || selectedDocument.analysis_status === 'processing'}
+                  disabled={isCheckingProcessingStatus || isProcessing || selectedDocument.indexing_status === 'indexing' || selectedDocument.analysis_status === 'processing' || buttonDebouncing['delete-document']}
                   style={{
                     width: '100%',
                     textAlign: 'left',
@@ -1141,9 +1271,10 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                     backgroundColor: 'var(--error, #E5484D)',
                     color: 'white'
                   }}
-                  onClick={async () => {
+                  onClick={() => debounceAction('delete-document', async () => {
                     if (window.confirm(`Are you sure you want to permanently delete "${selectedDocument.filename}"? This will delete the document, all financial statements, and all associated data. This action cannot be undone.`)) {
                       setIsProcessing(true)
+                      processingActionRef.current = 'delete-document'
                       try {
                         const endpoint = isAuthenticated ? 'permanent' : 'permanent/test'
                         const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
@@ -1167,34 +1298,17 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                         setIsProcessing(false)
                       }
                     }
-                  }}
+                  }, 2000)}
                 >
                   Delete Document
                 </button>
               </div>
             </div>
-            {pdfUrl && (
-              <div className="info-section document-viewer-section">
-                <h3>Document</h3>
-                <div className="pdf-viewer-container">
-                  <iframe
-                    src={pdfUrl}
-                    title={selectedDocument.filename}
-                    className="pdf-viewer"
-                  />
-                </div>
-              </div>
-            )}
-            {!pdfUrl && (
-              <div className="info-section">
-                <p>Loading document...</p>
-              </div>
-            )}
-            {/* Raw Document Chunks Section - Only for indexed documents */}
-            {(selectedDocument?.indexing_status === 'indexed' || selectedDocument?.indexing_status === 'INDEXED') && (
+            {/* Unified Document Viewer Section */}
+            {(pdfUrl || selectedDocument?.indexing_status === 'indexed' || selectedDocument?.indexing_status === 'INDEXED') && (
               <div className="info-section raw-document-section">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <h3>Raw Document</h3>
+                  <h3>Document</h3>
                   {documentChunks && documentChunks.chunks && documentChunks.chunks.length > 0 && (
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <button
@@ -1214,79 +1328,137 @@ function LeftPanel({ selectedCompany, selectedDocument, onCompanySelect, onDocum
                     </div>
                   )}
                 </div>
-                {chunksLoading ? (
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Loading chunks...</p>
-                ) : documentChunks && documentChunks.chunks ? (
-                  <div className="chunks-container">
-                    {documentChunks.chunks.map((chunk) => {
-                      const isExpanded = expandedChunks.has(chunk.chunk_index)
-                      return (
-                        <div key={chunk.chunk_index} className="chunk-item">
-                          <button
-                            className="chunk-header"
-                            onClick={() => toggleChunk(chunk.chunk_index)}
-                            style={{
-                              width: '100%',
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              padding: '0.75rem',
-                              background: 'var(--bg-elevated)',
-                              border: '1px solid var(--border)',
-                              borderRadius: 'var(--radius-md)',
-                              cursor: 'pointer',
-                              textAlign: 'left',
-                              marginBottom: '0.5rem'
-                            }}
-                          >
-                            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                              Chunk {chunk.chunk_index} (Pages {chunk.start_page}-{chunk.end_page})
-                            </span>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                              {chunk.character_count.toLocaleString()} chars
-                            </span>
-                            <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                              {isExpanded ? '▼' : '▶'}
-                            </span>
-                          </button>
-                          {isExpanded && (
-                            <div
-                              className="chunk-content"
-                              style={{
-                                padding: '1rem',
-                                background: 'var(--bg-surface)',
-                                border: '1px solid var(--border)',
-                                borderRadius: 'var(--radius-md)',
-                                marginBottom: '0.5rem',
-                                maxHeight: '400px',
-                                overflowY: 'auto',
-                                fontSize: '0.875rem',
-                                lineHeight: '1.6',
-                                color: 'var(--text-primary)',
-                                whiteSpace: 'pre-wrap',
-                                wordBreak: 'break-word',
-                                // Use content-visibility for better performance
-                                contentVisibility: 'auto',
-                                containIntrinsicSize: 'auto 400px'
-                              }}
-                            >
-                              {chunk.error ? (
-                                <p style={{ color: 'var(--error)' }}>Error loading chunk: {chunk.error}</p>
-                              ) : chunk.text ? (
-                                chunk.text
-                              ) : (
-                                <p style={{ color: 'var(--text-secondary)' }}>No text available</p>
-                              )}
-                            </div>
-                          )}
+
+                {/* Original PDF Viewer */}
+                {pdfUrl ? (
+                  <div className="chunk-item">
+                    <button
+                      className="chunk-header"
+                      onClick={() => setIsDocumentExpanded(!isDocumentExpanded)}
+                      style={{
+                        width: '100%',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '0.75rem',
+                        background: 'var(--bg-elevated)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius-md)',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        marginBottom: '0.5rem'
+                      }}
+                    >
+                      <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                        Original PDF {selectedDocument.page_count ? `(Pages 1-${selectedDocument.page_count})` : ''}
+                      </span>
+                      {selectedDocument.character_count ? (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                          {selectedDocument.character_count.toLocaleString()} chars
+                        </span>
+                      ) : (
+                        <span></span>
+                      )}
+                      <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                        {isDocumentExpanded ? '▼' : '▶'}
+                      </span>
+                    </button>
+                    {isDocumentExpanded && (
+                      <div className="chunk-content" style={{ padding: '0', border: 'none', background: 'transparent' }}>
+                        <div className="pdf-viewer-container" style={{ height: '500px', marginTop: '0.5rem' }}>
+                          <iframe
+                            src={pdfUrl}
+                            title={selectedDocument.filename}
+                            className="pdf-viewer"
+                            style={{ height: '100%', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}
+                          />
                         </div>
-                      )
-                    })}
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                    No chunks available. Document may not be fully indexed.
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem' }}>
+                    Loading document PDF...
                   </p>
+                )}
+
+                {/* Chunks List */}
+                {(selectedDocument?.indexing_status === 'indexed' || selectedDocument?.indexing_status === 'INDEXED') && (
+                  <>
+                    {chunksLoading ? (
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Loading chunks...</p>
+                    ) : documentChunks && documentChunks.chunks ? (
+                      <div className="chunks-container">
+                        {documentChunks.chunks.map((chunk) => {
+                          const isExpanded = expandedChunks.has(chunk.chunk_index)
+                          return (
+                            <div key={chunk.chunk_index} className="chunk-item">
+                              <button
+                                className="chunk-header"
+                                onClick={() => toggleChunk(chunk.chunk_index)}
+                                style={{
+                                  width: '100%',
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  padding: '0.75rem',
+                                  background: 'var(--bg-elevated)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: 'var(--radius-md)',
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                  marginBottom: '0.5rem'
+                                }}
+                              >
+                                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                  Chunk {chunk.chunk_index} (Pages {chunk.start_page}-{chunk.end_page})
+                                </span>
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                  {chunk.character_count.toLocaleString()} chars
+                                </span>
+                                <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                                  {isExpanded ? '▼' : '▶'}
+                                </span>
+                              </button>
+                              {isExpanded && (
+                                <div
+                                  className="chunk-content"
+                                  style={{
+                                    padding: '1rem',
+                                    background: 'var(--bg-surface)',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: 'var(--radius-md)',
+                                    marginBottom: '0.5rem',
+                                    maxHeight: '400px',
+                                    overflowY: 'auto',
+                                    fontSize: '0.875rem',
+                                    lineHeight: '1.6',
+                                    color: 'var(--text-primary)',
+                                    whiteSpace: 'pre-wrap',
+                                    wordBreak: 'break-word',
+                                    contentVisibility: 'auto',
+                                    containIntrinsicSize: 'auto 400px'
+                                  }}
+                                >
+                                  {chunk.error ? (
+                                    <p style={{ color: 'var(--error)' }}>Error loading chunk: {chunk.error}</p>
+                                  ) : chunk.text ? (
+                                    chunk.text
+                                  ) : (
+                                    <p style={{ color: 'var(--text-secondary)' }}>No text available</p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                        No chunks available. Document may not be fully indexed.
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             )}

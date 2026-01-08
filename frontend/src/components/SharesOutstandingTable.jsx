@@ -36,26 +36,20 @@ export default function SharesOutstandingTable({ incomeStatement }) {
           <thead>
             <tr>
               <th className="col-name">Line Item</th>
-              <th className="col-category">Category</th>
               <th className="text-right col-value">Amount</th>
-              <th className="col-type text-right">Type</th>
             </tr>
           </thead>
           <tbody>
             {incomeStatement.basic_shares_outstanding !== null && (
               <tr>
                 <td className="col-name">Basic Shares Outstanding</td>
-                <td className="col-category">Share Count</td>
                 <td className="text-right col-value">{incomeStatement.basic_shares_outstanding.toLocaleString()}</td>
-                <td className="col-type text-right"><span className="text-muted">—</span></td>
               </tr>
             )}
             {incomeStatement.diluted_shares_outstanding !== null && (
               <tr>
                 <td className="col-name">Diluted Shares Outstanding</td>
-                <td className="col-category">Share Count</td>
                 <td className="text-right col-value">{incomeStatement.diluted_shares_outstanding.toLocaleString()}</td>
-                <td className="col-type text-right"><span className="text-muted">—</span></td>
               </tr>
             )}
           </tbody>

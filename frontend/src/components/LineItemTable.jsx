@@ -42,7 +42,8 @@ export default function LineItemTable({ data, formatNumber, balanceSheet, income
           </thead>
           <tbody>
             {data.line_items.map((item, index) => {
-              const category = categoryFormatter ? categoryFormatter(item.category) : (item.category || 'N/A')
+              const categoryValue = item.category || item.line_category
+              const category = categoryFormatter ? categoryFormatter(categoryValue) : (categoryValue || 'N/A')
 
               let typeContent;
               if (typeOverride) {

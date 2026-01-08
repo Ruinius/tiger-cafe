@@ -63,7 +63,8 @@ This approach optimizes processing costs and focuses detailed extraction on docu
 - **Routers:** `app/routers/`
   - `auth.py`: Google OAuth login flow
   - `documents.py`: upload, indexing, status, and extraction triggers
-  - Additional routers house company/analysis APIs
+  - `historical_calculations.py`: computes financial metrics
+  - Additional routers: `balance_sheet.py`, `income_statement.py`, `organic_growth.py`, `amortization.py`, etc.
 - **Models:** `app/models/` (SQLAlchemy)
 - **Schemas:** `app/schemas/` (Pydantic)
 - **Utilities:** `app/utils/` (LLM and extraction helpers)
@@ -121,8 +122,26 @@ This approach optimizes processing costs and focuses detailed extraction on docu
      - Totals do not have `is_operating` classification (set to `None`)
      - Exception: "Total Net Revenue" has `is_operating = True`
      - Totals are excluded from validation sum calculations to prevent double counting
+5. **Additional Items Extraction**:
+   - Dedicated agents run after main financial statements:
+     - `Organic Growth`: M&A impact analysis
+     - `Amortization`: Operating vs Non-operating split
+     - `Shares Outstanding`: Basic/Diluted extraction
+     - `Other Assets/Liabilities`: Detailed breakdown
 
-### 3) Analysis & Reporting
+### 3) Historical Calculation Subsystem
+
+Triggered automatically after extraction milestones:
+1.  **Data Ingestion**: Loads extracted Balance Sheet, Income Statement, and Additional Items.
+2.  **Normalization**: Applies standard definitions (Standardized Names).
+3.  **Computation**:
+    - **Invested Capital**: Sum of NWC and Net Long-Term Assets.
+    - **EBITA**: Operating Income - Non-Operating Items + Amortization.
+    - **Tax**: Effective and Adjusted Tax Rates (using 25% marginal on adjustments).
+    - **Performance**: NOPAT and ROIC (annualized).
+4.  **Persistence**: Results saved to `historical_calculations` table.
+
+### 4) Analysis & Reporting
 
 1. Metrics are derived from extracted statements.
 2. Analysis results are stored in `analysis_results`.

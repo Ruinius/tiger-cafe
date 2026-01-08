@@ -80,9 +80,9 @@ def test_upload(pdf_path: str, google_token: str):
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python test_upload.py <path_to_pdf> <google_oauth_token>")
+        print("Usage: python check_upload.py <path_to_pdf> <google_oauth_token>")
         print("\nExample:")
-        print("  python test_upload.py sample.pdf eyJhbGciOiJSUzI1NiIs...")
+        print("  python check_upload.py sample.pdf eyJhbGciOiJSUzI1NiIs...")
         print("\nNote: You need a Google OAuth ID token to authenticate.")
         print("For testing, you can get one from Google Sign-In in your frontend.")
         sys.exit(1)
