@@ -20,6 +20,9 @@ class Company(Base):
 
     # Relationships
     documents = relationship("Document", back_populates="company", cascade="all, delete-orphan")
+    financial_assumptions = relationship(
+        "FinancialAssumption", back_populates="company", uselist=False, cascade="all, delete-orphan"
+    )
     financial_metrics = relationship(
         "FinancialMetric", back_populates="company", cascade="all, delete-orphan"
     )

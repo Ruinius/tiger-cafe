@@ -5,6 +5,7 @@ import LineItemTable from './LineItemTable'
 import OrganicGrowthTable from './OrganicGrowthTable'
 import StandardizedBreakdownTable from './StandardizedBreakdownTable'
 import SharesOutstandingTable from './SharesOutstandingTable'
+import FinancialModel from './FinancialModel'
 import './RightPanel.css'
 
 function RightPanel({ selectedCompany, selectedDocument }) {
@@ -1619,48 +1620,116 @@ function RightPanel({ selectedCompany, selectedDocument }) {
     const hasCompanyData = companyEntries.length > 0
     const timePeriods = companyEntries.map((entry) => entry.time_period)
 
+    // Helper to calculate average and median
+    const calculateStats = (extractor) => {
+      const values = companyEntries
+        .map(extractor)
+        .filter(v => v !== null && v !== undefined && !isNaN(parseFloat(v)))
+        .map(v => parseFloat(v))
+        .sort((a, b) => a - b)
+
+      if (values.length === 0) return { average: null, median: null }
+
+      const sum = values.reduce((a, b) => a + b, 0)
+      const average = sum / values.length
+
+      let median
+      const mid = Math.floor(values.length / 2)
+      if (values.length % 2 === 0) {
+        median = (values[mid - 1] + values[mid]) / 2
+      } else {
+        median = values[mid]
+      }
+
+      return { average, median }
+    }
+
     const rows = [
       {
         label: 'Revenue',
-        render: (entry) => formatNumber(entry.revenue, companyHistoricalCalculations?.unit)
+        render: (entry) => formatNumber(entry.revenue, companyHistoricalCalculations?.unit),
+        stats: calculateStats(e => e.revenue),
+        formatStats: (val) => formatNumber(val, companyHistoricalCalculations?.unit)
       },
       {
         label: 'YOY Revenue Growth',
-        render: (entry) => formatPercent(entry.revenue_growth_yoy, 1)
+        render: (entry) => formatPercent(entry.revenue_growth_yoy, 1),
+        stats: calculateStats(e => e.revenue_growth_yoy),
+        formatStats: (val) => formatPercent(val, 1)
       },
       {
         label: 'EBITA',
-        render: (entry) => formatNumber(entry.ebita, companyHistoricalCalculations?.unit)
+        render: (entry) => formatNumber(entry.ebita, companyHistoricalCalculations?.unit),
+        stats: calculateStats(e => e.ebita),
+        formatStats: (val) => formatNumber(val, companyHistoricalCalculations?.unit)
       },
       {
         label: 'EBITA Margin',
-        render: (entry) => formatPercent(entry.ebita_margin, 100)
+        render: (entry) => formatPercent(entry.ebita_margin, 100),
+        stats: calculateStats(e => e.ebita_margin),
+        formatStats: (val) => formatPercent(val, 100)
       },
       {
         label: 'Effective Tax Rate',
-        render: (entry) => formatPercent(entry.effective_tax_rate, 100)
+        render: (entry) => formatPercent(entry.effective_tax_rate, 100),
+        stats: calculateStats(e => e.effective_tax_rate),
+        formatStats: (val) => formatPercent(val, 100)
       },
       {
         label: 'Adjusted Tax Rate',
-        render: (entry) => formatPercent(entry.adjusted_tax_rate, 100)
+        render: (entry) => formatPercent(entry.adjusted_tax_rate, 100),
+        stats: calculateStats(e => e.adjusted_tax_rate),
+        formatStats: (val) => formatPercent(val, 100)
       },
       {
         label: 'Net Working Capital',
         render: (entry) =>
-          formatNumber(entry.net_working_capital, companyHistoricalCalculations?.unit)
+          formatNumber(entry.net_working_capital, companyHistoricalCalculations?.unit),
+        stats: calculateStats(e => e.net_working_capital),
+        formatStats: (val) => formatNumber(val, companyHistoricalCalculations?.unit)
       },
       {
         label: 'Net Long Term Operating Assets',
         render: (entry) =>
-          formatNumber(entry.net_long_term_operating_assets, companyHistoricalCalculations?.unit)
+          formatNumber(entry.net_long_term_operating_assets, companyHistoricalCalculations?.unit),
+        stats: calculateStats(e => e.net_long_term_operating_assets),
+        formatStats: (val) => formatNumber(val, companyHistoricalCalculations?.unit)
       },
       {
         label: 'Invested Capital',
-        render: (entry) => formatNumber(entry.invested_capital, companyHistoricalCalculations?.unit)
+        render: (entry) => formatNumber(entry.invested_capital, companyHistoricalCalculations?.unit),
+        stats: calculateStats(e => e.invested_capital),
+        formatStats: (val) => formatNumber(val, companyHistoricalCalculations?.unit)
       },
       {
         label: 'Capital Turnover, Annualized',
-        render: (entry) => formatDecimal(entry.capital_turnover, 4)
+        render: (entry) => formatDecimal(entry.capital_turnover, 4),
+        stats: calculateStats(e => e.capital_turnover),
+        formatStats: (val) => formatDecimal(val, 4)
+      },
+      {
+        label: 'NOPAT',
+        render: (entry) => formatNumber(entry.nopat, companyHistoricalCalculations?.unit),
+        stats: calculateStats(e => e.nopat),
+        formatStats: (val) => formatNumber(val, companyHistoricalCalculations?.unit)
+      },
+      {
+        label: 'ROIC',
+        render: (entry) => formatPercent(entry.roic, 100),
+        stats: calculateStats(e => e.roic),
+        formatStats: (val) => formatPercent(val, 100)
+      },
+      {
+        label: 'Organic Revenue Growth',
+        render: (entry) => formatPercent(entry.organic_revenue_growth, 1),
+        stats: calculateStats(e => e.organic_revenue_growth),
+        formatStats: (val) => formatPercent(val, 1)
+      },
+      {
+        label: 'YOY Marginal Capital Turnover',
+        render: (entry) => formatDecimal(entry.marginal_capital_turnover, 4),
+        stats: calculateStats(e => e.marginal_capital_turnover),
+        formatStats: (val) => formatDecimal(val, 4)
       }
     ]
 
@@ -1676,46 +1745,64 @@ function RightPanel({ selectedCompany, selectedDocument }) {
               <p className="placeholder-text">{companyHistoricalError}</p>
             )}
             {!companyHistoricalLoading && !companyHistoricalError && hasCompanyData && (
-              <div className="balance-sheet-container">
-                <div className="balance-sheet-header">
-                  <h3>Historical Calculations</h3>
-                  <div className="balance-sheet-meta">
-                    <span>
-                      <strong>Currency:</strong> {companyHistoricalCalculations?.currency || 'N/A'}
-                    </span>
-                    <span>
-                      <strong>Unit:</strong> {companyHistoricalCalculations?.unit || 'N/A'}
-                    </span>
-                    <span>
-                      <em>Units do not apply to percentages and ratios.</em>
-                    </span>
+              <>
+                <div className="balance-sheet-container">
+                  <div className="balance-sheet-header">
+                    <h3>Historical Calculations</h3>
+                    <div className="balance-sheet-meta">
+                      <span>
+                        <strong>Currency:</strong> {companyHistoricalCalculations?.currency || 'N/A'}
+                      </span>
+                      <span>
+                        <strong>Unit:</strong> {companyHistoricalCalculations?.unit || 'N/A'}
+                      </span>
+                      <span>
+                        <em>Units do not apply to percentages and ratios.</em>
+                      </span>
+                    </div>
+                  </div>
+                  <div className="balance-sheet-table-container">
+                    <table className="balance-sheet-table">
+                      <thead>
+                        <tr>
+                          <th>Line Item</th>
+                          {timePeriods.map((period) => (
+                            <th key={period} className="text-right">{period}</th>
+                          ))}
+                          <th className="text-right" style={{ borderLeft: '2px solid var(--border)' }}>Average</th>
+                          <th className="text-right">Median</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((row) => (
+                          <tr key={row.label}>
+                            <td>{row.label}</td>
+                            {companyEntries.map((entry) => (
+                              <td key={`${row.label}-${entry.time_period}`} className="text-right">
+                                {row.render(entry)}
+                              </td>
+                            ))}
+                            <td className="text-right" style={{ borderLeft: '2px solid var(--border)', fontWeight: 500 }}>
+                              {row.formatStats(row.stats.average)}
+                            </td>
+                            <td className="text-right" style={{ fontWeight: 500 }}>
+                              {row.formatStats(row.stats.median)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
-                <div className="balance-sheet-table-container">
-                  <table className="balance-sheet-table">
-                    <thead>
-                      <tr>
-                        <th>Line Item</th>
-                        {timePeriods.map((period) => (
-                          <th key={period} className="text-right">{period}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((row) => (
-                        <tr key={row.label}>
-                          <td>{row.label}</td>
-                          {companyEntries.map((entry) => (
-                            <td key={`${row.label}-${entry.time_period}`} className="text-right">
-                              {row.render(entry)}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+
+                {/* Financial Modeling Section */}
+                <FinancialModel
+                  selectedCompany={selectedCompany}
+                  historicalEntries={companyEntries}
+                  unit={companyHistoricalCalculations?.unit}
+                  currency={companyHistoricalCalculations?.currency}
+                />
+              </>
             )}
             {!companyHistoricalLoading && !companyHistoricalError && !hasCompanyData && (
               <p className="placeholder-text">

@@ -19,6 +19,10 @@ class CompanyHistoricalCalculationEntry(BaseModel):
     net_long_term_operating_assets: Decimal | None = None
     invested_capital: Decimal | None = None
     capital_turnover: Decimal | None = None
+    nopat: Decimal | None = None
+    roic: Decimal | None = None
+    organic_revenue_growth: Decimal | None = None
+    marginal_capital_turnover: Decimal | None = None
 
 
 class CompanyHistoricalCalculations(BaseModel):
