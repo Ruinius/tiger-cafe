@@ -7,7 +7,6 @@ import sqlite3
 
 from config.config import DATABASE_URL
 
-
 db_path = DATABASE_URL.replace("sqlite:///", "")
 
 if not os.path.exists(db_path):

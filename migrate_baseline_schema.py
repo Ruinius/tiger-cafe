@@ -4,6 +4,20 @@ Baseline database migration - creates all tables from models.
 This migration replaces all previous incremental migrations and creates
 a clean baseline schema that matches the current model definitions exactly.
 
+INCORPORATED MIGRATIONS:
+This baseline includes all changes from the following migration files:
+1. migrate_add_chunk_index_fields.py - Added chunk indexing fields to documents
+2. migrate_add_ebita_breakdown.py - Added EBITA breakdown to historical calculations
+3. migrate_add_net_working_capital_breakdown.py - Added NWC breakdown fields
+4. migrate_add_net_long_term_operating_assets_breakdown.py - Added NLTOA breakdown fields
+5. migrate_add_adjusted_tax_rate.py - Added adjusted_tax_rate to historical calculations
+6. migrate_add_adjusted_tax_rate_breakdown.py - Added adjusted tax rate breakdown fields
+7. migrate_add_nopat_roic.py - Added NOPAT and ROIC to historical calculations
+8. migrate_add_financial_assumptions.py - Added financial_assumptions table
+
+All of these changes are now part of the baseline schema defined in the SQLAlchemy models.
+The individual migration files have been archived to migrations_archive/.
+
 Run this script to initialize a fresh database or to reset an existing one.
 """
 
@@ -25,14 +39,17 @@ def migrate():
     This creates:
     - users
     - companies
-    - documents
+    - documents (with chunk indexing fields)
     - balance_sheets
     - balance_sheet_line_items
     - income_statements
     - income_statement_line_items
-    - historical_calculations
+    - historical_calculations (with all breakdown fields, NOPAT, ROIC, adjusted tax rate)
     - financial_metrics
     - analysis_results
+    - financial_assumptions (for DCF modeling)
+
+    All tables include the complete schema with all fields from previous migrations.
     """
     print("Creating baseline database schema...")
     print("=" * 60)
@@ -64,7 +81,7 @@ def migrate():
 
     print("\n" + "=" * 60)
     print("Baseline migration completed successfully!")
-    print("\nNote: All previous migration files can now be archived.")
+    print("\nNote: All previous migration files have been archived to migrations_archive/.")
     print("This baseline migration replaces all incremental migrations.")
 
 
