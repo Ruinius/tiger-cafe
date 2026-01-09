@@ -457,16 +457,30 @@ hr.calc-section-divider {
     --doc-table-3rd-last-col-width: 20%;
 }
 
+/* Consistent spacing for all sections in Document Extraction View */
+.document-extraction-view>div[style*="marginBottom"] {
+    margin-bottom: 2.5rem !important;
+}
+
+/* Consistent spacing for all extraction sections */
+.extraction-section {
+    margin-bottom: 2.5rem;
+}
+
 /* Document Extraction Specific Table Column Widths */
-.document-extraction-view .financial-table th:last-child {
+/* Apply to all financial tables in the document extraction view */
+.document-extraction-view .financial-table th:last-child,
+.document-extraction-view .table-container .financial-table th:last-child {
     width: var(--doc-table-last-col-width);
 }
 
-.document-extraction-view .financial-table th:nth-last-child(2) {
+.document-extraction-view .financial-table th:nth-last-child(2),
+.document-extraction-view .table-container .financial-table th:nth-last-child(2) {
     width: var(--doc-table-2nd-last-col-width);
 }
 
-.document-extraction-view .financial-table th:nth-last-child(3) {
+.document-extraction-view .financial-table th:nth-last-child(3),
+.document-extraction-view .table-container .financial-table th:nth-last-child(3) {
     width: var(--doc-table-3rd-last-col-width);
 }
 

@@ -74,8 +74,8 @@ export default function SummaryTable({ historicalCalculations, organicGrowth, in
                 <table className="financial-table">
                     <thead>
                         <tr>
-                            <th className="col-name">Metric</th>
-                            <th className="text-right col-value">Value</th>
+                            <th className="col-name">Line Item</th>
+                            <th className="text-right col-value">Amount</th>
                         </tr>
                     </thead>
                     <tbody>

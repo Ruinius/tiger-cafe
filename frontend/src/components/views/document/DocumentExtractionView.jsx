@@ -277,7 +277,7 @@ function DocumentExtractionView({ selectedDocument }) {
 
                         {/* Extractions */}
                         {balanceSheet && (
-                            <div style={{ marginBottom: '2rem' }}>
+                            <div className="extraction-section">
                                 <h3>Balance Sheet</h3>
                                 <BalanceSheetTable
                                     data={balanceSheet}
@@ -287,7 +287,7 @@ function DocumentExtractionView({ selectedDocument }) {
                         )}
 
                         {incomeStatement && (
-                            <div style={{ marginBottom: '2rem' }}>
+                            <div className="extraction-section">
                                 <h3>Income Statement</h3>
                                 <IncomeStatementTable
                                     data={incomeStatement}
@@ -298,7 +298,7 @@ function DocumentExtractionView({ selectedDocument }) {
 
                         {/* Additional Tables */}
                         {organicGrowth && (
-                            <div style={{ marginBottom: '2rem' }}>
+                            <div className="extraction-section">
                                 <h3>Organic Revenue Growth</h3>
                                 <OrganicGrowthTable
                                     data={organicGrowth}
@@ -308,7 +308,7 @@ function DocumentExtractionView({ selectedDocument }) {
                         )}
 
                         {amortization && (
-                            <div style={{ marginBottom: '2rem' }}>
+                            <div className="extraction-section">
                                 <h3>Non-GAAP Reconciliation</h3>
                                 <NonGaapTable
                                     data={amortization}
@@ -320,7 +320,7 @@ function DocumentExtractionView({ selectedDocument }) {
                         )}
 
                         {incomeStatement && (
-                            <div style={{ marginBottom: '2rem' }}>
+                            <div className="extraction-section">
                                 <h3>Shares Outstanding</h3>
                                 <SharesOutstandingTable
                                     incomeStatement={incomeStatement}
@@ -329,7 +329,7 @@ function DocumentExtractionView({ selectedDocument }) {
                         )}
 
                         {nonOperatingClassification && (
-                            <div style={{ marginBottom: '2rem' }}>
+                            <div className="extraction-section">
                                 <h3>Non-Operating Items Classification</h3>
                                 <NonOperatingClassificationTable
                                     data={nonOperatingClassification}
