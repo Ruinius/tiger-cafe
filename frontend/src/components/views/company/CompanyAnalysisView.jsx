@@ -93,7 +93,7 @@ function CompanyAnalysisView({ selectedCompany }) {
             formatStats: (val) => formatNumber(val, companyHistoricalCalculations?.unit)
         },
         {
-            label: 'YOY Revenue Growth',
+            label: 'Simple Revenue Growth',
             render: (entry) => formatPercent(entry.revenue_growth_yoy, 1),
             stats: calculateStats(e => e.revenue_growth_yoy),
             formatStats: (val) => formatPercent(val, 1)
@@ -194,9 +194,9 @@ function CompanyAnalysisView({ selectedCompany }) {
                     {!companyHistoricalLoading && !companyHistoricalError && hasCompanyData && (
                         <>
                             <h3 style={{ marginTop: 0 }}>Historical Data</h3>
-                            <div className="balance-sheet-container">
-                                <div className="balance-sheet-header">
-                                    <div className="balance-sheet-meta">
+                            <div className="table-container">
+                                <div className="table-header">
+                                    <div className="table-meta">
                                         <span>
                                             <strong>Currency:</strong> {companyHistoricalCalculations?.currency || 'N/A'}
                                         </span>
@@ -208,8 +208,8 @@ function CompanyAnalysisView({ selectedCompany }) {
                                         </span>
                                     </div>
                                 </div>
-                                <div className="balance-sheet-table-container">
-                                    <table className="balance-sheet-table company-analysis-table">
+                                <div className="financial-table-container">
+                                    <table className="financial-table company-analysis-table">
                                         <thead>
                                             <tr>
                                                 <th>Line Item</th>

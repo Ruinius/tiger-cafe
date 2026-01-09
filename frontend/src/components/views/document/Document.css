@@ -311,6 +311,17 @@
     gap: 2.5rem;
 }
 
+hr.calc-section-divider {
+    display: block;
+    width: 100%;
+    height: 1px;
+    border: none;
+    background-color: var(--border-strong);
+    margin: 2.5rem 0;
+    opacity: 1;
+    clear: both;
+}
+
 
 
 /* Processing Tracker & Log Styles */
@@ -447,17 +458,18 @@
 }
 
 /* Document Extraction Specific Table Column Widths */
-.document-extraction-view .balance-sheet-table th:last-child {
+.document-extraction-view .financial-table th:last-child {
     width: var(--doc-table-last-col-width);
 }
 
-.document-extraction-view .balance-sheet-table th:nth-last-child(2) {
+.document-extraction-view .financial-table th:nth-last-child(2) {
     width: var(--doc-table-2nd-last-col-width);
 }
 
-.document-extraction-view .balance-sheet-table th:nth-last-child(3) {
+.document-extraction-view .financial-table th:nth-last-child(3) {
     width: var(--doc-table-3rd-last-col-width);
 }
+
 
 /* Status Pills / Badges (Operating/Non-Operating) */
 .type-badge {

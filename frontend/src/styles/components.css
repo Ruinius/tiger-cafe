@@ -230,15 +230,24 @@
     }
 }
 
-/* Premium Table Container */
-.balance-sheet-container {
+
+
+/* 
+   ---------------------------
+   PREMIUM TABLE SYSTEM
+   (Migrated from Document.css)
+   ---------------------------
+*/
+
+/* Outer Container (Section) */
+.table-container {
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
 }
 
-/* Table Header Metadata */
-.balance-sheet-header {
+/* Header & Metadata */
+.table-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -247,7 +256,7 @@
     margin-bottom: 0.5rem;
 }
 
-.balance-sheet-meta {
+.table-meta {
     display: flex;
     gap: 1.5rem;
     align-items: center;
@@ -255,23 +264,23 @@
     color: var(--text-secondary);
 }
 
-.balance-sheet-meta strong {
+.table-meta strong {
     color: var(--text-primary);
     font-weight: 500;
     margin-right: 0.5rem;
 }
 
-/* Table Base Styles */
-.balance-sheet-table-container {
+/* Table Wrapper (Card style) */
+.financial-table-container {
     background-color: var(--bg-surface);
     border-radius: 12px;
     box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
-    /* shadow-sm */
     border: 1px solid var(--border);
     overflow: hidden;
 }
 
-.balance-sheet-table {
+/* Base Table */
+.financial-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.9rem;
@@ -279,12 +288,12 @@
 }
 
 /* Table Header */
-.balance-sheet-table thead {
+.financial-table thead {
     background-color: var(--bg-primary);
     border-bottom: 1px solid var(--border);
 }
 
-.balance-sheet-table th {
+.financial-table th {
     padding: 0.75rem 1.5rem;
     text-align: left;
     font-weight: 500;
@@ -294,32 +303,32 @@
     color: var(--text-secondary);
 }
 
-.balance-sheet-table th.text-right {
+.financial-table th.text-right {
     text-align: right;
 }
 
 /* Table Body */
-.balance-sheet-table tbody tr {
+.financial-table tbody tr {
     height: 48px;
     border-bottom: 1px solid var(--border-subtle);
     transition: background-color 0.15s ease;
 }
 
-.balance-sheet-table tbody tr:last-child {
+.financial-table tbody tr:last-child {
     border-bottom: none;
 }
 
-.balance-sheet-table tbody tr:hover {
+.financial-table tbody tr:hover {
     background-color: var(--bg-primary);
 }
 
-.balance-sheet-table td {
+.financial-table td {
     padding: 0.75rem 1.5rem;
     vertical-align: middle;
     color: var(--text-primary);
 }
 
-/* Typography & Columns */
+/* Common Table Columns */
 .col-name {
     font-weight: 500;
     color: var(--text-primary);
@@ -341,21 +350,25 @@
     text-align: right;
 }
 
-/* Key Total Rows */
-.balance-sheet-table tbody tr.key-total-row {
+/* Key Rows */
+.financial-table tbody tr.key-total-row {
     background-color: var(--bg-primary);
     border-top: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
     font-weight: 600;
 }
 
-.balance-sheet-table tbody tr.key-total-row td {
+.financial-table tbody tr.key-total-row td {
     color: var(--text-primary);
     font-weight: 700;
 }
 
-/* Normal Total Rows */
-.balance-sheet-table tbody tr.total-row {
+.financial-table tbody tr.total-row {
     background-color: rgba(0, 0, 0, 0.02);
     font-weight: 600;
+}
+
+.financial-table tbody tr.summary-spacer-row {
+    height: 1rem;
+    border-bottom: none;
 }

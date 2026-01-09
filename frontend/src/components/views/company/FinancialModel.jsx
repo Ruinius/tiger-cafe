@@ -494,8 +494,8 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
             {modelData && modelData.projections && (
                 <div className="model-results">
                     <h3>Discounted Cash Flow Model</h3>
-                    <div className="balance-sheet-table-container">
-                        <table className="balance-sheet-table company-analysis-table">
+                    <div className="financial-table-container">
+                        <table className="financial-table company-analysis-table">
                             <thead>
                                 <tr>
                                     <th>Year</th>
@@ -565,8 +565,8 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
 
                     <div className="valuation-summary" style={{ marginTop: '2rem' }}>
                         <h3>Intrinsic Value</h3>
-                        <div className="balance-sheet-table-container">
-                            <table className="balance-sheet-table" style={{ maxWidth: '400px' }}>
+                        <div className="financial-table-container">
+                            <table className="financial-table" style={{ maxWidth: '400px' }}>
                                 <tbody>
                                     <tr>
                                         <td>PV of FCF (10y)</td>

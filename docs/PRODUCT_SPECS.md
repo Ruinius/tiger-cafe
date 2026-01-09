@@ -218,8 +218,7 @@ The following is a comprehensive list of all frontend files and their roles. Fil
 
 #### View Components - Document (State 3)
 - **`components/views/document/DocumentView.jsx`**: Document metadata and PDF viewer (left panel)
-- **`components/views/document/DocumentExtractionView.jsx`** ⚠️: Extracted financial data tables (right panel)
-  - **Refactoring Needed**: This is a monolithic component (~1000+ lines) that renders all extraction tables inline. Should be split into separate table components.
+- **`components/views/document/DocumentExtractionView.jsx`**: Extracted financial data tables (right panel)
 - **`components/views/document/Document.css`**: Document view styles
 
 #### Custom Hooks
@@ -254,17 +253,7 @@ The following is a comprehensive list of all frontend files and their roles. Fil
 
 #### Known Technical Debt
 
-1. **DocumentExtractionView.jsx** (High Priority)
-   - **Issue**: Monolithic component with inline table rendering
-   - **Impact**: Hard to maintain, test, and reuse table logic
-   - **Solution**: Extract into separate components:
-     - `BalanceSheetTable.jsx`
-     - `IncomeStatementTable.jsx`
-     - `InvestedCapitalTable.jsx`
-     - `EBITABreakdownTable.jsx`
-     - `SummaryTable.jsx`
-
-2. **useDocumentData.js** (High Priority)
+1. **useDocumentData.js** (High Priority)
    - **Issue**: God hook that manages document metadata, extractions, and calculations
    - **Impact**: Difficult to test, violates single responsibility principle
    - **Solution**: Split into focused hooks as described above
@@ -453,9 +442,9 @@ The application automatically computes and displays the following based on extra
 
 ### 2. EBITA & Margins
 - **EBITA**: Operating Income adjusted for non-operating items and amortization.
-- breakdown of non-GAAP adjustments.
+- Breakdown of non-GAAP adjustments.
 
-### 3. Adjusted Taxes
+### 3. Adjusted Tax Rate
 - **Adjusted Tax Rate**: Calculated using statutory rate (25%) on deductible adjustments.
 - Detailed breakdown of tax effects.
 - Comparison with Effective Tax Rate.
