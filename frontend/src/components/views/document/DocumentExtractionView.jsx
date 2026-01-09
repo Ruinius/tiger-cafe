@@ -502,7 +502,7 @@ function DocumentExtractionView({ selectedDocument }) {
                             </div>
                         )}
 
-                        {historicalCalculations && historicalCalculations.entries && historicalCalculations.entries.length > 0 && (
+                        {historicalCalculations && (
                             <div style={{ marginBottom: '2rem' }}>
                                 <h3>Historical Calculations</h3>
                                 <div className="balance-sheet-table-container">
@@ -532,13 +532,7 @@ function DocumentExtractionView({ selectedDocument }) {
                                                 { label: 'ROIC', key: 'roic', isPercent: true },
                                                 { label: 'YOY Marginal Capital Turnover', key: 'marginal_capital_turnover', isDecimal: true }
                                             ].map(row => {
-                                                // Assuming entries[0] contains the calculation for this document
-                                                // Historical endpoint usually returns a list of entries.
-                                                // For a single document, it might just correspond to one entry (one time period).
-                                                // However, the structure is companyHistoricalCalculations?.entries
-                                                // Let's assume response structure for single doc is { entries: [...], unit: ..., currency: ... }
-                                                const entry = historicalCalculations.entries[0] || {}
-                                                let value = entry[row.key]
+                                                let value = historicalCalculations[row.key]
 
                                                 let displayValue = 'N/A'
                                                 if (row.isPercent) {
@@ -567,6 +561,147 @@ function DocumentExtractionView({ selectedDocument }) {
                                     </table>
                                 </div>
                             </div>
+                        )}
+
+                        {/* Breakdown Tables */}
+                        {historicalCalculations && (
+                            <>
+                                {/* Invested Capital Breakdown */}
+                                {(historicalCalculations.net_working_capital_breakdown || historicalCalculations.net_long_term_operating_assets_breakdown) && (
+                                    <div style={{ marginBottom: '2rem' }}>
+                                        <h3>Invested Capital Breakdown</h3>
+
+                                        {historicalCalculations.net_working_capital_breakdown && (
+                                            <div style={{ marginBottom: '1.5rem' }}>
+                                                <h4 style={{ fontSize: '1rem', marginBottom: '0.75rem', color: 'var(--text-secondary)' }}>Net Working Capital</h4>
+                                                <div className="balance-sheet-table-container">
+                                                    <table className="balance-sheet-table extraction-table">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Line Item</th>
+                                                                <th className="text-right">Amount</th>
+                                                                <th>Category</th>
+                                                                <th>Type</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {Object.entries(historicalCalculations.net_working_capital_breakdown).map(([key, value]) => {
+                                                                const isTotal = key.toLowerCase().includes('total') || key.toLowerCase().includes('net working capital')
+                                                                return (
+                                                                    <tr key={key} className={isTotal ? 'key-total-row' : ''}>
+                                                                        <td>{key}</td>
+                                                                        <td className="text-right">{formatNumber(value, historicalCalculations.unit)}</td>
+                                                                        <td>Calculated</td>
+                                                                        <td></td>
+                                                                    </tr>
+                                                                )
+                                                            })}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {historicalCalculations.net_long_term_operating_assets_breakdown && (
+                                            <div style={{ marginBottom: '1.5rem' }}>
+                                                <h4 style={{ fontSize: '1rem', marginBottom: '0.75rem', color: 'var(--text-secondary)' }}>Net Long Term Operating Assets</h4>
+                                                <div className="balance-sheet-table-container">
+                                                    <table className="balance-sheet-table extraction-table">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Line Item</th>
+                                                                <th className="text-right">Amount</th>
+                                                                <th>Category</th>
+                                                                <th>Type</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {Object.entries(historicalCalculations.net_long_term_operating_assets_breakdown).map(([key, value]) => {
+                                                                const isTotal = key.toLowerCase().includes('total') || key.toLowerCase().includes('net long term')
+                                                                return (
+                                                                    <tr key={key} className={isTotal ? 'key-total-row' : ''}>
+                                                                        <td>{key}</td>
+                                                                        <td className="text-right">{formatNumber(value, historicalCalculations.unit)}</td>
+                                                                        <td>Calculated</td>
+                                                                        <td></td>
+                                                                    </tr>
+                                                                )
+                                                            })}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* EBITA Breakdown */}
+                                {historicalCalculations.ebita_breakdown && (
+                                    <div style={{ marginBottom: '2rem' }}>
+                                        <h3>EBITA Breakdown</h3>
+                                        <div className="balance-sheet-table-container">
+                                            <table className="balance-sheet-table extraction-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Line Item</th>
+                                                        <th className="text-right">Amount</th>
+                                                        <th>Category</th>
+                                                        <th>Type</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {Object.entries(historicalCalculations.ebita_breakdown).map(([key, value]) => {
+                                                        const isTotal = key.toLowerCase().includes('ebita') || key.toLowerCase().includes('total')
+                                                        return (
+                                                            <tr key={key} className={isTotal ? 'key-total-row' : ''}>
+                                                                <td>{key}</td>
+                                                                <td className="text-right">{formatNumber(value, historicalCalculations.unit)}</td>
+                                                                <td>Calculated</td>
+                                                                <td></td>
+                                                            </tr>
+                                                        )
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Adjusted Tax Rate Breakdown */}
+                                {historicalCalculations.adjusted_tax_rate_breakdown && (
+                                    <div style={{ marginBottom: '2rem' }}>
+                                        <h3>Adjusted Tax Rate Breakdown</h3>
+                                        <div className="balance-sheet-table-container">
+                                            <table className="balance-sheet-table extraction-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Line Item</th>
+                                                        <th className="text-right">Amount</th>
+                                                        <th>Category</th>
+                                                        <th>Type</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {Object.entries(historicalCalculations.adjusted_tax_rate_breakdown).map(([key, value]) => {
+                                                        const isTotal = key.toLowerCase().includes('adjusted') || key.toLowerCase().includes('total')
+                                                        const isPercent = key.toLowerCase().includes('rate') || key.toLowerCase().includes('tax')
+                                                        return (
+                                                            <tr key={key} className={isTotal ? 'key-total-row' : ''}>
+                                                                <td>{key}</td>
+                                                                <td className="text-right">
+                                                                    {isPercent ? formatPercent(value, 100) : formatNumber(value, historicalCalculations.unit)}
+                                                                </td>
+                                                                <td>Calculated</td>
+                                                                <td></td>
+                                                            </tr>
+                                                        )
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
                         )}
                     </>
                 )}
