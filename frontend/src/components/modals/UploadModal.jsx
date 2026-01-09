@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react'
 import axios from 'axios'
-import { useAuth } from '../contexts/AuthContext'
-import { useTheme } from '../contexts/ThemeContext'
+import { useAuth } from '../../contexts/AuthContext'
+import { useTheme } from '../../contexts/ThemeContext'
 import './UploadModal.css'
 
 const API_BASE_URL = 'http://localhost:8000/api'

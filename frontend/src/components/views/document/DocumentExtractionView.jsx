@@ -1,8 +1,8 @@
 import React from 'react'
-import LineItemTable from '../common/LineItemTable'
-import OrganicGrowthTable from '../common/OrganicGrowthTable'
-import StandardizedBreakdownTable from '../common/StandardizedBreakdownTable'
-import SharesOutstandingTable from '../common/SharesOutstandingTable'
+import LineItemTable from '../../shared/tables/LineItemTable'
+import OrganicGrowthTable from '../../shared/tables/OrganicGrowthTable'
+import StandardizedBreakdownTable from '../../shared/tables/StandardizedBreakdownTable'
+import SharesOutstandingTable from '../../shared/tables/SharesOutstandingTable'
 
 function DocumentExtractionView({
     selectedDocument,

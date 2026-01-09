@@ -15,11 +15,11 @@ vi.mock('../components/RightPanel', () => ({
     default: () => <div data-testid="right-panel">Right Panel Mock</div>
 }))
 
-vi.mock('../components/Header', () => ({
+vi.mock('../components/layout/Header', () => ({
     default: ({ user }) => <div data-testid="header">Header Mock: {user?.name}</div>
 }))
 
-vi.mock('../components/SplitScreen', () => ({
+vi.mock('../components/layout/SplitScreen', () => ({
     default: ({ left, right }) => (
         <div data-testid="split-screen">
             {left}

@@ -1,6 +1,6 @@
 import React from 'react'
 import { render, screen, within } from '@testing-library/react'
-import StandardizedBreakdownTable from '../components/StandardizedBreakdownTable'
+import StandardizedBreakdownTable from '../components/shared/tables/StandardizedBreakdownTable'
 
 describe('Standardized Breakdown Table', () => {
   const formatNumber = (val) => val.toString()
