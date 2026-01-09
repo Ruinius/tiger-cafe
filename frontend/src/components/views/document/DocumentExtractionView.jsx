@@ -502,143 +502,270 @@ function DocumentExtractionView({ selectedDocument }) {
                             </div>
                         )}
 
-                        {historicalCalculations && (
-                            <div style={{ marginBottom: '2rem' }}>
-                                <h3>Historical Calculations</h3>
-                                <div className="balance-sheet-table-container">
-                                    <table className="balance-sheet-table extraction-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Line Item</th>
-                                                <th className="text-right">Amount</th>
-                                                <th>Category</th>
-                                                <th>Type</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {/* We can iterate over a standard list of keys or just use what's returned */}
-                                            {[
-                                                { label: 'Revenue', key: 'revenue' },
-                                                { label: 'YOY Revenue Growth', key: 'revenue_growth_yoy', isPercent: true },
-                                                { label: 'EBITA', key: 'ebita' },
-                                                { label: 'EBITA Margin', key: 'ebita_margin', isPercent: true },
-                                                { label: 'Effective Tax Rate', key: 'effective_tax_rate', isPercent: true },
-                                                { label: 'Adjusted Tax Rate', key: 'adjusted_tax_rate', isPercent: true },
-                                                { label: 'Net Working Capital', key: 'net_working_capital' },
-                                                { label: 'Net Long Term Operating Assets', key: 'net_long_term_operating_assets' },
-                                                { label: 'Invested Capital', key: 'invested_capital' },
-                                                { label: 'Capital Turnover (Annualized)', key: 'capital_turnover', isDecimal: true },
-                                                { label: 'NOPAT', key: 'nopat' },
-                                                { label: 'ROIC', key: 'roic', isPercent: true },
-                                                { label: 'YOY Marginal Capital Turnover', key: 'marginal_capital_turnover', isDecimal: true }
-                                            ].map(row => {
-                                                let value = historicalCalculations[row.key]
+                        {historicalCalculations && historicalCalculations.entries && historicalCalculations.entries.length > 0 && (() => {
+                            const entry = historicalCalculations.entries[0] || {}
+                            const unit = historicalCalculations.unit || 'USD'
+                            const currency = historicalCalculations.currency || 'USD'
 
-                                                let displayValue = 'N/A'
-                                                if (row.isPercent) {
-                                                    displayValue = formatPercent(value, row.key === 'ebita_margin' || row.key === 'effective_tax_rate' || row.key === 'adjusted_tax_rate' ? 100 : 1)
-                                                    if (row.key === 'roic') {
-                                                        if (value < 0) displayValue = 'negative'
-                                                        else if (value > 1) displayValue = '>100%'
-                                                        else displayValue = formatPercent(value, 100)
-                                                    }
-                                                } else if (row.isDecimal) {
-                                                    displayValue = formatDecimal(value, 4)
-                                                } else {
-                                                    displayValue = formatNumber(value, historicalCalculations.unit)
-                                                }
-
-                                                return (
-                                                    <tr key={row.key}>
-                                                        <td>{row.label}</td>
-                                                        <td className="text-right">{displayValue}</td>
-                                                        <td>Calculated</td>
-                                                        <td></td>
-                                                    </tr>
-                                                )
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Breakdown Tables */}
-                        {historicalCalculations && (
-                            <>
-                                {/* Invested Capital Breakdown */}
-                                {(historicalCalculations.net_working_capital_breakdown || historicalCalculations.net_long_term_operating_assets_breakdown) && (
+                            return (
+                                <>
                                     <div style={{ marginBottom: '2rem' }}>
-                                        <h3>Invested Capital Breakdown</h3>
-
-                                        {historicalCalculations.net_working_capital_breakdown && (
-                                            <div style={{ marginBottom: '1.5rem' }}>
-                                                <h4 style={{ fontSize: '1rem', marginBottom: '0.75rem', color: 'var(--text-secondary)' }}>Net Working Capital</h4>
-                                                <div className="balance-sheet-table-container">
-                                                    <table className="balance-sheet-table extraction-table">
-                                                        <thead>
-                                                            <tr>
-                                                                <th>Line Item</th>
-                                                                <th className="text-right">Amount</th>
-                                                                <th>Category</th>
-                                                                <th>Type</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {Object.entries(historicalCalculations.net_working_capital_breakdown).map(([key, value]) => {
-                                                                const isTotal = key.toLowerCase().includes('total') || key.toLowerCase().includes('net working capital')
-                                                                return (
-                                                                    <tr key={key} className={isTotal ? 'key-total-row' : ''}>
-                                                                        <td>{key}</td>
-                                                                        <td className="text-right">{formatNumber(value, historicalCalculations.unit)}</td>
-                                                                        <td>Calculated</td>
-                                                                        <td></td>
-                                                                    </tr>
-                                                                )
-                                                            })}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {historicalCalculations.net_long_term_operating_assets_breakdown && (
-                                            <div style={{ marginBottom: '1.5rem' }}>
-                                                <h4 style={{ fontSize: '1rem', marginBottom: '0.75rem', color: 'var(--text-secondary)' }}>Net Long Term Operating Assets</h4>
-                                                <div className="balance-sheet-table-container">
-                                                    <table className="balance-sheet-table extraction-table">
-                                                        <thead>
-                                                            <tr>
-                                                                <th>Line Item</th>
-                                                                <th className="text-right">Amount</th>
-                                                                <th>Category</th>
-                                                                <th>Type</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            {Object.entries(historicalCalculations.net_long_term_operating_assets_breakdown).map(([key, value]) => {
-                                                                const isTotal = key.toLowerCase().includes('total') || key.toLowerCase().includes('net long term')
-                                                                return (
-                                                                    <tr key={key} className={isTotal ? 'key-total-row' : ''}>
-                                                                        <td>{key}</td>
-                                                                        <td className="text-right">{formatNumber(value, historicalCalculations.unit)}</td>
-                                                                        <td>Calculated</td>
-                                                                        <td></td>
-                                                                    </tr>
-                                                                )
-                                                            })}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        )}
+                                        <h3>Historical Calculations</h3>
+                                        <div className="section-intro">
+                                            Calculated metrics based on extracted financial statements.
+                                        </div>
                                     </div>
-                                )}
 
-                                {/* EBITA Breakdown */}
-                                {historicalCalculations.ebita_breakdown && (
+                                    {/* 1. Invested Capital Analysis */}
+                                    {entry.net_working_capital_breakdown && (
+                                        <div style={{ marginBottom: '2rem' }}>
+                                            <h4>1. Invested Capital Analysis</h4>
+
+                                            {/* Net Working Capital */}
+                                            <div style={{ marginBottom: '1.5rem', paddingLeft: '1rem' }}>
+                                                <h5>Net Working Capital</h5>
+                                                <div className="balance-sheet-table-container">
+                                                    <table className="balance-sheet-table extraction-table">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Line Item</th>
+                                                                <th>Category</th>
+                                                                <th className="text-right">Amount</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {entry.net_working_capital_breakdown.current_assets?.map((item, idx) => (
+                                                                <tr key={`ca-${idx}`}>
+                                                                    <td>{item.line_name}</td>
+                                                                    <td>Current Assets</td>
+                                                                    <td className="text-right">{formatNumber(item.line_value, unit)}</td>
+                                                                </tr>
+                                                            ))}
+                                                            <tr className="subtotal-row">
+                                                                <td><strong>Total Operating Current Assets</strong></td>
+                                                                <td></td>
+                                                                <td className="text-right"><strong>{formatNumber(entry.net_working_capital_breakdown.current_assets_total, unit)}</strong></td>
+                                                            </tr>
+                                                            {entry.net_working_capital_breakdown.current_liabilities?.map((item, idx) => (
+                                                                <tr key={`cl-${idx}`}>
+                                                                    <td>{item.line_name}</td>
+                                                                    <td>Current Liabilities</td>
+                                                                    <td className="text-right">({formatNumber(item.line_value, unit)})</td>
+                                                                </tr>
+                                                            ))}
+                                                            <tr className="subtotal-row">
+                                                                <td><strong>Total Operating Current Liabilities</strong></td>
+                                                                <td></td>
+                                                                <td className="text-right"><strong>({formatNumber(entry.net_working_capital_breakdown.current_liabilities_total, unit)})</strong></td>
+                                                            </tr>
+                                                            <tr className="total-row">
+                                                                <td><strong>Net Working Capital</strong></td>
+                                                                <td></td>
+                                                                <td className="text-right"><strong>{formatNumber(entry.net_working_capital, unit)}</strong></td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+
+                                            {/* Net Long Term Operating Assets */}
+                                            <div style={{ marginBottom: '1.5rem', paddingLeft: '1rem' }}>
+                                                <h5>Net Long-Term Operating Assets</h5>
+                                                <div className="balance-sheet-table-container">
+                                                    <table className="balance-sheet-table extraction-table">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Line Item</th>
+                                                                <th>Category</th>
+                                                                <th className="text-right">Amount</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {entry.net_long_term_operating_assets_breakdown?.non_current_assets?.map((item, idx) => (
+                                                                <tr key={`nca-${idx}`}>
+                                                                    <td>{item.line_name}</td>
+                                                                    <td>Non-Current Assets</td>
+                                                                    <td className="text-right">{formatNumber(item.line_value, unit)}</td>
+                                                                </tr>
+                                                            ))}
+                                                            <tr className="subtotal-row">
+                                                                <td><strong>Total Operating Non-Current Assets</strong></td>
+                                                                <td></td>
+                                                                <td className="text-right"><strong>{formatNumber(entry.net_long_term_operating_assets_breakdown?.non_current_assets_total, unit)}</strong></td>
+                                                            </tr>
+                                                            {entry.net_long_term_operating_assets_breakdown?.non_current_liabilities?.map((item, idx) => (
+                                                                <tr key={`ncl-${idx}`}>
+                                                                    <td>{item.line_name}</td>
+                                                                    <td>Non-Current Liabilities</td>
+                                                                    <td className="text-right">({formatNumber(item.line_value, unit)})</td>
+                                                                </tr>
+                                                            ))}
+                                                            <tr className="subtotal-row">
+                                                                <td><strong>Total Operating Non-Current Liabilities</strong></td>
+                                                                <td></td>
+                                                                <td className="text-right"><strong>({formatNumber(entry.net_long_term_operating_assets_breakdown?.non_current_liabilities_total, unit)})</strong></td>
+                                                            </tr>
+                                                            <tr className="total-row">
+                                                                <td><strong>Net Long-Term Operating Assets</strong></td>
+                                                                <td></td>
+                                                                <td className="text-right"><strong>{formatNumber(entry.net_long_term_operating_assets, unit)}</strong></td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+
+                                            {/* Total Invested Capital Summary */}
+                                            <div style={{ paddingLeft: '1rem' }}>
+                                                <div className="balance-sheet-table-container">
+                                                    <table className="balance-sheet-table extraction-table">
+                                                        <tbody>
+                                                            <tr className="total-row">
+                                                                <td><strong>Total Invested Capital</strong></td>
+                                                                <td className="text-right"><strong>{formatNumber(entry.invested_capital, unit)}</strong></td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 2. EBITA Analysis */}
+                                    {entry.ebita_breakdown && (
+                                        <div style={{ marginBottom: '2rem' }}>
+                                            <h4>2. EBITA Analysis</h4>
+                                            <div className="balance-sheet-table-container">
+                                                <table className="balance-sheet-table extraction-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Line Item</th>
+                                                            <th>Type</th>
+                                                            <th className="text-right">Amount</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <tr>
+                                                            <td>Operating Income</td>
+                                                            <td>GAAP</td>
+                                                            <td className="text-right">{formatNumber(entry.ebita_breakdown.operating_income, unit)}</td>
+                                                        </tr>
+                                                        {entry.ebita_breakdown.adjustments?.map((adj, idx) => (
+                                                            <tr key={`adj-${idx}`}>
+                                                                <td>{adj.line_name || 'Adjustment'}</td>
+                                                                <td>Non-Operating</td>
+                                                                <td className="text-right">{formatNumber(adj.line_value, unit)}</td>
+                                                            </tr>
+                                                        ))}
+                                                        <tr className="total-row">
+                                                            <td><strong>EBITA</strong></td>
+                                                            <td>Non-GAAP</td>
+                                                            <td className="text-right"><strong>{formatNumber(entry.ebita, unit)}</strong></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td>Revenue</td>
+                                                            <td>GAAP</td>
+                                                            <td className="text-right">{formatNumber(entry.revenue, unit)}</td>
+                                                        </tr>
+                                                        <tr className="subtotal-row">
+                                                            <td><strong>EBITA Margin</strong></td>
+                                                            <td>Calculated</td>
+                                                            <td className="text-right"><strong>{formatPercent(entry.ebita_margin)}</strong></td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 3. Adjusted Tax Rate Analysis */}
+                                    {entry.adjusted_tax_rate_breakdown && (
+                                        <div style={{ marginBottom: '2rem' }}>
+                                            <h4>3. Adjusted Tax Rate Analysis</h4>
+                                            <div className="balance-sheet-table-container">
+                                                <table className="balance-sheet-table extraction-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Line Item</th>
+                                                            <th>Notes</th>
+                                                            <th className="text-right">Amount</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <tr>
+                                                            <td>Reported Tax Expense</td>
+                                                            <td>From Income Statement</td>
+                                                            <td className="text-right">{formatNumber(entry.adjusted_tax_rate_breakdown.reported_tax_expense, unit)}</td>
+                                                        </tr>
+                                                        {entry.adjusted_tax_rate_breakdown.adjustments?.map((adj, idx) => (
+                                                            <tr key={`tax-adj-${idx}`}>
+                                                                <td>Tax Effect: {adj.line_name}</td>
+                                                                <td>{adj.source} @ 25%</td>
+                                                                <td className="text-right">{formatNumber(adj.tax_effect, unit)}</td>
+                                                            </tr>
+                                                        ))}
+                                                        <tr className="total-row">
+                                                            <td><strong>Adjusted Tax Expense</strong></td>
+                                                            <td></td>
+                                                            <td className="text-right"><strong>{formatNumber(entry.adjusted_tax_rate_breakdown.adjusted_tax_expense, unit)}</strong></td>
+                                                        </tr>
+                                                        <tr className="subtotal-row">
+                                                            <td><strong>Adjusted Tax Rate</strong></td>
+                                                            <td>(Adj Tax / EBITA)</td>
+                                                            <td className="text-right"><strong>{formatPercent(entry.adjusted_tax_rate)}</strong></td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* 4. NOPAT & ROIC */}
                                     <div style={{ marginBottom: '2rem' }}>
-                                        <h3>EBITA Breakdown</h3>
+                                        <h4>4. NOPAT & ROIC Analysis</h4>
+                                        <div className="balance-sheet-table-container">
+                                            <table className="balance-sheet-table extraction-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Metric</th>
+                                                        <th>Formula</th>
+                                                        <th className="text-right">Value</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr>
+                                                        <td>EBITA</td>
+                                                        <td>From Analysis</td>
+                                                        <td className="text-right">{formatNumber(entry.ebita, unit)}</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td>Adjusted Tax Rate</td>
+                                                        <td>From Analysis</td>
+                                                        <td className="text-right">{formatPercent(entry.adjusted_tax_rate)}</td>
+                                                    </tr>
+                                                    <tr className="total-row">
+                                                        <td><strong>NOPAT</strong></td>
+                                                        <td>EBITA * (1 - Tax Rate)</td>
+                                                        <td className="text-right"><strong>{formatNumber(entry.nopat, unit)}</strong></td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td>Invested Capital</td>
+                                                        <td>From Analysis</td>
+                                                        <td className="text-right">{formatNumber(entry.invested_capital, unit)}</td>
+                                                    </tr>
+                                                    <tr className="total-row">
+                                                        <td><strong>ROIC</strong></td>
+                                                        <td>NOPAT / Invested Capital</td>
+                                                        <td className="text-right"><strong>{formatPercent(entry.roic)}</strong></td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    {/* 5. Summary Table */}
+                                    <div style={{ marginBottom: '2rem' }}>
+                                        <h4>5. Summary Table</h4>
                                         <div className="balance-sheet-table-container">
                                             <table className="balance-sheet-table extraction-table">
                                                 <thead>
@@ -650,47 +777,42 @@ function DocumentExtractionView({ selectedDocument }) {
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {Object.entries(historicalCalculations.ebita_breakdown).map(([key, value]) => {
-                                                        const isTotal = key.toLowerCase().includes('ebita') || key.toLowerCase().includes('total')
-                                                        return (
-                                                            <tr key={key} className={isTotal ? 'key-total-row' : ''}>
-                                                                <td>{key}</td>
-                                                                <td className="text-right">{formatNumber(value, historicalCalculations.unit)}</td>
-                                                                <td>Calculated</td>
-                                                                <td></td>
-                                                            </tr>
-                                                        )
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                )}
+                                                    {/* We can iterate over a standard list of keys or just use what's returned */}
+                                                    {[
+                                                        { label: 'Revenue', key: 'revenue' },
+                                                        { label: 'YOY Revenue Growth', key: 'revenue_growth_yoy', isPercent: true },
+                                                        { label: 'EBITA', key: 'ebita' },
+                                                        { label: 'EBITA Margin', key: 'ebita_margin', isPercent: true },
+                                                        { label: 'Effective Tax Rate', key: 'effective_tax_rate', isPercent: true },
+                                                        { label: 'Adjusted Tax Rate', key: 'adjusted_tax_rate', isPercent: true },
+                                                        { label: 'Net Working Capital', key: 'net_working_capital' },
+                                                        { label: 'Net Long Term Operating Assets', key: 'net_long_term_operating_assets' },
+                                                        { label: 'Invested Capital', key: 'invested_capital' },
+                                                        { label: 'Capital Turnover (Annualized)', key: 'capital_turnover', isDecimal: true },
+                                                        { label: 'NOPAT', key: 'nopat' },
+                                                        { label: 'ROIC', key: 'roic', isPercent: true },
+                                                        { label: 'YOY Marginal Capital Turnover', key: 'marginal_capital_turnover', isDecimal: true }
+                                                    ].map(row => {
+                                                        let value = entry[row.key]
 
-                                {/* Adjusted Tax Rate Breakdown */}
-                                {historicalCalculations.adjusted_tax_rate_breakdown && (
-                                    <div style={{ marginBottom: '2rem' }}>
-                                        <h3>Adjusted Tax Rate Breakdown</h3>
-                                        <div className="balance-sheet-table-container">
-                                            <table className="balance-sheet-table extraction-table">
-                                                <thead>
-                                                    <tr>
-                                                        <th>Line Item</th>
-                                                        <th className="text-right">Amount</th>
-                                                        <th>Category</th>
-                                                        <th>Type</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {Object.entries(historicalCalculations.adjusted_tax_rate_breakdown).map(([key, value]) => {
-                                                        const isTotal = key.toLowerCase().includes('adjusted') || key.toLowerCase().includes('total')
-                                                        const isPercent = key.toLowerCase().includes('rate') || key.toLowerCase().includes('tax')
+                                                        let displayValue = 'N/A'
+                                                        if (row.isPercent) {
+                                                            displayValue = formatPercent(value, row.key === 'ebita_margin' || row.key === 'effective_tax_rate' || row.key === 'adjusted_tax_rate' ? 100 : 1)
+                                                            if (row.key === 'roic') {
+                                                                if (value < 0) displayValue = 'negative'
+                                                                else if (value > 1) displayValue = '>100%'
+                                                                else displayValue = formatPercent(value, 100)
+                                                            }
+                                                        } else if (row.isDecimal) {
+                                                            displayValue = formatDecimal(value, 4)
+                                                        } else {
+                                                            displayValue = formatNumber(value, unit)
+                                                        }
+
                                                         return (
-                                                            <tr key={key} className={isTotal ? 'key-total-row' : ''}>
-                                                                <td>{key}</td>
-                                                                <td className="text-right">
-                                                                    {isPercent ? formatPercent(value, 100) : formatNumber(value, historicalCalculations.unit)}
-                                                                </td>
+                                                            <tr key={row.key}>
+                                                                <td>{row.label}</td>
+                                                                <td className="text-right">{displayValue}</td>
                                                                 <td>Calculated</td>
                                                                 <td></td>
                                                             </tr>
@@ -700,9 +822,9 @@ function DocumentExtractionView({ selectedDocument }) {
                                             </table>
                                         </div>
                                     </div>
-                                )}
-                            </>
-                        )}
+                                </>
+                            )
+                        })()}
                     </>
                 )}
             </div>

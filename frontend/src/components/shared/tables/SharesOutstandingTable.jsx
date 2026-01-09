@@ -3,9 +3,10 @@ import React from 'react'
 export default function SharesOutstandingTable({ incomeStatement }) {
   if (!incomeStatement) return null
 
-  const hasShares =
-    incomeStatement.basic_shares_outstanding !== null ||
-    incomeStatement.diluted_shares_outstanding !== null
+  const basic = incomeStatement.basic_shares_outstanding
+  const diluted = incomeStatement.diluted_shares_outstanding
+
+  const hasShares = (basic !== null && basic !== undefined) || (diluted !== null && diluted !== undefined)
 
   if (!hasShares) {
     return (
@@ -40,16 +41,16 @@ export default function SharesOutstandingTable({ incomeStatement }) {
             </tr>
           </thead>
           <tbody>
-            {incomeStatement.basic_shares_outstanding !== null && (
+            {(basic !== null && basic !== undefined) && (
               <tr>
                 <td className="col-name">Basic Shares Outstanding</td>
-                <td className="text-right col-value">{incomeStatement.basic_shares_outstanding.toLocaleString()}</td>
+                <td className="text-right col-value">{basic.toLocaleString()}</td>
               </tr>
             )}
-            {incomeStatement.diluted_shares_outstanding !== null && (
+            {(diluted !== null && diluted !== undefined) && (
               <tr>
                 <td className="col-name">Diluted Shares Outstanding</td>
-                <td className="text-right col-value">{incomeStatement.diluted_shares_outstanding.toLocaleString()}</td>
+                <td className="text-right col-value">{diluted.toLocaleString()}</td>
               </tr>
             )}
           </tbody>
