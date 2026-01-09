@@ -85,6 +85,78 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
         }
     }, [assumptions, selectedCompany])
 
+
+    const [valuations, setValuations] = useState([])
+
+    // Load valuations
+    useEffect(() => {
+        if (!selectedCompany) return
+        const loadValuations = async () => {
+            try {
+                const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+                const response = await axios.get(
+                    `${API_BASE_URL}/companies/${selectedCompany.id}/valuations`,
+                    { headers }
+                )
+                setValuations(response.data)
+            } catch (err) {
+                console.error("Failed to load valuations", err)
+            }
+        }
+        loadValuations()
+    }, [selectedCompany, isAuthenticated, token])
+
+    const handleSaveValuation = async () => {
+        if (!modelData) return
+        setLoading(true)
+        try {
+            const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+            const payload = {
+                fair_value: modelData.fair_value_per_share,
+                share_price_at_time: modelData.current_share_price ? parseFloat(modelData.current_share_price) : null,
+                percent_undervalued: modelData.percent_undervalued
+            }
+            await axios.post(
+                `${API_BASE_URL}/companies/${selectedCompany.id}/valuations`,
+                payload,
+                { headers }
+            )
+            // Reload valuations
+            const response = await axios.get(
+                `${API_BASE_URL}/companies/${selectedCompany.id}/valuations`,
+                { headers }
+            )
+            setValuations(response.data)
+        } catch (err) {
+            setError("Failed to save valuation")
+            console.error(err)
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleDeleteValuation = async (id) => {
+        // Optimistic delete
+        setValuations(prev => prev.filter(v => v.id !== id))
+        try {
+            const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+            await axios.delete(
+                `${API_BASE_URL}/companies/${selectedCompany.id}/valuations/${id}`,
+                { headers }
+            )
+        } catch (err) {
+            console.error("Failed to delete valuation", err)
+            // Reload if failed
+            const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+            const response = await axios.get(
+                `${API_BASE_URL}/companies/${selectedCompany.id}/valuations`,
+                { headers }
+            )
+            setValuations(response.data)
+        }
+    }
+
+
     // New component for formatted input handling
     const FormattedInput = ({ value, onChange, isPercentage }) => {
         const [localValue, setLocalValue] = useState('')
@@ -485,6 +557,25 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                     >
                         Reset Assumptions
                     </button>
+                    <button
+                        onClick={handleSaveValuation}
+                        style={{
+                            padding: '0.85rem 1.25rem',
+                            backgroundColor: 'var(--bg-elevated)',
+                            color: 'var(--text-primary)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '999px',
+                            cursor: 'pointer',
+                            fontSize: '0.875rem',
+                            fontWeight: '600',
+                            letterSpacing: '0.01em',
+                            transition: 'transform 0.2s, box-shadow 0.2s, background-color 0.2s',
+                            marginLeft: '0'
+                        }}
+                        disabled={loading}
+                    >
+                        Save Valuation
+                    </button>
                 </div>
             </div>
 
@@ -563,34 +654,130 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                         </table>
                     </div>
 
-                    <div className="valuation-summary" style={{ marginTop: '2rem' }}>
-                        <h3>Intrinsic Value</h3>
-                        <div className="financial-table-container">
-                            <table className="financial-table" style={{ maxWidth: '400px' }}>
-                                <tbody>
-                                    <tr>
-                                        <td>PV of FCF (10y)</td>
-                                        <td className="text-right">{formatNumber(modelData.projections.reduce((sum, p) => sum + p.pv_fcf, 0))}</td>
-                                    </tr>
-                                    <tr>
-                                        <td>PV of Terminal Value</td>
-                                        <td className="text-right">{formatNumber(modelData.pv_terminal_value)}</td>
-                                    </tr>
-                                    <tr className="key-total-row">
-                                        <td>Enterprise Value</td>
-                                        <td className="text-right">{formatNumber(modelData.enterprise_value)}</td>
-                                    </tr>
-                                    {modelData.current_share_price && parseFloat(modelData.current_share_price) > 0 && (
-                                        <>
-                                            <tr style={{ height: '20px' }}></tr>
-                                            <tr className="key-total-row">
-                                                <td>Current Share Price ({selectedCompany.ticker})</td>
-                                                <td className="text-right">${formatDecimal(parseFloat(modelData.current_share_price))}</td>
+                    <div className="valuation-section" style={{ marginTop: '2rem', display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
+                        <div style={{ flex: 1 }}>
+                            <h3 style={{ margin: 0, marginBottom: '1rem' }}>Intrinsic Value</h3>
+                            <div className="financial-table-container">
+                                <table className="financial-table" style={{ width: '100%' }}>
+                                    <tbody>
+                                        <tr className="key-total-row">
+                                            <td>Enterprise Value</td>
+                                            <td className="text-right">{formatNumber(modelData.enterprise_value)}</td>
+                                        </tr>
+                                        {/* Bridge Items */}
+                                        <tr>
+                                            <td> + Cash</td>
+                                            <td className="text-right">{formatNumber(modelData.bridge_items?.cash)}</td>
+                                        </tr>
+                                        <tr>
+                                            <td> + Short Term Investments</td>
+                                            <td className="text-right">{formatNumber(modelData.bridge_items?.short_term_investments)}</td>
+                                        </tr>
+                                        <tr>
+                                            <td> + Other Financial or Physical Assets</td>
+                                            <td className="text-right">{formatNumber(modelData.bridge_items?.other_financial_physical_assets)}</td>
+                                        </tr>
+                                        <tr>
+                                            <td> - Debt</td>
+                                            <td className="text-right">{formatNumber(modelData.bridge_items?.debt)}</td>
+                                        </tr>
+                                        <tr>
+                                            <td> - Other Financial Liabilities</td>
+                                            <td className="text-right">{formatNumber(modelData.bridge_items?.other_financial_liabilities)}</td>
+                                        </tr>
+                                        <tr>
+                                            <td> - Preferred Equity</td>
+                                            <td className="text-right">{formatNumber(modelData.bridge_items?.preferred_equity)}</td>
+                                        </tr>
+                                        <tr>
+                                            <td> - Minority Interest</td>
+                                            <td className="text-right">{formatNumber(modelData.bridge_items?.minority_interest)}</td>
+                                        </tr>
+
+                                        <tr className="key-total-row">
+                                            <td>Value of Common Equity</td>
+                                            <td className="text-right">{formatNumber(modelData.equity_value)}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Diluted Shares Outstanding</td>
+                                            <td className="text-right">{formatNumber(modelData.diluted_shares_outstanding)}</td>
+                                        </tr>
+                                        <tr className="key-total-row">
+                                            <td>Fair Value per Share</td>
+                                            <td className="text-right">{formatDecimal(modelData.fair_value_per_share)}</td>
+                                        </tr>
+
+                                        {modelData.current_share_price && parseFloat(modelData.current_share_price) > 0 && (
+                                            <>
+                                                <tr>
+                                                    <td>Current Share Price ({selectedCompany.ticker})</td>
+                                                    <td className="text-right">{formatDecimal(parseFloat(modelData.current_share_price))}</td>
+                                                </tr>
+                                                <tr className="key-total-row">
+                                                    <td>Percent Undervalued (or Overvalued)</td>
+                                                    <td className={`text-right ${modelData.percent_undervalued > 0 ? 'text-green' : 'text-red'}`}>
+                                                        {formatPercent(modelData.percent_undervalued)}
+                                                    </td>
+                                                </tr>
+                                            </>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem' }}>
+                                {/* Move Reset button here or keep above? The "Save Valuation" button was requested Next to "Reset Assumptions" */}
+                            </div>
+                        </div>
+
+                        {/* Past Valuations Table */}
+                        <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                                <h3 style={{ margin: 0 }}>Past Valuations</h3>
+                            </div>
+                            <div className="financial-table-container">
+                                <table className="financial-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>User</th>
+                                            <th className="text-right">Fair Value</th>
+                                            <th className="text-right">Share Price</th>
+                                            <th className="text-right">% Diff</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {valuations.length === 0 ? (
+                                            <tr>
+                                                <td colSpan="6" style={{ textAlign: 'center', color: '#888' }}>
+                                                    No saved valuations
+                                                </td>
                                             </tr>
-                                        </>
-                                    )}
-                                </tbody>
-                            </table>
+                                        ) : (
+                                            valuations.map(v => (
+                                                <tr key={v.id}>
+                                                    <td>{new Date(v.date).toLocaleDateString()}</td>
+                                                    <td>{v.user_email || 'Unknown'}</td>
+                                                    <td className="text-right">${formatDecimal(parseFloat(v.fair_value))}</td>
+                                                    <td className="text-right">{v.share_price_at_time ? `$${formatDecimal(parseFloat(v.share_price_at_time))}` : 'N/A'}</td>
+                                                    <td className={`text-right ${parseFloat(v.percent_undervalued) > 0 ? 'text-green' : 'text-red'}`}>
+                                                        {v.percent_undervalued ? formatPercent(parseFloat(v.percent_undervalued)) : 'N/A'}
+                                                    </td>
+                                                    <td className="text-right">
+                                                        <button
+                                                            onClick={() => handleDeleteValuation(v.id)}
+                                                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
+                                                            title="Delete"
+                                                        >
+                                                            🗑
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>

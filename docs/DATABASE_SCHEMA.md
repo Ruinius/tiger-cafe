@@ -69,6 +69,230 @@ Stores uploaded document metadata and processing status.
 **Relationships:**
 - Many-to-one with `users`
 - Many-to-one with `companies`
+- One-to-one with `balance_sheet`
+- One-to-one with `income_statement`
+- One-to-one with `organic_growth`
+- One-to-one with `historical_calculation`
+- One-to-many with `amortization`
+- One-to-many with `other_assets`
+- One-to-many with `other_liabilities`
+- One-to-many with `non_operating_classification`
+
+### `balance_sheets`
+Stores extracted balance sheet data from documents.
+
+- `id` (String, Primary Key): Unique balance sheet identifier
+- `document_id` (String, Foreign Key → `documents.id`, Indexed, Unique): Associated document
+- `time_period` (String, Nullable): Time period (e.g., "Q3 2023")
+- `currency` (String, Nullable): Currency code (e.g., "USD", "EUR")
+- `unit` (String, Nullable): Unit of measurement ("ones", "thousands", "millions", "billions", "ten_thousands")
+- `extraction_date` (DateTime): Extraction timestamp
+- `is_valid` (Boolean): Validation status
+- `validation_errors` (Text, Nullable): JSON string of validation errors
+- `chunk_index` (Integer, Nullable): Chunk index used for extraction
+
+**Relationships:**
+- One-to-one with `documents`
+- One-to-many with `balance_sheet_line_items`
+
+### `balance_sheet_line_items`
+Stores individual line items from balance sheets.
+
+- `id` (String, Primary Key): Unique line item identifier
+- `balance_sheet_id` (String, Foreign Key → `balance_sheets.id`, Indexed): Parent balance sheet
+- `line_name` (String): Line item name (e.g., "Cash and Cash Equivalents")
+- `line_value` (Numeric 20,2): Monetary value
+- `line_category` (String, Nullable): Category (e.g., "Current Assets", "Total Assets")
+- `is_operating` (Boolean, Nullable): Operating vs non-operating classification
+- `line_order` (Integer): Display order
+
+**Relationships:**
+- Many-to-one with `balance_sheets`
+
+### `income_statements`
+Stores extracted income statement data from documents.
+
+- `id` (String, Primary Key): Unique income statement identifier
+- `document_id` (String, Foreign Key → `documents.id`, Indexed, Unique): Associated document
+- `time_period` (String, Nullable): Time period (e.g., "Q3 2023")
+- `currency` (String, Nullable): Currency code
+- `unit` (String, Nullable): Unit of measurement
+- `extraction_date` (DateTime): Extraction timestamp
+- `revenue_prior_year` (Numeric 20,2, Nullable): Prior year revenue for comparison
+- `revenue_prior_year_unit` (String, Nullable): Unit for prior year revenue
+- `revenue_growth_yoy` (Numeric 10,4, Nullable): **Year-over-year revenue growth percentage (simple growth)**
+- `basic_shares_outstanding` (Numeric 20,2, Nullable): Basic shares outstanding
+- `basic_shares_outstanding_unit` (String, Nullable): Unit for basic shares
+- `diluted_shares_outstanding` (Numeric 20,2, Nullable): Diluted shares outstanding
+- `diluted_shares_outstanding_unit` (String, Nullable): Unit for diluted shares
+- `amortization` (Numeric 20,2, Nullable): Amortization value
+- `amortization_unit` (String, Nullable): Unit for amortization
+- `is_valid` (Boolean): Validation status
+- `validation_errors` (Text, Nullable): JSON string of validation errors
+- `chunk_index` (Integer, Nullable): Chunk index used for extraction
+
+**Relationships:**
+- One-to-one with `documents`
+- One-to-many with `income_statement_line_items`
+
+### `income_statement_line_items`
+Stores individual line items from income statements.
+
+- `id` (String, Primary Key): Unique line item identifier
+- `income_statement_id` (String, Foreign Key → `income_statements.id`, Indexed): Parent income statement
+- `line_name` (String): Line item name (e.g., "Revenue", "Cost of Goods Sold")
+- `line_value` (Numeric 20,2): Monetary value
+- `line_category` (String, Nullable): Category (e.g., "Revenue", "Costs", "Expenses")
+- `is_operating` (Boolean, Nullable): Operating vs non-operating classification
+- `line_order` (Integer): Display order
+
+**Relationships:**
+- Many-to-one with `income_statements`
+
+### `organic_growth`
+Stores organic growth analysis extracted from documents.
+
+- `id` (String, Primary Key): Unique organic growth identifier
+- `document_id` (String, Foreign Key → `documents.id`, Indexed): Associated document
+- `time_period` (String, Nullable): Time period
+- `currency` (String, Nullable): Currency code
+- `prior_period_revenue` (Numeric 20,2, Nullable): Prior period revenue
+- `prior_period_revenue_unit` (String, Nullable): Unit for prior period revenue
+- `current_period_revenue` (Numeric 20,2, Nullable): Current period revenue
+- `current_period_revenue_unit` (String, Nullable): Unit for current period revenue
+- `simple_revenue_growth` (Numeric 10,4, Nullable): **Simple revenue growth percentage**
+- `acquisition_revenue_impact` (Numeric 20,2, Nullable): Revenue impact from acquisitions
+- `acquisition_revenue_impact_unit` (String, Nullable): Unit for acquisition impact
+- `current_period_adjusted_revenue` (Numeric 20,2, Nullable): Revenue adjusted for acquisitions
+- `current_period_adjusted_revenue_unit` (String, Nullable): Unit for adjusted revenue
+- `organic_revenue_growth` (Numeric 10,4, Nullable): **Organic revenue growth percentage (excluding M&A)**
+- `chunk_index` (Integer, Nullable): Chunk index used for extraction
+- `is_valid` (Boolean): Validation status
+- `validation_errors` (Text, Nullable): JSON string of validation errors
+- `extraction_date` (DateTime): Extraction timestamp
+
+**Relationships:**
+- One-to-one with `documents`
+
+### `amortization`
+Stores amortization and non-GAAP reconciliation data.
+
+- `id` (String, Primary Key): Unique amortization identifier
+- `document_id` (String, Foreign Key → `documents.id`, Indexed): Associated document
+- `time_period` (String, Nullable): Time period
+- `currency` (String, Nullable): Currency code
+- `chunk_index` (Integer, Nullable): Chunk index used for extraction
+- `is_valid` (Boolean): Validation status
+- `validation_errors` (Text, Nullable): JSON string of validation errors
+- `extraction_date` (DateTime): Extraction timestamp
+
+**Relationships:**
+- Many-to-one with `documents`
+- One-to-many with `amortization_line_items`
+
+### `amortization_line_items`
+Stores individual amortization and reconciliation line items.
+
+- `id` (String, Primary Key): Unique line item identifier
+- `amortization_id` (String, Foreign Key → `amortization.id`, Indexed): Parent amortization record
+- `line_name` (String): Line item name
+- `line_value` (Numeric 20,2): Monetary value
+- `unit` (String, Nullable): Unit of measurement
+- `is_operating` (Boolean, Nullable): Operating classification
+- `category` (String, Nullable): Item category
+- `line_order` (Integer): Display order
+
+**Relationships:**
+- Many-to-one with `amortization`
+
+### `other_assets`
+Stores detailed breakdown of "Other Assets" from balance sheets.
+
+- `id` (String, Primary Key): Unique other assets identifier
+- `document_id` (String, Foreign Key → `documents.id`, Indexed): Associated document
+- `time_period` (String, Nullable): Time period
+- `currency` (String, Nullable): Currency code
+- `chunk_index` (Integer, Nullable): Chunk index used for extraction
+- `is_valid` (Boolean): Validation status
+- `validation_errors` (Text, Nullable): JSON string of validation errors
+- `extraction_date` (DateTime): Extraction timestamp
+
+**Relationships:**
+- Many-to-one with `documents`
+- One-to-many with `other_assets_line_items`
+
+### `other_assets_line_items`
+Stores individual line items from other assets breakdown.
+
+- `id` (String, Primary Key): Unique line item identifier
+- `other_assets_id` (String, Foreign Key → `other_assets.id`, Indexed): Parent other assets record
+- `line_name` (String): Line item name
+- `line_value` (Numeric 20,2): Monetary value
+- `unit` (String, Nullable): Unit of measurement
+- `is_operating` (Boolean, Nullable): Operating classification
+- `category` (String, Nullable): Item category
+- `line_order` (Integer): Display order
+
+**Relationships:**
+- Many-to-one with `other_assets`
+
+### `other_liabilities`
+Stores detailed breakdown of "Other Liabilities" from balance sheets.
+
+- `id` (String, Primary Key): Unique other liabilities identifier
+- `document_id` (String, Foreign Key → `documents.id`, Indexed): Associated document
+- `time_period` (String, Nullable): Time period
+- `currency` (String, Nullable): Currency code
+- `chunk_index` (Integer, Nullable): Chunk index used for extraction
+- `is_valid` (Boolean): Validation status
+- `validation_errors` (Text, Nullable): JSON string of validation errors
+- `extraction_date` (DateTime): Extraction timestamp
+
+**Relationships:**
+- Many-to-one with `documents`
+- One-to-many with `other_liabilities_line_items`
+
+### `other_liabilities_line_items`
+Stores individual line items from other liabilities breakdown.
+
+- `id` (String, Primary Key): Unique line item identifier
+- `other_liabilities_id` (String, Foreign Key → `other_liabilities.id`, Indexed): Parent other liabilities record
+- `line_name` (String): Line item name
+- `line_value` (Numeric 20,2): Monetary value
+- `unit` (String, Nullable): Unit of measurement
+- `is_operating` (Boolean, Nullable): Operating classification
+- `category` (String, Nullable): Item category
+- `line_order` (Integer): Display order
+
+**Relationships:**
+- Many-to-one with `other_liabilities`
+
+### `non_operating_classification`
+Stores classification of non-operating balance sheet items for DCF equity bridge.
+
+- `id` (String, Primary Key): Unique classification identifier
+- `document_id` (String, Foreign Key → `documents.id`, Indexed): Associated document
+- `time_period` (String, Nullable): Time period
+- `extraction_date` (DateTime): Classification timestamp
+
+**Relationships:**
+- Many-to-one with `documents`
+- One-to-many with `non_operating_classification_items`
+
+### `non_operating_classification_items`
+Stores individual non-operating items with their categories.
+
+- `id` (String, Primary Key): Unique item identifier
+- `classification_id` (String, Foreign Key → `non_operating_classification.id`, Indexed): Parent classification
+- `line_name` (String): Line item name
+- `line_value` (Numeric 20,2, Nullable): Monetary value
+- `unit` (String, Nullable): Unit of measurement
+- `category` (String, Nullable): Classification category (e.g., "cash", "debt", "short_term_investments")
+- `source` (String, Nullable): Source table (e.g., "balance_sheet", "other_assets")
+- `line_order` (Integer): Display order
+
+**Relationships:**
+- Many-to-one with `non_operating_classification`
 
 ### `financial_metrics`
 Stores calculated metrics for companies.
@@ -142,6 +366,21 @@ Stores calculated historical financial metrics for documents.
 **Relationships:**
 - One-to-one with `documents`
 
+### `valuations`
+Stores historical valuation snapshots for tracking fair value estimates over time.
+
+- `id` (String, Primary Key): Unique valuation identifier
+- `company_id` (String, Foreign Key → `companies.id`, Indexed): Associated company
+- `user_id` (String, Foreign Key → `users.id`, Indexed): User who saved the valuation
+- `date` (DateTime): Valuation snapshot timestamp (defaults to current time)
+- `fair_value` (Numeric(20, 2)): Fair value per share at time of valuation
+- `share_price_at_time` (Numeric(20, 2), Nullable): Market share price at time of valuation
+- `percent_undervalued` (Numeric(10, 4), Nullable): Calculated percentage difference (Fair - Market) / Market
+
+**Relationships:**
+- Many-to-one with `companies`
+- Many-to-one with `users`
+
 ## Enums
 
 ### `DocumentType`
@@ -179,6 +418,8 @@ Stores calculated historical financial metrics for documents.
 - `financial_assumptions.company_id`: Unique index for company assumptions
 - `analysis_results.company_id`: Index for company analysis queries
 - `historical_calculations.document_id`: Unique index for document calculation queries
+- `valuations.company_id`: Index for company valuation queries
+- `valuations.user_id`: Index for user valuation queries
 
 ## Notes
 

@@ -209,3 +209,50 @@ This document serves as an archive of completed tasks from the Project Planning.
   - Added message logs to the processing tracker.
 - **General**: Verified button states and behaviors against UI rules.
 - [x] **Testing**: All 35 backend tests and 8 frontend test suites passing.
+
+## Phase 9: Financial Modeling (DCF Valuation) - Completed
+### 9.1 Historical Data Enhancements
+- [x] Added missing fields to company-level historical table
+- [x] Implemented averages and medians for all metrics
+- [x] Added YOY Marginal Capital Turnover calculation
+
+### 9.2 DCF Assumptions Framework
+- [x] Organic Revenue Growth (3-stage: Years 1-5, 6-10, Terminal)
+- [x] EBITA Margin (3-stage with defaults from historical averages)
+- [x] Marginal Capital Turnover (3-stage with defaults from historical data)
+- [x] Operating Tax Rate (single value, defaulting to historical average)
+- [x] WACC (single value, default 8%)
+
+### 9.3 DCF Calculations
+- [x] Revenue projections based on growth assumptions
+- [x] EBITA and NOPAT calculations
+- [x] Invested Capital using marginal capital turnover
+- [x] Free Cash Flow (FCF) calculations
+- [x] Terminal Value using Value Driver Formula (reinvestment rate approach)
+- [x] Discount factors with mid-year convention
+- [x] Present Value calculations
+- [x] Intrinsic Value estimation
+
+### 9.4 UI Implementation
+- [x] Assumptions input panel with formatted number inputs
+- [x] Discounted Cash Flow Model table with 10-year projections
+- [x] Terminal column with proper calculations
+- [x] Base Year (Year 0) column
+- [x] Intrinsic Value display
+- [x] Custom ROIC formatting (negative / >100%)
+- [x] Re-run Valuation button (removed auto-recalculation)
+- [x] Proper spacing and styling per UI/UX design system
+- [x] Intrinsic Value table updates (Bridge items, Equity Value, Fair Value)
+- [x] Past Valuations table (Save, List, Delete)
+- [x] Save Valuation button
+- [x] UI Refinements (Alignment, Styling)
+
+### 9.5 Backend Enhancements
+- [x] Created `financial_assumptions` table
+- [x] Implemented `calculate_dcf` function in `financial_modeling.py`
+- [x] Added company historical calculations endpoint
+- [x] Corrected Invested Capital formula (Delta IC = Delta Revenue / MCT)
+- [x] Implemented Value Driver Formula for terminal value
+- [x] Applied mid-year convention to terminal discount factor
+- [x] Added Valuation model and endpoints (Save, List, Delete)
+- [x] Updated NonOperatingClassification sorting (use time_period)

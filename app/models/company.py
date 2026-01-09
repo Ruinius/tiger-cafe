@@ -29,3 +29,4 @@ class Company(Base):
     analysis_results = relationship(
         "AnalysisResult", back_populates="company", cascade="all, delete-orphan"
     )
+    valuations = relationship("Valuation", back_populates="company", cascade="all, delete-orphan")

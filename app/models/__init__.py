@@ -18,6 +18,7 @@ from app.models.organic_growth import OrganicGrowth
 from app.models.other_assets import OtherAssets, OtherAssetsLineItem
 from app.models.other_liabilities import OtherLiabilities, OtherLiabilitiesLineItem
 from app.models.user import User
+from app.models.valuation import Valuation
 
 __all__ = [
     "User",
@@ -39,4 +40,5 @@ __all__ = [
     "OtherLiabilitiesLineItem",
     "NonOperatingClassification",
     "NonOperatingClassificationItem",
+    "Valuation",
 ]

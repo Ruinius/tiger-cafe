@@ -14,13 +14,20 @@ from app.models.company import Company
 from app.models.document import Document, DocumentType
 from app.models.financial_assumption import FinancialAssumption
 from app.models.income_statement import IncomeStatement
+from app.models.non_operating_classification import (
+    NonOperatingClassification,
+    NonOperatingClassificationItem,
+)
 from app.models.user import User
+from app.models.valuation import Valuation
 from app.routers.auth import get_current_user
 from app.schemas.company import Company as CompanySchema
 from app.schemas.company import CompanyCreate
 from app.schemas.company_historical_calculations import CompanyHistoricalCalculations
 from app.schemas.financial_assumption import FinancialAssumption as FinancialAssumptionSchema
 from app.schemas.financial_assumption import FinancialAssumptionCreate
+from app.schemas.valuation import Valuation as ValuationSchema
+from app.schemas.valuation import ValuationCreate
 from app.utils.financial_modeling import calculate_dcf
 from app.utils.historical_calculations import get_revenue
 from app.utils.market_data import get_latest_share_price
@@ -415,4 +422,161 @@ async def get_financial_model(
         share_price = get_latest_share_price(company.ticker)
         result["current_share_price"] = share_price
 
+    # 5. Fetch non-operating items (Bridge from Enterprise Value to Equity Value)
+    non_op_classifications = (
+        db.query(NonOperatingClassification)
+        .join(Document)
+        .filter(Document.company_id == company_id)
+        .options(selectinload(NonOperatingClassification.document))
+        .all()
+    )
+
+    # Sort by time period to get the most recent one
+    non_op_classification = None
+    if non_op_classifications:
+        # Use existing helper to sort
+        # We need to rely on the document's time period
+
+        # Sort key wrapper
+        def sort_key(nop):
+            tp = nop.document.time_period if nop.document else ""
+            return time_period_sort_key(tp)
+
+        non_op_classifications.sort(key=sort_key)
+        non_op_classification = non_op_classifications[-1]
+
+    bridge_items = {
+        "cash": 0.0,
+        "short_term_investments": 0.0,
+        "other_financial_physical_assets": 0.0,
+        "debt": 0.0,
+        "other_financial_liabilities": 0.0,
+        "preferred_equity": 0.0,
+        "minority_interest": 0.0,
+    }
+
+    if non_op_classification:
+        # Load items
+        items = (
+            db.query(NonOperatingClassificationItem)
+            .filter(NonOperatingClassificationItem.classification_id == non_op_classification.id)
+            .all()
+        )
+        for item in items:
+            cat = item.category
+            val = float(item.line_value or 0)
+            if cat in bridge_items:
+                bridge_items[cat] += val
+
+    # Calculate Equity Value
+    # Equity Value = Enterprise Value + Cash + STI + OtherAssets - Debt - OtherLiabilities - Preferred - Minority
+    enterprise_value = float(result.get("enterprise_value", 0))
+
+    equity_value = (
+        enterprise_value
+        + bridge_items["cash"]
+        + bridge_items["short_term_investments"]
+        + bridge_items["other_financial_physical_assets"]
+        - bridge_items["debt"]
+        - bridge_items["other_financial_liabilities"]
+        - bridge_items["preferred_equity"]
+        - bridge_items["minority_interest"]
+    )
+
+    # Get Diluted Shares Outstanding from latest historical entry
+    diluted_shares = 0.0
+    if historical_entries:
+        latest = historical_entries[-1]
+        diluted_shares = float(latest.get("diluted_shares_outstanding") or 0)
+
+    fair_value = 0.0
+    if diluted_shares > 0:
+        fair_value = equity_value / diluted_shares
+
+    percent_undervalued = 0.0
+    current_share_price = result.get("current_share_price")
+    if current_share_price and float(current_share_price) > 0:
+        cp = float(current_share_price)
+        # Undervalued = (Fair - Current) / Current  ?? Or just (Fair / Current) - 1
+        # "Percent Undervalued": if Fair=150, Current=100 -> 50% Undervalued.
+        # if Fair=80, Current=100 -> -20% Undervalued (or 20% Overvalued).
+        percent_undervalued = (fair_value - cp) / cp
+
+    result["bridge_items"] = bridge_items
+    result["equity_value"] = equity_value
+    result["diluted_shares_outstanding"] = diluted_shares
+    result["fair_value_per_share"] = fair_value
+    result["percent_undervalued"] = percent_undervalued
+
     return result
+
+
+@router.post("/{company_id}/valuations", response_model=ValuationSchema)
+async def save_valuation(
+    company_id: str,
+    valuation_data: ValuationCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Save a valuation snapshot"""
+    valuation = Valuation(
+        id=str(uuid.uuid4()),
+        company_id=company_id,
+        user_id=current_user.id,
+        fair_value=valuation_data.fair_value,
+        share_price_at_time=valuation_data.share_price_at_time,
+        percent_undervalued=valuation_data.percent_undervalued,
+    )
+    db.add(valuation)
+    db.commit()
+    db.refresh(valuation)
+
+    # Enrich response with user email
+    result = valuation.__dict__
+    result["user_email"] = current_user.email
+    return result
+
+
+@router.get("/{company_id}/valuations", response_model=list[ValuationSchema])
+async def list_valuations(
+    company_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List saved valuations for a company"""
+    valuations = (
+        db.query(Valuation)
+        .filter(Valuation.company_id == company_id)
+        .options(selectinload(Valuation.user))
+        .order_by(Valuation.date.desc())
+        .all()
+    )
+
+    results = []
+    for v in valuations:
+        res = v.__dict__
+        if v.user:
+            res["user_email"] = v.user.email
+        results.append(res)
+    return results
+
+
+@router.delete("/{company_id}/valuations/{valuation_id}")
+async def delete_valuation(
+    company_id: str,
+    valuation_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a saved valuation"""
+    valuation = (
+        db.query(Valuation)
+        .filter(Valuation.id == valuation_id, Valuation.company_id == company_id)
+        .first()
+    )
+    if not valuation:
+        raise HTTPException(status_code=404, detail="Valuation not found")
+
+    db.delete(valuation)
+    db.commit()
+    return {"ok": True}

@@ -22,20 +22,27 @@ def extract_original_name_from_standardized(line_name: str) -> str | None:
 
 
 def deduplicate_non_operating_items(items: list[dict]) -> list[dict]:
-    seen: dict[str, dict] = {}
+    seen: dict[tuple, dict] = {}
     for item in items:
         name = item.get("line_name", "")
         normalized = normalize_line_name(name)
-        if normalized in seen:
-            existing = seen[normalized]
+        value = item.get("line_value")
+
+        # Use simple rounding for float comparison stability if needed,
+        # but exact match is usually expected for duplicate extraction.
+        # casting to str to ensure types don't mess up tuple hashing if mixed (though they shouldn't be)
+        key = (normalized, str(value) if value is not None else "None")
+
+        if key in seen:
+            existing = seen[key]
             existing_score = sum(
-                1 for field in ("line_value", "unit", "source") if existing.get(field) is not None
+                1 for field in ("unit", "source") if existing.get(field) is not None
             )
-            new_score = sum(
-                1 for field in ("line_value", "unit", "source") if item.get(field) is not None
-            )
+            new_score = sum(1 for field in ("unit", "source") if item.get(field) is not None)
+            # If scores are equal, we keep existing (stable)
+            # If new has more metadata, replace
             if new_score > existing_score:
-                seen[normalized] = item
+                seen[key] = item
         else:
-            seen[normalized] = item
+            seen[key] = item
     return list(seen.values())

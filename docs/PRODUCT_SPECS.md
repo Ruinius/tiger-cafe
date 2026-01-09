@@ -485,7 +485,40 @@ Calculated using the **Value Driver Formula** to ensure consistency between grow
 - **RONIC**: Return on New Invested Capital (implies marginal efficiency in perpetuity)
 
 ### 4. Valuation Output
-- **Enterprise Value**: Sum of PV of implicit forecast period FCFs + PV of Terminal Value.
+
+#### Enterprise Value Calculation
+- **Enterprise Value**: Sum of PV of 10-year forecast FCFs + PV of Terminal Value.
 - **Discounting**: Uses **Mid-Year Convention** for cash flows.
-- **Intrinsic Value**: Enterprise Value + Non-Operating Assets - Debt (simplified in current phase).
-- **Interactive UI**: "Re-run Valuation" button triggers server-side recalculation using preserved assumptions.
+
+#### Equity Value Bridge
+The model calculates **Equity Value** from **Enterprise Value** using non-operating items:
+- **Add**: Cash, Short Term Investments, Other Financial or Physical Assets
+- **Subtract**: Debt, Other Financial Liabilities, Preferred Equity, Minority Interest
+- **Result**: Value of Common Equity
+
+#### Fair Value per Share
+- **Diluted Shares Outstanding**: Fetched from most recent quarterly data
+- **Fair Value per Share**: Equity Value / Diluted Shares Outstanding
+- **Current Share Price**: Real-time market price (fetched via API)
+- **Percent Undervalued (or Overvalued)**: (Fair Value - Current Price) / Current Price
+  - Positive = Undervalued (green)
+  - Negative = Overvalued (red)
+
+#### Past Valuations Tracking
+- **Save Valuation**: Button to snapshot current fair value estimate
+- **Past Valuations Table**: Historical record of all saved valuations
+  - Columns: Date, User, Fair Value per Share, Share Price at Time, % Diff, Delete
+  - Sorted by date (most recent first)
+  - Allows comparison of valuation changes over time
+  - User attribution for collaborative tracking
+
+#### Interactive UI
+- **Re-run Valuation**: Triggers server-side recalculation using current assumptions
+- **Reset Assumptions**: Reverts to system-calculated defaults (L4Q averages)
+- **Save Valuation**: Persists current valuation snapshot to database
+
+#### Data Sources
+- **Non-Operating Items**: Classified by `non_operating_classifier.py` agent
+- **Share Price**: Fetched from market data API
+- **Diluted Shares**: Extracted from most recent quarterly filing
+- **Time Period Selection**: Uses most recent fiscal quarter (not most recently updated document)

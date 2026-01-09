@@ -35,14 +35,15 @@ The system currently supports:
 
 ## Active Roadmap
 
-### Phase 9: Financial Modeling (COMPLETE)
-Partially completed. See `docs/COMPLETED_TASKS.md` for completed tasks
-- [ ] Change "PV of FCF (10y)" to be "Discounted Cash Flow
-
 ### Phase 10: App-wide Analysis and Dashboard
-- [ ] Latest completed analyses on home page
-- [ ] Cross-company comparisons
-- [ ] Portfolio-level metrics
+- [ ] Analysis Dashboard (Home Page)
+    - [ ] Recent Valuations Table (Company, Date, Fair Value, % Undervalued)
+    - [ ] Market Overview (Aggregate stats of analyzed companies)
+    - [ ] User's Portfolio / saved list tracking
+- [ ] Cross-Company Analysis View
+    - [ ] Comparison Table (compare metrics across selected companies)
+    - [ ] Scatter plots (e.g., ROIC vs. Valuation)
+
 
 ### Phase 11: Sensitivity Analysis
 - [ ] Revenue growth sensitivity
