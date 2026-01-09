@@ -4,7 +4,9 @@ function WelcomeView() {
     return (
         <div className="right-panel">
             <div className="panel-content">
-                <h2>Latest Analyses</h2>
+                <div className="panel-header">
+                    <span className="breadcrumb-current">Latest Analyses</span>
+                </div>
                 <div className="home-content">
                     <p className="placeholder-text">
                         Latest completed company analyses will be displayed here.

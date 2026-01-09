@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useUploadManager } from '../../../hooks/useUploadManager'
+import './Dashboard.css'
 
 function CompanyList({ onCompanySelect, onOpenUploadModal, onShowUploadProgress }) {
     const {
@@ -52,7 +53,7 @@ function CompanyList({ onCompanySelect, onOpenUploadModal, onShowUploadProgress 
                                     <div className="company-ticker">{company.ticker}</div>
                                 )}
                             </div>
-                            <span className="doc-count-badge">
+                            <span className="document-count-badge">
                                 {company.document_count || 0}
                             </span>
                         </div>

@@ -12,9 +12,8 @@ from sqlalchemy.orm import Session, selectinload
 from app.database import get_db
 from app.models.company import Company
 from app.models.document import Document, DocumentType
-from app.models.historical_calculation import HistoricalCalculation
-from app.models.income_statement import IncomeStatement
 from app.models.financial_assumption import FinancialAssumption
+from app.models.income_statement import IncomeStatement
 from app.models.user import User
 from app.routers.auth import get_current_user
 from app.schemas.company import Company as CompanySchema
@@ -22,8 +21,8 @@ from app.schemas.company import CompanyCreate
 from app.schemas.company_historical_calculations import CompanyHistoricalCalculations
 from app.schemas.financial_assumption import FinancialAssumption as FinancialAssumptionSchema
 from app.schemas.financial_assumption import FinancialAssumptionCreate
-from app.utils.historical_calculations import get_revenue
 from app.utils.financial_modeling import calculate_dcf
+from app.utils.historical_calculations import get_revenue
 from app.utils.market_data import get_latest_share_price
 
 router = APIRouter()
@@ -161,9 +160,7 @@ async def get_company_historical_calculations(
             or "Unknown"
         )
 
-        revenue = (
-            get_revenue(document.income_statement) if document.income_statement else None
-        )
+        revenue = get_revenue(document.income_statement) if document.income_statement else None
         entry = {
             "time_period": time_period,
             "revenue": revenue,
@@ -184,6 +181,12 @@ async def get_company_historical_calculations(
             if document.organic_growth
             else None,
             "calculated_at": calc.calculated_at,
+            "diluted_shares_outstanding": document.income_statement.diluted_shares_outstanding
+            if document.income_statement
+            else None,
+            "basic_shares_outstanding": document.income_statement.basic_shares_outstanding
+            if document.income_statement
+            else None,
         }
 
         if calc.currency:
@@ -249,9 +252,7 @@ async def get_company_historical_calculations(
 @router.get(
     "/{company_id}/historical-calculations/test", response_model=CompanyHistoricalCalculations
 )
-async def get_company_historical_calculations_test(
-    company_id: str, db: Session = Depends(get_db)
-):
+async def get_company_historical_calculations_test(company_id: str, db: Session = Depends(get_db)):
     """Test endpoint for company historical calculations (no auth required)."""
     return await get_company_historical_calculations(company_id, db, current_user=None)
 
@@ -265,8 +266,64 @@ async def get_financial_assumptions(
         db.query(FinancialAssumption).filter(FinancialAssumption.company_id == company_id).first()
     )
     if not assumption:
-        # Create default assumption if not exists
-        assumption = FinancialAssumption(company_id=company_id)
+        # Calculate defaults from L4Q historical data
+        historical_data = await get_company_historical_calculations(company_id, db, current_user)
+        quarterly_entries = [
+            e for e in historical_data.get("entries", []) if "Q" in e.get("time_period", "")
+        ]
+        l4q = quarterly_entries[-4:] if len(quarterly_entries) >= 4 else quarterly_entries
+
+        # Helper to calculate L4Q average
+        def l4q_avg(field):
+            values = [e.get(field) for e in l4q if e.get(field) is not None]
+            if values:
+                return sum(values) / len(values)
+            return None
+
+        # 1. Stage 1 Revenue Growth: L4Q Average Organic Growth
+        organic_growth = l4q_avg("organic_revenue_growth")
+        # Convert from percentage (5.0) to decimal (0.05)
+        stage1_growth = float(organic_growth) / 100 if organic_growth else 0.05
+
+        # 2. Terminal Growth: 3%
+        terminal_growth = 0.03
+
+        # 3. Stage 2 Revenue Growth: midpoint between Stage 1 and Terminal
+        stage2_growth = (stage1_growth + terminal_growth) / 2
+
+        # 4. EBITA Margin: L4Q Average
+        ebita_margin_avg = l4q_avg("ebita_margin")
+        ebita_margin = float(ebita_margin_avg) if ebita_margin_avg else 0.20
+
+        # 5. Marginal Capital Turnover: L4Q Capital Turnover with bounds
+        capital_turnover_avg = l4q_avg("capital_turnover")
+        if capital_turnover_avg and capital_turnover_avg > 0 and capital_turnover_avg < 100:
+            mct = float(capital_turnover_avg)
+        else:
+            mct = 100.0  # Cap at 100 if negative or very high
+
+        # 6. Operating Tax Rate: L4Q Average Adjusted Tax Rate
+        tax_rate_avg = l4q_avg("adjusted_tax_rate")
+        tax_rate = float(tax_rate_avg) if tax_rate_avg else 0.25
+
+        # 7. WACC: 8%
+        wacc = 0.08
+
+        # Create default assumption with calculated values
+        assumption = FinancialAssumption(
+            company_id=company_id,
+            revenue_growth_stage1=stage1_growth,
+            revenue_growth_stage2=stage2_growth,
+            revenue_growth_terminal=terminal_growth,
+            ebita_margin_stage1=ebita_margin,
+            ebita_margin_stage2=ebita_margin,
+            ebita_margin_terminal=ebita_margin,
+            marginal_capital_turnover_stage1=mct,
+            marginal_capital_turnover_stage2=mct,
+            marginal_capital_turnover_terminal=mct,
+            adjusted_tax_rate=tax_rate,
+            wacc=wacc,
+        )
         db.add(assumption)
         db.commit()
         db.refresh(assumption)
@@ -294,6 +351,25 @@ async def update_financial_assumptions(
     db.commit()
     db.refresh(assumption)
     return assumption
+
+
+@router.delete("/{company_id}/assumptions", response_model=FinancialAssumptionSchema)
+async def reset_financial_assumptions(
+    company_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Reset financial assumptions to L4Q-based defaults"""
+    # Delete existing assumption
+    assumption = (
+        db.query(FinancialAssumption).filter(FinancialAssumption.company_id == company_id).first()
+    )
+    if assumption:
+        db.delete(assumption)
+        db.commit()
+
+    # Get will recreate with defaults
+    return await get_financial_assumptions(company_id, db, current_user)
 
 
 @router.get("/{company_id}/financial-model")
@@ -327,7 +403,7 @@ async def get_financial_model(
             "marginal_capital_turnover_stage2": assumption.marginal_capital_turnover_stage2,
             "marginal_capital_turnover_terminal": assumption.marginal_capital_turnover_terminal,
             "adjusted_tax_rate": assumption.adjusted_tax_rate,
-            "wacc": assumption.wacc
+            "wacc": assumption.wacc,
         }
 
     # 3. Calculate Model

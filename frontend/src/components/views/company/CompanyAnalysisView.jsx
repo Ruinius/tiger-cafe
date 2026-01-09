@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { useAuth } from '../../../contexts/AuthContext'
 import FinancialModel from './FinancialModel'
+import './Company.css'
 
 const API_BASE_URL = 'http://localhost:8000/api'
 
@@ -65,14 +66,17 @@ function CompanyAnalysisView({ selectedCompany }) {
     }
 
     const hasCompanyData = companyHistoricalCalculations?.entries && companyHistoricalCalculations.entries.length > 0
-    const companyEntries = companyHistoricalCalculations?.entries || []
+    const companyEntries = (companyHistoricalCalculations?.entries || []).filter(e => e.time_period?.includes('Q'))
     const timePeriods = companyEntries.map(e => e.time_period)
 
     const calculateStats = (accessor) => {
-        const values = companyEntries.map(accessor).filter(v => v !== null && v !== undefined && !isNaN(v))
+        const values = companyEntries.map(accessor).map(v => parseFloat(v)).filter(v => v !== null && v !== undefined && !isNaN(v))
         if (values.length === 0) return { average: null, median: null }
 
-        const average = values.reduce((a, b) => a + b, 0) / values.length
+        // Average based on last 4 valid entries (L4Q)
+        const last4Values = values.slice(-4)
+        const average = last4Values.reduce((a, b) => a + b, 0) / last4Values.length
+
         const sorted = [...values].sort((a, b) => a - b)
         const median = sorted.length % 2 === 0
             ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
@@ -92,6 +96,12 @@ function CompanyAnalysisView({ selectedCompany }) {
             label: 'YOY Revenue Growth',
             render: (entry) => formatPercent(entry.revenue_growth_yoy, 1),
             stats: calculateStats(e => e.revenue_growth_yoy),
+            formatStats: (val) => formatPercent(val, 1)
+        },
+        {
+            label: 'Organic Growth',
+            render: (entry) => formatPercent(entry.organic_revenue_growth, 1),
+            stats: calculateStats(e => e.organic_revenue_growth),
             formatStats: (val) => formatPercent(val, 1)
         },
         {
@@ -119,6 +129,12 @@ function CompanyAnalysisView({ selectedCompany }) {
             formatStats: (val) => formatPercent(val, 100)
         },
         {
+            label: 'NOPAT',
+            render: (entry) => formatNumber(entry.nopat, companyHistoricalCalculations?.unit),
+            stats: calculateStats(e => e.nopat),
+            formatStats: (val) => formatNumber(val, companyHistoricalCalculations?.unit)
+        },
+        {
             label: 'Net Working Capital',
             render: (entry) => formatNumber(entry.net_working_capital, companyHistoricalCalculations?.unit),
             stats: calculateStats(e => e.net_working_capital),
@@ -143,36 +159,31 @@ function CompanyAnalysisView({ selectedCompany }) {
             formatStats: (val) => formatDecimal(val, 4)
         },
         {
-            label: 'NOPAT',
-            render: (entry) => formatNumber(entry.nopat, companyHistoricalCalculations?.unit),
-            stats: calculateStats(e => e.nopat),
-            formatStats: (val) => formatNumber(val, companyHistoricalCalculations?.unit)
-        },
-        {
-            label: 'ROIC',
+            label: 'ROIC, Annualized',
             render: (entry) => formatRoic(entry.roic),
             stats: calculateStats(e => e.roic),
             formatStats: (val) => formatRoic(val)
         },
         {
-            label: 'Organic Revenue Growth',
-            render: (entry) => formatPercent(entry.organic_revenue_growth, 1),
-            stats: calculateStats(e => e.organic_revenue_growth),
-            formatStats: (val) => formatPercent(val, 1)
-        },
-        {
-            label: 'YOY Marginal Capital Turnover',
-            render: (entry) => formatDecimal(entry.marginal_capital_turnover, 4),
-            stats: calculateStats(e => e.marginal_capital_turnover),
-            formatStats: (val) => formatDecimal(val, 4)
+            label: 'Diluted Shares Outstanding',
+            render: (entry) => {
+                const val = entry.diluted_shares_outstanding || entry.basic_shares_outstanding;
+                if (!val) return 'N/A';
+                return Number(val).toLocaleString();
+            },
+            stats: calculateStats(e => e.diluted_shares_outstanding || e.basic_shares_outstanding),
+            formatStats: (val) => val ? Number(val).toLocaleString() : 'N/A'
         }
     ]
 
     return (
         <div className="right-panel">
             <div className="panel-content">
-                <h2>{selectedCompany.name} Financial Analysis</h2>
-                <div className="divider" style={{ margin: '1rem 0', borderBottom: '1px solid var(--border)' }}></div>
+                <div className="panel-header">
+                    <h2 style={{ fontSize: '0.9rem', fontWeight: 500, margin: 0 }}>
+                        {selectedCompany.name} Financial Analysis
+                    </h2>
+                </div>
                 <div className="company-analysis">
                     {companyHistoricalLoading && (
                         <p className="placeholder-text">Loading historical calculations...</p>
@@ -182,7 +193,7 @@ function CompanyAnalysisView({ selectedCompany }) {
                     )}
                     {!companyHistoricalLoading && !companyHistoricalError && hasCompanyData && (
                         <>
-                            <h3>Historical Data</h3>
+                            <h3 style={{ marginTop: 0 }}>Historical Data</h3>
                             <div className="balance-sheet-container">
                                 <div className="balance-sheet-header">
                                     <div className="balance-sheet-meta">
@@ -205,7 +216,7 @@ function CompanyAnalysisView({ selectedCompany }) {
                                                 {timePeriods.map((period) => (
                                                     <th key={period} className="text-right">{period}</th>
                                                 ))}
-                                                <th className="text-right" style={{ borderLeft: '1px solid var(--border)' }}>Average</th>
+                                                <th className="text-right" style={{ borderLeft: '1px solid var(--border)' }}>L4Q Average</th>
                                                 <th className="text-right">Median</th>
                                             </tr>
                                         </thead>

@@ -37,7 +37,7 @@ The system currently supports:
 
 ### Phase 9: Financial Modeling (COMPLETE)
 Partially completed. See `docs/COMPLETED_TASKS.md` for completed tasks
-- [ ] More tasks to be defined
+- [ ] Change "PV of FCF (10y)" to be "Discounted Cash Flow
 
 ### Phase 10: App-wide Analysis and Dashboard
 - [ ] Latest completed analyses on home page
@@ -69,16 +69,7 @@ See `docs/COMPLETED_TASKS.md` for details.
 
 ## Immediate Priorities
 
-### UI & BUG FIXES
-- [x] Company List, the badge for number of documents is missing
-- [x] Company Analysis View, the tables are using column spacing for the last 3 columns from Balance Sheet. This spacing should not apply here
-- [x] Company Analysis View, Marginal Capital Turnover assumptions should format to show 1 decimal place
-- [x] Company Analysis View, add a divider after Company Financial Analysis title
-- [x] Document Extraction View, Historical Calculations and beyond are outright missing. If there is no record of what was there any more. Let me know. Do not make up stuff.
-- [x] Document Extraction View, rename "Processing Progress" to "Processing Tracker"
-- [x] Document Extraction View, the Processing Tracker is not showing any of the logs, which I confirmed are still being generated
-- [x] Document Extraction View, the "Processing" widget disappeared. If there is no record of what was there any more. Let me know. Do not make up stuff.
-- [x] Double check all buttons against **Strict Rules for Button States & Behavior:** in UI_UX_DESIGN.md
+
 
 ## Architecture Overview
 
@@ -100,3 +91,4 @@ See `docs/COMPLETED_TASKS.md` for details.
     - Historical metrics (ROIC, EBITA, etc.) computed from extracted data.
 4. **Modeling**:
     - DCF valuation with customizable assumptions and terminal value calculation.
+

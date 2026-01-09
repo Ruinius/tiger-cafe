@@ -545,7 +545,7 @@ CRITICAL ANTI-HALLUCINATION RULES:
 
 Return a JSON object with the following structure:
 {{
-    "currency": currency code (extract ONLY if explicitly stated in document, otherwise null),
+    "currency": currency code,
     "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract ONLY if explicitly stated like "in millions", "in thousands", etc., otherwise null),
     "time_period": "{time_period}",
     "revenue_prior_year": revenue for the same period in the prior year (as number, null if not EXPLICITLY found in document),
@@ -566,7 +566,7 @@ IMPORTANT:
 - Include all line items that appear in the document, including but not limited to: Revenue, Cost of Revenue/Cost of Goods Sold, Gross Profit, Operating Expenses, Operating Income, Net Income, etc.
 - DO NOT add line items that are not in the document
 - Maintain the exact order of line items as they appear in the document
-- Extract the currency code ONLY if explicitly stated in the document text
+- Extract the currency code
 - Extract the unit ONLY if the document explicitly states it (look for phrases like "in millions", "in thousands", "in billions", or "in ten thousands")
 - Values should be numeric (not strings with commas or currency symbols)
 - For revenue_prior_year, look for the same period in the prior year (e.g., if time_period is "Q3 2023", look for "Q3 2022" revenue) - ONLY if explicitly shown in the document text, otherwise use null
@@ -636,7 +636,7 @@ Please review the previous extraction and fix the issues. Pay special attention 
 
 Return a JSON object with the following structure:
 {{
-    "currency": currency code (extract from document),
+    "currency": currency code,
     "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract from document, e.g., if values are in millions, use "millions"),
     "time_period": "{time_period}",
     "revenue_prior_year": revenue for the same period in the prior year (as number, null if not found),
@@ -666,7 +666,7 @@ IMPORTANT:
 - Include all line items that appear in the document, including but not limited to: Revenue, Cost of Revenue/Cost of Goods Sold, Gross Profit, Operating Expenses, Operating Income, Net Income, etc.
 - DO NOT add line items that are not in the document
 - Maintain the exact order of line items as they appear in the document
-- Extract the currency code ONLY if explicitly stated in the document text
+- Extract the currency code
 - Extract the unit ONLY if the document explicitly states it (look for phrases like "in millions", "in thousands", "in billions", or "in ten thousands")
 - Values should be numeric (not strings with commas or currency symbols)
 - For revenue_prior_year, look for the same period in the prior year (e.g., if time_period is "Q3 2023", look for "Q3 2022" revenue) - ONLY if explicitly shown in the document text, otherwise use null

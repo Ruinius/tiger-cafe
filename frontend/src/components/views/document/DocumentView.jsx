@@ -4,8 +4,9 @@ import { useAuth } from '../../../contexts/AuthContext'
 import { usePdfViewer } from '../../../hooks/usePdfViewer'
 import { useDocumentData } from '../../../hooks/useDocumentData'
 import { API_BASE_URL } from '../../../config'
+import './Document.css'
 
-function PdfViewer({ selectedDocument, selectedCompany, onBack }) {
+function DocumentView({ selectedDocument, selectedCompany, onBack }) {
     const { isAuthenticated, token } = useAuth()
     const [pdfUrl, setPdfUrl] = useState(null)
     const pdfUrlRef = useRef(null)
@@ -135,7 +136,7 @@ function PdfViewer({ selectedDocument, selectedCompany, onBack }) {
             <div className="pdf-viewer-container">
                 {/* Metadata Section */}
                 <div className="info-section">
-                    <h3>Status & Metadata</h3>
+                    <h3 style={{ marginTop: 0 }}>Status & Metadata</h3>
                     <div className="metadata-grid">
                         <div className="metadata-item">
                             <strong>Status:</strong>
@@ -265,8 +266,12 @@ function PdfViewer({ selectedDocument, selectedCompany, onBack }) {
                         )}
                     </div>
 
-                    {/* Original PDF Viewer */}
-                    <div className="chunk-item">
+                    <div style={{
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius-md)',
+                        overflow: 'hidden',
+                        marginBottom: '0.75rem'
+                    }}>
                         <button
                             className="chunk-header"
                             onClick={toggleDocumentExpanded}
@@ -277,11 +282,10 @@ function PdfViewer({ selectedDocument, selectedCompany, onBack }) {
                                 alignItems: 'center',
                                 padding: '0.75rem',
                                 background: 'var(--bg-elevated)',
-                                border: '1px solid var(--border)',
-                                borderRadius: 'var(--radius-md)',
+                                border: 'none',
+                                borderBottom: isDocumentExpanded ? '1px solid var(--border)' : 'none',
                                 cursor: 'pointer',
-                                textAlign: 'left',
-                                marginBottom: '0.5rem'
+                                textAlign: 'left'
                             }}
                         >
                             <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
@@ -297,8 +301,13 @@ function PdfViewer({ selectedDocument, selectedCompany, onBack }) {
                             </span>
                         </button>
                         {isDocumentExpanded && pdfUrl && (
-                            <div className="chunk-content" style={{ padding: '0', border: 'none', background: 'transparent' }}>
-                                <iframe src={pdfUrl} title="Document PDF" className="pdf-viewer" style={{ width: '100%', height: 'calc(100vh - 300px)', border: 'none' }} />
+                            <div className="pdf-frame-container" style={{
+                                height: '600px',
+                                width: '100%',
+                                background: 'var(--bg-elevated)',
+                                overflow: 'hidden'
+                            }}>
+                                <iframe src={pdfUrl} title="Document PDF" className="pdf-viewer" style={{ width: '100%', height: '100%', border: 'none' }} />
                             </div>
                         )}
                     </div>
@@ -313,7 +322,12 @@ function PdfViewer({ selectedDocument, selectedCompany, onBack }) {
                                     {documentChunks.chunks.map((chunk) => {
                                         const isExpanded = expandedChunks.has(chunk.chunk_index)
                                         return (
-                                            <div key={chunk.chunk_index} className="chunk-item">
+                                            <div key={chunk.chunk_index} className="chunk-item" style={{
+                                                border: '1px solid var(--border)',
+                                                borderRadius: 'var(--radius-md)',
+                                                overflow: 'hidden',
+                                                marginBottom: '0.75rem'
+                                            }}>
                                                 <button
                                                     className="chunk-header"
                                                     onClick={() => toggleChunk(chunk.chunk_index)}
@@ -324,11 +338,10 @@ function PdfViewer({ selectedDocument, selectedCompany, onBack }) {
                                                         alignItems: 'center',
                                                         padding: '0.75rem',
                                                         background: 'var(--bg-elevated)',
-                                                        border: '1px solid var(--border)',
-                                                        borderRadius: 'var(--radius-md)',
+                                                        border: 'none',
+                                                        borderBottom: isExpanded ? '1px solid var(--border)' : 'none',
                                                         cursor: 'pointer',
-                                                        textAlign: 'left',
-                                                        marginBottom: '0.5rem'
+                                                        textAlign: 'left'
                                                     }}
                                                 >
                                                     <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
@@ -347,16 +360,14 @@ function PdfViewer({ selectedDocument, selectedCompany, onBack }) {
                                                         style={{
                                                             padding: '1rem',
                                                             background: 'var(--bg-surface)',
-                                                            border: '1px solid var(--border)',
-                                                            borderRadius: 'var(--radius-md)',
-                                                            marginBottom: '0.5rem',
                                                             maxHeight: '400px',
                                                             overflowY: 'auto',
                                                             fontSize: '0.875rem',
                                                             lineHeight: '1.6',
                                                             color: 'var(--text-primary)',
                                                             whiteSpace: 'pre-wrap',
-                                                            wordBreak: 'break-word'
+                                                            wordBreak: 'break-word',
+                                                            width: '100%'
                                                         }}
                                                     >
                                                         {chunk.error ? (
@@ -385,4 +396,4 @@ function PdfViewer({ selectedDocument, selectedCompany, onBack }) {
     )
 }
 
-export default PdfViewer
+export default DocumentView

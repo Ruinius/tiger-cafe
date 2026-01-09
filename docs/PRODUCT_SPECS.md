@@ -18,6 +18,272 @@ All users interact with the same dataset:
 - User name next to initiated analyses
 - Timestamp of actions
 
+## Frontend Architecture
+
+### Overview
+
+The frontend implements a **view-based state machine** where the application state is defined by the user's depth of navigation. Instead of fixed "Left/Right" panel components, the app renders distinct **Views** that define the content of both panels simultaneously.
+
+The `Dashboard.jsx` component acts as the central orchestrator, managing three distinct states and their corresponding view compositions.
+
+### State Machine
+
+The application operates in one of three states at any given time:
+
+```
+GLOBAL → COMPANY → DOCUMENT
+  ↑         ↑
+  └─────────┘
+```
+
+Navigation is hierarchical:
+- Users start at **GLOBAL** (company list)
+- Selecting a company transitions to **COMPANY** (document list + company analysis)
+- Selecting a document transitions to **DOCUMENT** (document details + extraction view)
+- Breadcrumb navigation allows returning to previous states
+
+### State 1: Global Dashboard (Home)
+
+**Trigger**: Initial Load / "Companies" Breadcrumb
+
+**Left Panel**: `CompanyList`
+- Searchable list of all companies
+- "Add Document" entry point
+- "Check Uploads" entry point (when uploads are active)
+
+**Right Panel**: `WelcomeView`
+- Global recent activity
+- System-wide stats
+- Empty state/Introduction
+
+**CSS**: `Dashboard.css`
+
+### State 2: Company Overview
+
+**Trigger**: User selects a Company
+
+**Left Panel**: `DocumentList`
+- Breadcrumb: `< Companies`
+- List of documents belonging to the selected company
+- "Add Document" entry point (pre-selects company)
+- "Check Uploads" entry point (when uploads are active)
+
+**Right Panel**: `CompanyAnalysisView`
+- Aggregated metrics for the company
+- Financial Model / Valuation summary (DCF)
+- Cross-document trends
+
+**CSS**: `Company.css`
+
+### State 3: Document Analysis
+
+**Trigger**: User selects a Document
+
+**Left Panel**: `DocumentView`
+- Breadcrumb: `< [Company Name]`
+- Collapsible PDF viewer (default collapsed)
+- Document Metadata (Status, Type, Upload Attribution)
+
+**Right Panel**: `DocumentExtractionView`
+- Tabbed interface for Extractions (Balance Sheet, Income Statement) vs Analysis (Calculations)
+- Specific validation controls for the active document
+- Re-run and delete actions
+
+**CSS**: `Document.css`
+
+### Global Interactions (Modals)
+
+Modals are rendered at the `Dashboard` level and are accessible across all three states:
+
+#### Upload Modal
+- **Trigger**: "Add Document" button (available in Company List & Document List)
+- **Behavior**: Modal dialog for file selection (drag-and-drop + file picker)
+- **Context-Aware**: Pre-selects company if triggered from Company or Document view
+
+#### Upload Progress Modal
+- **Trigger**: "Check Uploads" button (replaces "Add Document" when uploads are active)
+- **Behavior**: Modal dialog showing progress of current uploads with milestones
+- **Features**:
+  - Real-time progress tracking (Uploading → Classification → Indexing)
+  - Duplicate detection warnings
+  - "Replace & Index" or "Cancel" actions for duplicates
+- **Note**: Previously an overlay in the left panel, now a distinct modal for cleaner separation
+
+### Context Providers
+
+The application uses React Context for global state management:
+
+#### AuthContext
+- Provides authentication state (`isAuthenticated`, `user`, `token`)
+- Handles login/logout flows
+- Manages token verification and refresh
+- Intercepts 401 responses to handle session expiration
+
+#### ThemeContext
+- Provides theme state (`light` / `dark`)
+- Persists theme preference to localStorage
+- Applies theme to document root via `data-theme` attribute
+
+#### UploadContext
+- Manages upload state tracking
+- Polls backend every 3 seconds for upload progress
+- Provides `uploadingDocuments` array and `showUploadProgress` flag
+- Automatically stops polling when all uploads complete
+
+### Component Hierarchy
+
+```
+App.jsx
+├── ThemeProvider
+│   ├── AuthProvider
+│   │   ├── UploadProvider
+│   │   │   ├── Router
+│   │   │   │   ├── LoginPage (unauthenticated)
+│   │   │   │   └── Dashboard (authenticated)
+│   │   │   │       ├── Header
+│   │   │   │       ├── SplitScreen
+│   │   │   │       │   ├── [Left Panel View]
+│   │   │   │       │   └── [Right Panel View]
+│   │   │   │       ├── UploadModal
+│   │   │   │       └── UploadProgressModal
+```
+
+### Navigation Flow
+
+```javascript
+// Simplified state management in Dashboard.jsx
+const [viewState, setViewState] = useState({
+  type: 'GLOBAL', // 'GLOBAL' | 'COMPANY' | 'DOCUMENT'
+  data: { company: null, document: null }
+})
+
+// Navigation handlers
+handleCompanySelect(company)  → { type: 'COMPANY', data: { company, document: null } }
+handleDocumentSelect(document) → { type: 'DOCUMENT', data: { company, document } }
+handleBackToGlobal()          → { type: 'GLOBAL', data: { company: null, document: null } }
+handleBackToCompany()         → { type: 'COMPANY', data: { company, document: null } }
+```
+
+### Key Design Principles
+
+1. **Single Source of Truth**: `Dashboard.jsx` owns all navigation state
+2. **View Composition**: Each state defines both left and right panel content
+3. **Context for Cross-Cutting Concerns**: Auth, theme, and uploads are managed globally
+4. **Modal Separation**: Global interactions (uploads) are handled as modals, not inline views
+5. **Hierarchical Navigation**: Breadcrumbs reflect the state hierarchy and enable backward navigation
+
+### Frontend File Inventory
+
+The following is a comprehensive list of all frontend files and their roles. Files marked with ⚠️ contain legacy/spaghetti code that needs refactoring.
+
+#### Entry Point & Configuration
+- **`main.jsx`**: Application entry point, renders `App.jsx` into DOM
+- **`App.jsx`**: Root component, sets up provider hierarchy and routing
+- **`App.css`**: Minimal root-level styles
+- **`config.js`**: API base URL and configuration constants
+- **`index.css`**: Global CSS variables, resets, and base styles
+
+#### Pages
+- **`pages/LoginPage.jsx`**: Google OAuth login page (pre-authentication)
+- **`pages/LoginPage.css`**: Login page styles
+- **`pages/Dashboard.jsx`**: Central orchestrator for the three-state user journey
+
+#### Contexts (Global State)
+- **`contexts/AuthContext.jsx`**: Authentication state, token management, 401 interceptor
+- **`contexts/ThemeContext.jsx`**: Light/dark theme state and persistence
+- **`contexts/UploadContext.jsx`**: Upload progress polling (3-second intervals)
+
+#### Layout Components
+- **`components/layout/Header.jsx`**: Persistent header with user profile, theme toggle, logout
+- **`components/layout/Header.css`**: Header styles
+- **`components/layout/SplitScreen.jsx`**: Draggable split-panel layout (20-80% range)
+- **`components/layout/SplitScreen.css`**: Split screen styles
+
+#### Modal Components
+- **`components/modals/UploadModal.jsx`**: File upload dialog (drag-and-drop + picker)
+- **`components/modals/UploadModal.css`**: Upload modal styles
+- **`components/modals/UploadProgressModal.jsx`**: Real-time upload progress tracking
+
+#### View Components - Global (State 1)
+- **`components/views/global/CompanyList.jsx`**: Searchable company list (left panel)
+- **`components/views/global/WelcomeView.jsx`**: Welcome screen with recent activity (right panel)
+- **`components/views/global/Dashboard.css`**: Global view styles
+
+#### View Components - Company (State 2)
+- **`components/views/company/DocumentList.jsx`**: Document list for selected company (left panel)
+- **`components/views/company/CompanyAnalysisView.jsx`**: Company metrics and DCF model (right panel)
+- **`components/views/company/FinancialModel.jsx`**: DCF valuation model component
+- **`components/views/company/FinancialModel.css`**: Financial model styles
+- **`components/views/company/Company.css`**: Company view styles
+
+#### View Components - Document (State 3)
+- **`components/views/document/DocumentView.jsx`**: Document metadata and PDF viewer (left panel)
+- **`components/views/document/DocumentExtractionView.jsx`** ⚠️: Extracted financial data tables (right panel)
+  - **Refactoring Needed**: This is a monolithic component (~1000+ lines) that renders all extraction tables inline. Should be split into separate table components.
+- **`components/views/document/Document.css`**: Document view styles
+
+#### Custom Hooks
+- **`hooks/useUploadManager.js`**: Manages upload modal state and duplicate handling logic
+- **`hooks/useDashboardData.js`**: Fetches and filters company list data
+- **`hooks/useDocumentData.js`** ⚠️: Fetches document data, extraction status, and financial tables
+  - **Refactoring Needed**: Large hook (~320 lines) that manages too many concerns. Should be split into:
+    - `useDocumentMetadata.js` (basic document info)
+    - `useExtractionData.js` (balance sheet, income statement)
+    - `useCalculationData.js` (historical calculations)
+- **`hooks/usePdfViewer.js`**: Manages PDF viewer state and rendering
+- **`hooks/useAnalysisEvents.js`**: WebSocket/polling for real-time analysis status updates
+
+#### Utility Functions
+- **`utils/formatting.js`**: Number formatting, currency, percentages
+- **`utils/textUtils.js`**: Text manipulation utilities
+- **`utils/textUtils.test.js`**: Tests for text utilities
+
+#### Styles
+- **`styles/layout.css`**: Layout-specific styles (panels, containers)
+- **`styles/components.css`**: Shared component styles (buttons, tables, badges)
+- **`styles/components_temp.css`** ⚠️: Legacy/temporary styles
+  - **Refactoring Needed**: This file contains orphaned styles that should either be migrated to proper component CSS files or deleted.
+
+#### Tests
+- **`test/setup.js`**: Vitest test configuration
+- **`__tests__/app-routes.test.jsx`**: Routing tests
+- **`__tests__/app-smoke.test.jsx`**: Basic smoke tests
+- **`__tests__/dashboard-render.test.jsx`**: Dashboard rendering tests
+- **`__tests__/header.test.jsx`**: Header component tests
+- **`hooks/__tests__/useDashboardData.test.jsx`**: Dashboard data hook tests
+
+#### Known Technical Debt
+
+1. **DocumentExtractionView.jsx** (High Priority)
+   - **Issue**: Monolithic component with inline table rendering
+   - **Impact**: Hard to maintain, test, and reuse table logic
+   - **Solution**: Extract into separate components:
+     - `BalanceSheetTable.jsx`
+     - `IncomeStatementTable.jsx`
+     - `InvestedCapitalTable.jsx`
+     - `EBITABreakdownTable.jsx`
+     - `SummaryTable.jsx`
+
+2. **useDocumentData.js** (High Priority)
+   - **Issue**: God hook that manages document metadata, extractions, and calculations
+   - **Impact**: Difficult to test, violates single responsibility principle
+   - **Solution**: Split into focused hooks as described above
+
+3. **components_temp.css** (Medium Priority)
+   - **Issue**: Orphaned temporary styles
+   - **Impact**: Unclear which styles are actually used
+   - **Solution**: Audit usage, migrate to proper files, delete unused styles
+
+4. **Inline API Calls** (Medium Priority)
+   - **Issue**: Some components make direct axios calls instead of using hooks
+   - **Impact**: Harder to mock for testing, inconsistent patterns
+   - **Solution**: Centralize all API calls in custom hooks or a dedicated API service layer
+
+5. **Missing Component Tests** (Low Priority)
+   - **Issue**: Most view components lack unit tests
+   - **Impact**: Regression risk during refactoring
+   - **Solution**: Add tests incrementally, prioritize complex components
+
 ## Login Page
 
 ### Purpose
@@ -62,34 +328,42 @@ The login page is the landing page during development and is the gateway to the 
 
 ## Global Dashboard Layout
 
+> **Note**: For detailed frontend architecture and state management, see the [Frontend Architecture](#frontend-architecture) section above.
+
 ### Two Adjustable Split Screens
 
 - Vertical split with draggable divider
 - Min/max widths: **20% / 80%**
 - Default split: **50% / 50%**
-- Split preference stored per user
+- Split preference stored in localStorage per user
 
-### Left Panel (Navigation)
+### Panel Content Summary
 
-- Company list (default view)
-- **Add Document** button at bottom
-  - Changes to **Check Uploads** during active uploads
-- Selecting a company shows company documents
-- Selecting a document shows document details
-  - **Original PDF** viewer (collapsible, default collapsed)
-  - Document metadata and status
+> **Note**: See [State 1](#state-1-global-dashboard-home), [State 2](#state-2-company-overview), and [State 3](#state-3-document-analysis) in the Frontend Architecture section above for detailed panel content specifications.
 
-### Right Panel (Content)
+### UI Components
 
-- Default: recent completed analysis list
-- Company selected: company analysis dashboard
-- Document selected: extracted data + progress view
-  - Financial statements tables (Balance Sheet, Income Statement)
-  - Historical Calculations (Invested Capital, EBITA, Adjusted Tax, NOPAT, ROIC)
-  - Validation indicators
-  - Operating vs. non-operating classification
-  - Additional items table (Organic Growth, Amortization, Shares)
-  - Re-run and delete actions
+#### Header (Persistent)
+- Application logo/title
+- User profile (name, avatar)
+- Theme toggle (day/night mode)
+- Logout button
+
+#### Breadcrumb Navigation
+- Reflects current state hierarchy
+- Clickable links to navigate back
+- Examples:
+  - State 1: `Companies`
+  - State 2: `< Companies › [Company Name]`
+  - State 3: `< [Company Name] › [Document Name]`
+
+#### Action Buttons
+- **Add Document**: Opens upload modal
+  - Available in State 1 (Global) and State 2 (Company)
+  - Pre-selects company when triggered from State 2
+- **Check Uploads**: Replaces "Add Document" when uploads are active
+  - Shows upload progress modal
+  - Available across all states
 
 ### Day/Night Toggle
 
@@ -165,7 +439,6 @@ When a document is selected:
   3. Extracting additional items
   4. Classifying non-operating items
 - Real-time status: `checking`, `pending`, `in_progress`, `completed`, `error`, `not_found`
-- Tables include validation status and operating/non-operating labels
 - Tables include validation status and operating/non-operating labels
 
 ## Historical Metrics & Analysis

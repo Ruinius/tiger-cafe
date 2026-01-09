@@ -490,11 +490,11 @@ CRITICAL ANTI-HALLUCINATION RULES:
 - Extract line items ONLY from the balance sheet table/section in the document text
 - DO NOT use any external knowledge or assumptions
 - Every line_value must correspond to an actual number shown in the document text
-- If currency or unit is not explicitly stated in the document, use null
+- If currency or unit is not stated in the document, use null
 
 Return a JSON object with the following structure:
 {{
-    "currency": currency code (extract ONLY if explicitly stated in document, otherwise null),
+    "currency": currency code,
     "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract ONLY if explicitly stated like "in millions", "in thousands", etc., otherwise null),
     "time_period": "{time_period}",
     "line_items": [
@@ -523,7 +523,7 @@ IMPORTANT:
 - DO NOT round, estimate, or modify values - use them exactly as written
 - Include all subtotals (Current Assets, Total Assets, Current Liabilities, Total Liabilities, Total Equity, Total Liabilities and Equity) ONLY if they appear in the document
 - Maintain the exact order of line items as they appear in the document
-- Extract the currency code ONLY if explicitly stated in the document text
+- Extract the currency code
 - Extract the unit ONLY if the document explicitly states it (look for phrases like "in millions", "in thousands", "in billions", or "in ten thousands")
 - Values should be numeric (not strings with commas or currency symbols)
 - Use "ten_thousands" ONLY if the document explicitly states values are in ten thousands
@@ -591,7 +591,7 @@ Please review the previous extraction and fix the issues. Pay special attention 
 
 Return a JSON object with the following structure:
 {{
-    "currency": currency code (extract from document),
+    "currency": currency code,
     "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract from document, e.g., if values are in millions, use "millions"),
     "time_period": "{time_period}",
     "line_items": [
@@ -616,7 +616,7 @@ IMPORTANT:
 - DO NOT round, estimate, or modify values - use them exactly as written
 - Include all subtotals (Current Assets, Total Assets, Current Liabilities, Total Liabilities, Total Equity, Total Liabilities and Equity) ONLY if they appear in the document
 - Maintain the exact order of line items as they appear in the document
-- Extract the currency code ONLY if explicitly stated in the document text
+- Extract the currency code
 - Extract the unit ONLY if the document explicitly states it (look for phrases like "in millions", "in thousands", "in billions", or "in ten thousands")
 - Values should be numeric (not strings with commas or currency symbols)
 - Use "ten_thousands" ONLY if the document explicitly states values are in ten thousands

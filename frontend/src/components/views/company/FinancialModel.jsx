@@ -285,6 +285,35 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
         }
     }
 
+    const resetAssumptions = async () => {
+        try {
+            const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+            const response = await axios.delete(
+                `${API_BASE_URL}/companies/${selectedCompany.id}/assumptions`,
+                { headers }
+            )
+            // Update local state with reset values
+            setAssumptions({
+                revenue_growth_stage1: response.data.revenue_growth_stage1 ?? 0.05,
+                revenue_growth_stage2: response.data.revenue_growth_stage2 ?? 0.04,
+                revenue_growth_terminal: response.data.revenue_growth_terminal ?? 0.03,
+                ebita_margin_stage1: response.data.ebita_margin_stage1 ?? 0.20,
+                ebita_margin_stage2: response.data.ebita_margin_stage2 ?? 0.20,
+                ebita_margin_terminal: response.data.ebita_margin_terminal ?? 0.20,
+                marginal_capital_turnover_stage1: response.data.marginal_capital_turnover_stage1 ?? 1.0,
+                marginal_capital_turnover_stage2: response.data.marginal_capital_turnover_stage2 ?? 1.0,
+                marginal_capital_turnover_terminal: response.data.marginal_capital_turnover_terminal ?? 1.0,
+                adjusted_tax_rate: response.data.adjusted_tax_rate ?? 0.25,
+                wacc: response.data.wacc ?? 0.08
+            })
+            // Reload model with new defaults
+            loadModel()
+        } catch (err) {
+            setError("Failed to reset assumptions")
+            console.error(err)
+        }
+    }
+
     const formatNumber = (value) => {
         if (value === null || value === undefined) return 'N/A'
         return new Intl.NumberFormat('en-US', {
@@ -316,7 +345,7 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
     return (
         <div className="financial-model">
             {/* Assumptions Title outside the card */}
-            <h3 style={{ marginBottom: '1rem' }}>Assumptions</h3>
+            <h3 style={{ marginBottom: '1rem', marginTop: 0 }}>Assumptions</h3>
 
             <div className="assumptions-section">
                 <div className="assumptions-grid">
@@ -434,9 +463,29 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                         </label>
                     </div>
                 </div>
-                <button onClick={saveAssumptions} className="button-primary" style={{ marginTop: '1rem' }} disabled={loading}>
-                    Re-run Valuation
-                </button>
+                <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                    <button onClick={saveAssumptions} className="button-primary" disabled={loading}>
+                        Re-run Valuation
+                    </button>
+                    <button
+                        onClick={resetAssumptions}
+                        style={{
+                            padding: '0.85rem 1.25rem',
+                            backgroundColor: 'var(--bg-elevated)',
+                            color: 'var(--text-primary)',
+                            border: '1px solid var(--border)',
+                            borderRadius: '999px',
+                            cursor: 'pointer',
+                            fontSize: '0.875rem',
+                            fontWeight: '600',
+                            letterSpacing: '0.01em',
+                            transition: 'transform 0.2s, box-shadow 0.2s, background-color 0.2s'
+                        }}
+                        disabled={loading}
+                    >
+                        Reset Assumptions
+                    </button>
+                </div>
             </div>
 
             {loading && <p>Calculating model...</p>}
@@ -446,7 +495,7 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                 <div className="model-results">
                     <h3>Discounted Cash Flow Model</h3>
                     <div className="balance-sheet-table-container">
-                        <table className="balance-sheet-table">
+                        <table className="balance-sheet-table company-analysis-table">
                             <thead>
                                 <tr>
                                     <th>Year</th>

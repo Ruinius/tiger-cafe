@@ -12,10 +12,11 @@ import CompanyList from '../components/views/global/CompanyList'
 import WelcomeView from '../components/views/global/WelcomeView'
 import DocumentList from '../components/views/company/DocumentList'
 import CompanyAnalysisView from '../components/views/company/CompanyAnalysisView'
-import PdfViewer from '../components/views/document/PdfViewer'
+import DocumentView from '../components/views/document/DocumentView'
 import DocumentExtractionView from '../components/views/document/DocumentExtractionView'
 
-import './Dashboard.css'
+import '../styles/layout.css'
+import '../styles/components.css'
 
 function Dashboard() {
   const { user, logout } = useAuth()
@@ -35,6 +36,7 @@ function Dashboard() {
     handleUploadSuccess,
     handleReplaceAndIndex,
     handleCancelDuplicate,
+    handleCancelUpload,
     uploadingDocuments,
     showUploadProgress,
     setShowUploadProgress
@@ -119,7 +121,7 @@ function Dashboard() {
 
     case 'DOCUMENT':
       leftPanelContent = (
-        <PdfViewer
+        <DocumentView
           selectedDocument={viewState.data.document}
           selectedCompany={viewState.data.company}
           onBack={handleBackToCompany}

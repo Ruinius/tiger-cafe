@@ -31,7 +31,7 @@ def classify_document(text: str) -> dict[str, str | None]:
 Return a JSON object with the following structure:
 {{
     "document_type": one of ["earnings_announcement", "quarterly_filing", "annual_filing", "press_release", "analyst_report", "news_article", "transcript", "other"],
-    "time_period": the time period in format like "Q3 2024", "FY 2023", "2024-Q1", or null if not EXPLICITLY found in the document text,
+    "time_period": the time period in format like "Q3 2024", "FY 2023", or null if not EXPLICITLY found in the document text,
     "company_name": the company name or null if not EXPLICITLY found in the document text,
     "ticker": the stock ticker symbol or null if not EXPLICITLY found in the document text,
     "confidence": one of ["high", "medium", "low"] based on how confident you are in the classification
@@ -43,7 +43,8 @@ CRITICAL ANTI-HALLUCINATION RULES:
 - If information is not visible in the document text, use null
 - DO NOT use external knowledge to fill in missing information
 
-IMPORTANT: Document type classification rules:
+IMPORTANT:
+document_type classification rules:
 - "earnings_announcement": Use ONLY for press releases or announcements that specifically report quarterly or annual earnings results, financial performance metrics (revenue, profit, EPS), and earnings guidance. These typically include phrases like "earnings", "revenue", "net income", "EPS", "quarterly results", "annual results", or financial performance data.
 - "press_release": Use for all OTHER press releases that are NOT earnings announcements. Examples include: product launches, partnerships, executive appointments, regulatory updates, strategic initiatives, mergers/acquisitions, legal matters, or any other company news that is not primarily about earnings/financial results.
 - "quarterly_filing": Official SEC quarterly filings (10-Q forms)
@@ -51,6 +52,10 @@ IMPORTANT: Document type classification rules:
 - "analyst_report": Reports from financial analysts or research firms
 - "news_article": Third-party news articles about the company
 - "other": Any document that doesn't fit the above categories
+
+time_period classification rules:
+- If the type is earnings_announcement classify FY annoucement as Q4
+- If the type if annual_filing classify as FY
 
 When in doubt between "earnings_announcement" and "press_release", choose "earnings_announcement" if the document primarily focuses on financial results, earnings, revenue, or quarterly/annual performance metrics.
 

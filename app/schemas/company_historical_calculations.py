@@ -23,6 +23,8 @@ class CompanyHistoricalCalculationEntry(BaseModel):
     roic: Decimal | None = None
     organic_revenue_growth: Decimal | None = None
     marginal_capital_turnover: Decimal | None = None
+    diluted_shares_outstanding: Decimal | None = None
+    basic_shares_outstanding: Decimal | None = None
 
 
 class CompanyHistoricalCalculations(BaseModel):
