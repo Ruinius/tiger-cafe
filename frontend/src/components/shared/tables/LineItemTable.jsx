@@ -1,5 +1,5 @@
 import React from 'react'
-import { normalizeLineName } from '../../utils/textUtils'
+import { normalizeLineName } from '../../../utils/textUtils'
 
 const formatLabel = (value) => {
   if (!value) return 'Unknown'

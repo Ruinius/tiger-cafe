@@ -2,7 +2,7 @@ import React from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { vi } from 'vitest'
-import Header from '../components/Header'
+import Header from '../components/layout/Header'
 
 describe('Header', () => {
   it('shows user details and triggers logout', async () => {

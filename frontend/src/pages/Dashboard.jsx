@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
-import SplitScreen from '../components/SplitScreen'
+import SplitScreen from '../components/layout/SplitScreen'
 import LeftPanel from '../components/LeftPanel'
 import RightPanel from '../components/RightPanel'
-import Header from '../components/Header'
+import Header from '../components/layout/Header'
 import './Dashboard.css'
 
 function Dashboard() {

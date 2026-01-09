@@ -2,6 +2,7 @@ import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import LeftPanel from '../components/LeftPanel'
+import { UploadContext } from '../contexts/UploadContext'
 import axios from 'axios'
 
 // Mock axios
@@ -16,8 +17,13 @@ vi.mock('../contexts/AuthContext', () => ({
 }))
 
 // Mock UploadModal
-vi.mock('../components/UploadModal', () => ({
+vi.mock('../components/modals/UploadModal', () => ({
     default: () => <div>Upload Modal</div>
+}))
+
+// Mock UploadProgress
+vi.mock('../components/modals/UploadProgressModal', () => ({
+    default: () => <div>Upload Progress Modal</div>
 }))
 
 describe('LeftPanel Button Debouncing', () => {
@@ -68,13 +74,22 @@ describe('LeftPanel Button Debouncing', () => {
     })
 
     it('prevents duplicate clicks on Re-run Indexing button', async () => {
+        const mockUploadValue = {
+            uploadingDocuments: [],
+            loadUploadProgress: vi.fn(),
+            showUploadProgress: false,
+            setShowUploadProgress: vi.fn(),
+        }
+
         render(
-            <LeftPanel
-                selectedCompany={mockSelectedCompany}
-                selectedDocument={mockSelectedDocument}
-                onBack={mockOnBack}
-                onDocumentSelect={mockOnDocumentSelect}
-            />
+            <UploadContext.Provider value={mockUploadValue}>
+                <LeftPanel
+                    selectedCompany={mockSelectedCompany}
+                    selectedDocument={mockSelectedDocument}
+                    onBack={mockOnBack}
+                    onDocumentSelect={mockOnDocumentSelect}
+                />
+            </UploadContext.Provider>
         )
 
         // Wait for button to be enabled
@@ -102,13 +117,22 @@ describe('LeftPanel Button Debouncing', () => {
     })
 
     it('prevents duplicate clicks on Re-run Extraction button', async () => {
+        const mockUploadValue = {
+            uploadingDocuments: [],
+            loadUploadProgress: vi.fn(),
+            showUploadProgress: false,
+            setShowUploadProgress: vi.fn(),
+        }
+
         render(
-            <LeftPanel
-                selectedCompany={mockSelectedCompany}
-                selectedDocument={mockSelectedDocument}
-                onBack={mockOnBack}
-                onDocumentSelect={mockOnDocumentSelect}
-            />
+            <UploadContext.Provider value={mockUploadValue}>
+                <LeftPanel
+                    selectedCompany={mockSelectedCompany}
+                    selectedDocument={mockSelectedDocument}
+                    onBack={mockOnBack}
+                    onDocumentSelect={mockOnDocumentSelect}
+                />
+            </UploadContext.Provider>
         )
 
         const extractionButton = await screen.findByRole('button', { name: /Re-run Extraction and Classification/i })
@@ -128,13 +152,22 @@ describe('LeftPanel Button Debouncing', () => {
     })
 
     it('prevents duplicate clicks on Delete Financial Statements button', async () => {
+        const mockUploadValue = {
+            uploadingDocuments: [],
+            loadUploadProgress: vi.fn(),
+            showUploadProgress: false,
+            setShowUploadProgress: vi.fn(),
+        }
+
         render(
-            <LeftPanel
-                selectedCompany={mockSelectedCompany}
-                selectedDocument={mockSelectedDocument}
-                onBack={mockOnBack}
-                onDocumentSelect={mockOnDocumentSelect}
-            />
+            <UploadContext.Provider value={mockUploadValue}>
+                <LeftPanel
+                    selectedCompany={mockSelectedCompany}
+                    selectedDocument={mockSelectedDocument}
+                    onBack={mockOnBack}
+                    onDocumentSelect={mockOnDocumentSelect}
+                />
+            </UploadContext.Provider>
         )
 
         const deleteButton = await screen.findByRole('button', { name: /Delete Financial Statements/i })
@@ -154,13 +187,22 @@ describe('LeftPanel Button Debouncing', () => {
     })
 
     it('button is disabled during debounce period', async () => {
+        const mockUploadValue = {
+            uploadingDocuments: [],
+            loadUploadProgress: vi.fn(),
+            showUploadProgress: false,
+            setShowUploadProgress: vi.fn(),
+        }
+
         render(
-            <LeftPanel
-                selectedCompany={mockSelectedCompany}
-                selectedDocument={mockSelectedDocument}
-                onBack={mockOnBack}
-                onDocumentSelect={mockOnDocumentSelect}
-            />
+            <UploadContext.Provider value={mockUploadValue}>
+                <LeftPanel
+                    selectedCompany={mockSelectedCompany}
+                    selectedDocument={mockSelectedDocument}
+                    onBack={mockOnBack}
+                    onDocumentSelect={mockOnDocumentSelect}
+                />
+            </UploadContext.Provider>
         )
 
         const rerunButton = await screen.findByRole('button', { name: /Re-run Indexing/i })

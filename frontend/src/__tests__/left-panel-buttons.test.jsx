@@ -2,6 +2,7 @@ import React from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import LeftPanel from '../components/LeftPanel'
+import { UploadContext } from '../contexts/UploadContext'
 import axios from 'axios'
 
 // Mock axios
@@ -16,8 +17,13 @@ vi.mock('../contexts/AuthContext', () => ({
 }))
 
 // Mock UploadModal
-vi.mock('../components/UploadModal', () => ({
+vi.mock('../components/modals/UploadModal', () => ({
     default: () => <div>Upload Modal</div>
+}))
+
+// Mock UploadProgress
+vi.mock('../components/modals/UploadProgressModal', () => ({
+    default: () => <div>Upload Progress Modal</div>
 }))
 
 describe('LeftPanel Buttons', () => {
@@ -62,13 +68,22 @@ describe('LeftPanel Buttons', () => {
     })
 
     it('disables "Re-run Extraction and Classification" button after clicking it', async () => {
+        const mockUploadValue = {
+            uploadingDocuments: [],
+            loadUploadProgress: vi.fn(),
+            showUploadProgress: false,
+            setShowUploadProgress: vi.fn(),
+        }
+
         render(
-            <LeftPanel
-                selectedCompany={mockSelectedCompany}
-                selectedDocument={mockSelectedDocument}
-                onBack={mockOnBack}
-                onDocumentSelect={mockOnDocumentSelect}
-            />
+            <UploadContext.Provider value={mockUploadValue}>
+                <LeftPanel
+                    selectedCompany={mockSelectedCompany}
+                    selectedDocument={mockSelectedDocument}
+                    onBack={mockOnBack}
+                    onDocumentSelect={mockOnDocumentSelect}
+                />
+            </UploadContext.Provider>
         )
 
         // Wait for the button to be loaded and enabled (after checkFinancialStatements finishes)
@@ -101,13 +116,22 @@ describe('LeftPanel Buttons', () => {
             return Promise.resolve({ data: [] })
         })
 
+        const mockUploadValue = {
+            uploadingDocuments: [],
+            loadUploadProgress: vi.fn(),
+            showUploadProgress: false,
+            setShowUploadProgress: vi.fn(),
+        }
+
         render(
-            <LeftPanel
-                selectedCompany={mockSelectedCompany}
-                selectedDocument={processingDoc}
-                onBack={mockOnBack}
-                onDocumentSelect={mockOnDocumentSelect}
-            />
+            <UploadContext.Provider value={mockUploadValue}>
+                <LeftPanel
+                    selectedCompany={mockSelectedCompany}
+                    selectedDocument={processingDoc}
+                    onBack={mockOnBack}
+                    onDocumentSelect={mockOnDocumentSelect}
+                />
+            </UploadContext.Provider>
         )
 
         // Buttons should be disabled based on processing status
@@ -126,14 +150,22 @@ describe('LeftPanel Buttons', () => {
 
     it('disables indexing button when indexing_status is indexing', async () => {
         const indexingDoc = { ...mockSelectedDocument, indexing_status: 'indexing' }
+        const mockUploadValue = {
+            uploadingDocuments: [],
+            loadUploadProgress: vi.fn(),
+            showUploadProgress: false,
+            setShowUploadProgress: vi.fn(),
+        }
 
         render(
-            <LeftPanel
-                selectedCompany={mockSelectedCompany}
-                selectedDocument={indexingDoc}
-                onBack={mockOnBack}
-                onDocumentSelect={mockOnDocumentSelect}
-            />
+            <UploadContext.Provider value={mockUploadValue}>
+                <LeftPanel
+                    selectedCompany={mockSelectedCompany}
+                    selectedDocument={indexingDoc}
+                    onBack={mockOnBack}
+                    onDocumentSelect={mockOnDocumentSelect}
+                />
+            </UploadContext.Provider>
         )
 
         const indexingButton = await screen.findByRole('button', { name: /Re-run Indexing/i })

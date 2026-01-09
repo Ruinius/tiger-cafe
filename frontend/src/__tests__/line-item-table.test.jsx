@@ -1,6 +1,6 @@
 import React from 'react'
 import { render, screen } from '@testing-library/react'
-import LineItemTable from '../components/LineItemTable'
+import LineItemTable from '../components/shared/tables/LineItemTable'
 
 describe('LineItemTable', () => {
   const formatNumber = (val) => val.toString()
