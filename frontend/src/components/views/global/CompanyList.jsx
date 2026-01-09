@@ -1,9 +1,8 @@
 import React, { useEffect } from 'react'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useUploadManager } from '../../../hooks/useUploadManager'
-import UploadModal from '../../modals/UploadModal'
 
-function CompanyList({ onCompanySelect }) {
+function CompanyList({ onCompanySelect, onOpenUploadModal, onShowUploadProgress }) {
     const {
         filteredCompanies,
         loading,
@@ -13,15 +12,9 @@ function CompanyList({ onCompanySelect }) {
     } = useDashboardData()
 
     const {
-        isUploadModalOpen,
-        openUploadModal,
-        closeUploadModal,
-        handleUploadSuccess,
         hasActiveUploads,
         uploadingDocuments,
-        showUploadProgress,
-        setShowUploadProgress
-    } = useUploadManager(() => loadCompanies()) // Refresh companies on upload success
+    } = useUploadManager()
 
     // Load companies on mount
     useEffect(() => {
@@ -29,7 +22,10 @@ function CompanyList({ onCompanySelect }) {
     }, [loadCompanies])
 
     return (
-        <>
+        <div className="panel-content">
+            <div className="panel-header">
+                <span className="breadcrumb-current">Companies</span>
+            </div>
             <div style={{ marginBottom: '1rem' }}>
                 <input
                     type="text"
@@ -66,7 +62,7 @@ function CompanyList({ onCompanySelect }) {
 
             <button
                 className={`add-document-button ${hasActiveUploads ? 'has-uploads' : ''}`}
-                onClick={hasActiveUploads ? () => setShowUploadProgress(true) : openUploadModal}
+                onClick={hasActiveUploads ? onShowUploadProgress : onOpenUploadModal}
             >
                 {hasActiveUploads ? (
                     <>
@@ -77,13 +73,7 @@ function CompanyList({ onCompanySelect }) {
                     '+ Add Document'
                 )}
             </button>
-
-            <UploadModal
-                isOpen={isUploadModalOpen}
-                onClose={closeUploadModal}
-                onUploadSuccess={handleUploadSuccess}
-            />
-        </>
+        </div>
     )
 }
 
