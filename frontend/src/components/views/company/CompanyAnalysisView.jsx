@@ -172,6 +172,7 @@ function CompanyAnalysisView({ selectedCompany }) {
         <div className="right-panel">
             <div className="panel-content">
                 <h2>{selectedCompany.name} Financial Analysis</h2>
+                <div className="divider" style={{ margin: '1rem 0', borderBottom: '1px solid var(--border)' }}></div>
                 <div className="company-analysis">
                     {companyHistoricalLoading && (
                         <p className="placeholder-text">Loading historical calculations...</p>
@@ -197,7 +198,7 @@ function CompanyAnalysisView({ selectedCompany }) {
                                     </div>
                                 </div>
                                 <div className="balance-sheet-table-container">
-                                    <table className="balance-sheet-table">
+                                    <table className="balance-sheet-table company-analysis-table">
                                         <thead>
                                             <tr>
                                                 <th>Line Item</th>

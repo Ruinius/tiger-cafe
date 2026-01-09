@@ -188,3 +188,24 @@ This document serves as an archive of completed tasks from the Project Planning.
 - [x] Updated `migrate_baseline_schema.py` with comprehensive documentation
 - [x] Created `migrations_archive/README.md` documenting all archived migrations
 - [x] Cleaned root directory (only baseline migration remains)
+
+## Phase 13: View-Based Frontend Architecture Refactor (Refactor Plan 2.0)
+- [x] **Structural Reorganization**: Moved all components to `views/`, `layout/`, `modals/`, `shared/` structure.
+- [x] **Monolith Elimination**: Deleted `LeftPanel.jsx` and `RightPanel.jsx`.
+- [x] **Logic Extraction**: Created custom hooks (`useDashboardData`, `useDocumentData`, `usePdfViewer`, etc.) for all business logic.
+- [x] **Dashboard Orchestration**: Rewrite `Dashboard.jsx` to be the single source of truth for View State (`GLOBAL`, `COMPANY`, `DOCUMENT`).
+- [x] **View Implementation**: Refactored `WelcomeView`, `CompanyList`, `DocumentList`, `CompanyAnalysisView`, `PdfViewer`, `DocumentExtractionView` to be standalone.
+- **Cleanup**: Deleted legacy components (`LeftPanel`, `RightPanel`) and deprecated directories.
+- **Testing**: All 35 backend tests and 8 frontend test suites passing.
+
+### UI Bug Fixes & Refinements (Post-Refactor)
+- **Company List**: Restored document count badge.
+- **Company Analysis**: Fixed column spacing, added title divider.
+- **Financial Model**: Fixed Marginal Capital Turnover assumption formatting (1 decimal place).
+- **PDF Viewer**: Fixed vertical height constraints `calc(100vh - 300px)`.
+- **Document Extraction**:
+  - Restored proper "Historical Calculations" table.
+  - Renamed "Processing Progress" to "Processing Tracker".
+  - Added message logs to the processing tracker.
+- **General**: Verified button states and behaviors against UI rules.
+- [x] **Testing**: All 35 backend tests and 8 frontend test suites passing.

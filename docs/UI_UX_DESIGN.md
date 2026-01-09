@@ -44,7 +44,8 @@
 - **Gap**: Consistently use `gap-2` (8px), `gap-4` (16px), `gap-6` (24px).
 
 ## Table Design ("The Gold Standard")
-*Reference Implementation: Document View (RightPanel)*
+*Reference Implementation: Document View (DocumentExtractionView)*
+
 
 - **Container Card**:
   - **Background**: Surface color (`#FFFFFF` / `#1B1E24`).

@@ -95,7 +95,7 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                 if (value === null || value === undefined) {
                     setLocalValue('')
                 } else {
-                    setLocalValue(isPercentage ? `${(value * 100).toFixed(1)}%` : value.toString())
+                    setLocalValue(isPercentage ? `${(value * 100).toFixed(1)}%` : Number(value).toFixed(1))
                 }
             }
         }, [value, isPercentage, isEditing])
@@ -104,7 +104,7 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
             setIsEditing(true)
             // On focus, show raw value (percentage as whole number for easier editing, e.g. 5 for 5%)
             if (value !== null && value !== undefined) {
-                setLocalValue(isPercentage ? (value * 100).toFixed(1) : value.toString())
+                setLocalValue(isPercentage ? (value * 100).toFixed(1) : Number(value).toFixed(1))
             }
         }
 
@@ -118,7 +118,7 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
             if (isNaN(numericVal)) {
                 // Reset to original
                 if (value !== null && value !== undefined) {
-                    setLocalValue(isPercentage ? `${(value * 100).toFixed(1)}%` : value.toString())
+                    setLocalValue(isPercentage ? `${(value * 100).toFixed(1)}%` : Number(value).toFixed(1))
                 } else {
                     setLocalValue('')
                 }
@@ -434,7 +434,7 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                         </label>
                     </div>
                 </div>
-                <button onClick={saveAssumptions} className="button-primary" style={{ marginTop: '1rem' }}>
+                <button onClick={saveAssumptions} className="button-primary" style={{ marginTop: '1rem' }} disabled={loading}>
                     Re-run Valuation
                 </button>
             </div>

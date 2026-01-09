@@ -741,16 +741,16 @@
   color: var(--text-secondary);
 }
 
-.balance-sheet-table th:last-child {
-  width: 15%;
+.balance-sheet-table:not(.company-analysis-table) th:last-child {
+  width: 100px;
 }
 
-.balance-sheet-table th:nth-last-child(2) {
-  width: 10%;
+.balance-sheet-table:not(.company-analysis-table) th:nth-last-child(2) {
+  width: 100px;
 }
 
-.balance-sheet-table th:nth-last-child(3) {
-  width: 20%;
+.balance-sheet-table:not(.company-analysis-table) th:nth-last-child(3) {
+  width: 120px;
 }
 
 .balance-sheet-table th.text-right {

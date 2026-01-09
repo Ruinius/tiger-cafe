@@ -207,19 +207,19 @@ Tiger-Cafe provides three main user journey epics:
   - YOY marginal capital turnover
   - Custom ROIC formatting
 
-### Frontend Architecture (Phase 9)
-- **Modular Component Structure**:
-  - Separated navigation, documents, analysis, and dashboard components
-  - Clean component hierarchy with single responsibilities
-  - Context-based state management (UploadContext)
-- **Improved Stability**:
-  - Fixed infinite polling bug
-  - Stable callback references with useCallback
-  - Proper dependency management in useEffect hooks
-- **Enhanced Maintainability**:
-  - 10 new focused components
-  - Reduced monolithic component sizes by ~11-12%
-  - Clear directory organization (common/, navigation/, documents/, analysis/, dashboard/)
+### Frontend Architecture (Phase 13: View-Based 2.0)
+- **View-Based Architecture**:
+  - Application state driven by `viewState` (`GLOBAL`, `COMPANY`, `DOCUMENT`)
+  - **Dashboard Orchestrator**: Single source of truth for navigation and layout
+  - **Monolith Elimination**: `LeftPanel` and `RightPanel` replaced by dedicated Views
+- **Business Logic Layer**:
+  - All logic extracted to custom hooks (`useDashboardData`, `useDocumentData`, `usePdfViewer`)
+  - Views are purely presentational components
+- **Modern Directory Structure**:
+  - `components/views/`: Domain-specific views (`global`, `company`, `document`)
+  - `components/layout/`: Shared layout frames
+  - `components/modals/`: Global overlays
+  - `components/shared/`: Reusable primitives
 
 For detailed planning and user journey specifications, see [docs/PLANNING.md](docs/PLANNING.md).
 

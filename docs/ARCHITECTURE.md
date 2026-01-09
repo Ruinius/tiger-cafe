@@ -72,16 +72,19 @@ This approach optimizes processing costs and focuses detailed extraction on docu
 ### Frontend (React + Vite)
 
 - **Entry point:** `frontend/src/`
-- **Pages:** `frontend/src/pages/` (`Dashboard.jsx` as main layout)
-- **Global state:** `frontend/src/contexts/`
-  - `AuthContext`: User session management
-  - `UploadContext`: Global upload progress and polling
+- **Pages:** `frontend/src/pages/`
+  - `Dashboard.jsx`: **View Orchestrator** managing state (`GLOBAL`, `COMPANY`, `DOCUMENT`) and routing.
+- **Global state & Logic:**
+  - `frontend/src/contexts/`: `AuthContext` (User session), `ThemeContext` (UI theme).
+  - `frontend/src/hooks/`: **Primary Business Logic** (`useDashboardData`, `useDocumentData`, `usePdfViewer`, `useUploadManager`).
 - **Components:** `frontend/src/components/`
-  - `navigation/`: Sidebars, lists (`CompanyList`, `DocumentList`)
-  - `documents/`: PDF viewing, upload controls (`PdfViewer`, `UploadProgress`)
-  - `analysis/`: Financial tables, models (`CompanyAnalysisView`, `FinancialModel`)
-  - `dashboard/`: Top-level views (`WelcomeView`)
-  - `common/`: Reusable UI elements (`LineItemTable`, etc.)
+  - `views/`:
+    - `global/`: `CompanyList`, `WelcomeView`
+    - `company/`: `DocumentList`, `CompanyAnalysisView`, `FinancialModel`
+    - `document/`: `PdfViewer`, `DocumentExtractionView`
+  - `layout/`: Layout frames (`Header`, `SplitScreen`)
+  - `modals/`: Global overlays (`UploadModal`, `UploadProgressModal`)
+  - `shared/`: Reusable UI elements (`tables/`)
 
 ## Core Workflows
 

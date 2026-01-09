@@ -100,26 +100,26 @@ function PdfViewer({ selectedDocument, selectedCompany, onBack }) {
 
     return (
         <div className="panel-content">
-             <div className="panel-header">
+            <div className="panel-header">
                 <div className="breadcrumb">
                     <button className="breadcrumb-link" onClick={() => {
-                         // Need to go back to companies list (2 levels up)
-                         // But onBack prop provided by Dashboard transitions to COMPANY view.
-                         // To go to Companies, user must click "Companies" which might not be directly available here
-                         // unless we pass a specific handler or check history.
-                         // But wait, the Breadcrumb says: Companies > Company Name > Document
-                         // If we click Companies, we need to reset view to GLOBAL.
-                         // If we click Company Name, we reset view to COMPANY.
-                         // PdfViewer receives onBack which switches to COMPANY view.
-                         // We might need another prop onGoHome if we want full breadcrumb?
-                         // For now, let's implement the immediate parent back.
-                         // Actually, I can render the full breadcrumb if I have the callbacks.
-                         // But Dashboard orchestration only provides simple state transitions.
-                         // Let's stick to the plan: Breadcrumb: < [Company Name]
-                         // Wait, the plan says:
-                         // Document View: Left Panel: PdfViewer. Breadcrumb: < [Company Name].
-                         // So it should just link back to the Company View.
-                         onBack()
+                        // Need to go back to companies list (2 levels up)
+                        // But onBack prop provided by Dashboard transitions to COMPANY view.
+                        // To go to Companies, user must click "Companies" which might not be directly available here
+                        // unless we pass a specific handler or check history.
+                        // But wait, the Breadcrumb says: Companies > Company Name > Document
+                        // If we click Companies, we need to reset view to GLOBAL.
+                        // If we click Company Name, we reset view to COMPANY.
+                        // PdfViewer receives onBack which switches to COMPANY view.
+                        // We might need another prop onGoHome if we want full breadcrumb?
+                        // For now, let's implement the immediate parent back.
+                        // Actually, I can render the full breadcrumb if I have the callbacks.
+                        // But Dashboard orchestration only provides simple state transitions.
+                        // Let's stick to the plan: Breadcrumb: < [Company Name]
+                        // Wait, the plan says:
+                        // Document View: Left Panel: PdfViewer. Breadcrumb: < [Company Name].
+                        // So it should just link back to the Company View.
+                        onBack()
                     }}>Companies</button>
                     <span className="breadcrumb-separator">›</span>
                     <button className="breadcrumb-link" onClick={onBack}>
@@ -298,7 +298,7 @@ function PdfViewer({ selectedDocument, selectedCompany, onBack }) {
                         </button>
                         {isDocumentExpanded && pdfUrl && (
                             <div className="chunk-content" style={{ padding: '0', border: 'none', background: 'transparent' }}>
-                                <iframe src={pdfUrl} title="Document PDF" className="pdf-viewer" style={{ width: '100%', height: '500px', border: 'none' }} />
+                                <iframe src={pdfUrl} title="Document PDF" className="pdf-viewer" style={{ width: '100%', height: 'calc(100vh - 300px)', border: 'none' }} />
                             </div>
                         )}
                     </div>

@@ -21,7 +21,7 @@ Build AI agents that can analyze equity investments using principles from Tim Ko
 - [ ] **UI Interactivity**: Implementation capability to change "Category" and "Type" directly in the UI.
 - [ ] Explore using small specialized embedding / encoder models to replace the AUTHORITATIVE_LOOKUP and the classify using LLM
 
-## Current Status (Phases 1-8 Complete)
+## Current Status (Phases 1-9 & 13 Complete)
 *See `docs/COMPLETED_TASKS.md` for detailed history.*
 
 The system currently supports:
@@ -29,7 +29,7 @@ The system currently supports:
 - **Financial Extraction**: Balance Sheets, Income Statements, Organic Growth, Amortization, Other Assets/Liabilities, Shares Outstanding.
 - **Analysis**: Calculation of Net Working Capital, Invested Capital, EBITA, NOPAT, ROIC, Adjusted Tax Rate.
 - **Financial Modeling**: DCF valuation with customizable assumptions, terminal value calculation, intrinsic value estimation.
-- **UI**: Modular, maintainable React architecture with clean component separation and stable state management.
+- **UI**: **View-Based Architecture** using a Dashboard Orchestrator, dedicated Views (`global`, `company`, `document`), and Hook-based logic. Monolithic panels have been removed.
 
 ---
 
@@ -55,7 +55,14 @@ Partially completed. See `docs/COMPLETED_TASKS.md` for completed tasks
 - [ ] Enhanced 10-K and 10-Q parsing for additional details
 - [ ] Improved organic growth analysis
 
-### Phase 13: Company-Centric Refactor
+### Phase 13: View-Based Frontend Architecture (COMPLETE)
+See `docs/COMPLETED_TASKS.md` for details.
+- [x] Structural Reorganization (`views/`, `layout/`, `modals/`)
+- [x] Logic Extraction (Custom Hooks)
+- [x] Dashboard Orchestration
+- [x] Removal of Monoliths (`LeftPanel`, `RightPanel`)
+
+### Phase 14: Company-Centric Data Model Refactor
 - [ ] Refactor app to focus on company → time period → documents
 - [ ] Enable incorporating multiple document types per period
 - [ ] Historical trend analysis across periods
@@ -74,7 +81,7 @@ Partially completed. See `docs/COMPLETED_TASKS.md` for completed tasks
     2. **Calculation Validation**: Post-extraction sums check (Assets = Liabilities + Equity, etc.).
 - **Standardized Naming**: `Standard Name (Original Name)` format for key line items.
 - **Authorization**: Google OAuth with persisted user sessions.
-- **Component Architecture**: Modular React components with Context-based state management (see `docs/REFACTOR_PLAN.md`).
+- **Component Architecture**: View-based React components with Hook-based logic (see `docs/ARCHITECTURE.md`).
 
 ### Data Flow
 1. **Upload** → Classification → Indexing (Sequential queue).

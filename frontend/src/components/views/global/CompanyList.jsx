@@ -46,10 +46,15 @@ function CompanyList({ onCompanySelect, onOpenUploadModal, onShowUploadProgress 
                             className="company-item"
                             onClick={() => onCompanySelect(company)}
                         >
-                            <div className="company-name">{company.name}</div>
-                            {company.ticker && (
-                                <div className="company-ticker">{company.ticker}</div>
-                            )}
+                            <div className="company-info">
+                                <div className="company-name">{company.name}</div>
+                                {company.ticker && (
+                                    <div className="company-ticker">{company.ticker}</div>
+                                )}
+                            </div>
+                            <span className="doc-count-badge">
+                                {company.document_count || 0}
+                            </span>
                         </div>
                     ))}
                     {filteredCompanies.length === 0 && (

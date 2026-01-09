@@ -133,7 +133,7 @@ function DocumentExtractionView({ selectedDocument }) {
         if (!selectedDocument?.id || !isEligibleForFinancialStatements) return
         const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
         const isEarningsAnnouncement = selectedDocument.document_type === 'earnings_announcement' ||
-                                      selectedDocument.document_type === 'EARNINGS_ANNOUNCEMENT'
+            selectedDocument.document_type === 'EARNINGS_ANNOUNCEMENT'
 
         const endpoints = {
             organicGrowth: 'organic-growth',
@@ -182,7 +182,7 @@ function DocumentExtractionView({ selectedDocument }) {
     // Event Listeners
     useAnalysisEvents({
         onProcessingComplete: () => {
-             // Handled by polling effect mostly, but good for sync
+            // Handled by polling effect mostly, but good for sync
         },
         onClearData: () => {
             setBalanceSheet(null)
@@ -360,7 +360,7 @@ function DocumentExtractionView({ selectedDocument }) {
                         {/* Progress Tracker */}
                         {financialStatementProgress && (
                             <div className="info-section" style={{ marginBottom: '2rem', padding: '1rem', backgroundColor: 'var(--bg-secondary)', borderRadius: '8px' }}>
-                                <h4 style={{ marginTop: 0, marginBottom: '1rem' }}>Processing Progress</h4>
+                                <h4 style={{ marginTop: 0, marginBottom: '1rem' }}>Processing Tracker</h4>
                                 <div className="progress-milestones">
                                     {[
                                         { key: 'balance_sheet', label: 'Balance Sheet' },
@@ -370,19 +370,30 @@ function DocumentExtractionView({ selectedDocument }) {
                                     ].map((milestone) => {
                                         const milestoneData = financialStatementProgress.milestones?.[milestone.key]
                                         const status = milestoneData?.status || 'checking'
+                                        const message = milestoneData?.message
 
                                         return (
                                             <div key={milestone.key} className="progress-milestone-item" style={{ marginBottom: '0.75rem' }}>
-                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                                     <span style={{
                                                         color: status === 'completed' ? 'var(--success)' :
-                                                               status === 'error' ? 'var(--error)' :
-                                                               status === 'in_progress' ? 'var(--accent)' : 'var(--text-secondary)'
+                                                            status === 'error' ? 'var(--error)' :
+                                                                status === 'in_progress' ? 'var(--accent)' : 'var(--text-secondary)'
                                                     }}>
                                                         {status === 'completed' ? '✓' : status === 'error' ? '✗' : '○'}
                                                     </span>
                                                     <span>{milestone.label}: {status}</span>
-                                                 </div>
+                                                </div>
+                                                {message && (
+                                                    <div style={{
+                                                        marginLeft: '1.5rem',
+                                                        fontSize: '0.875rem',
+                                                        color: 'var(--text-secondary)',
+                                                        marginTop: '0.25rem'
+                                                    }}>
+                                                        {message}
+                                                    </div>
+                                                )}
                                             </div>
                                         )
                                     })}
@@ -491,12 +502,70 @@ function DocumentExtractionView({ selectedDocument }) {
                             </div>
                         )}
 
-                        {/* Note: Historical Calculations Table implementation omitted for brevity but logic is there */}
-                        {historicalCalculations && (
+                        {historicalCalculations && historicalCalculations.entries && historicalCalculations.entries.length > 0 && (
                             <div style={{ marginBottom: '2rem' }}>
                                 <h3>Historical Calculations</h3>
-                                <p>Historical calculations loaded (Visualization TBD in refactor or use shared component if available).</p>
-                                {/* We could port the full table from RightPanel here or move it to a shared component in next phase */}
+                                <div className="balance-sheet-table-container">
+                                    <table className="balance-sheet-table extraction-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Line Item</th>
+                                                <th className="text-right">Amount</th>
+                                                <th>Category</th>
+                                                <th>Type</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {/* We can iterate over a standard list of keys or just use what's returned */}
+                                            {[
+                                                { label: 'Revenue', key: 'revenue' },
+                                                { label: 'YOY Revenue Growth', key: 'revenue_growth_yoy', isPercent: true },
+                                                { label: 'EBITA', key: 'ebita' },
+                                                { label: 'EBITA Margin', key: 'ebita_margin', isPercent: true },
+                                                { label: 'Effective Tax Rate', key: 'effective_tax_rate', isPercent: true },
+                                                { label: 'Adjusted Tax Rate', key: 'adjusted_tax_rate', isPercent: true },
+                                                { label: 'Net Working Capital', key: 'net_working_capital' },
+                                                { label: 'Net Long Term Operating Assets', key: 'net_long_term_operating_assets' },
+                                                { label: 'Invested Capital', key: 'invested_capital' },
+                                                { label: 'Capital Turnover (Annualized)', key: 'capital_turnover', isDecimal: true },
+                                                { label: 'NOPAT', key: 'nopat' },
+                                                { label: 'ROIC', key: 'roic', isPercent: true },
+                                                { label: 'YOY Marginal Capital Turnover', key: 'marginal_capital_turnover', isDecimal: true }
+                                            ].map(row => {
+                                                // Assuming entries[0] contains the calculation for this document
+                                                // Historical endpoint usually returns a list of entries.
+                                                // For a single document, it might just correspond to one entry (one time period).
+                                                // However, the structure is companyHistoricalCalculations?.entries
+                                                // Let's assume response structure for single doc is { entries: [...], unit: ..., currency: ... }
+                                                const entry = historicalCalculations.entries[0] || {}
+                                                let value = entry[row.key]
+
+                                                let displayValue = 'N/A'
+                                                if (row.isPercent) {
+                                                    displayValue = formatPercent(value, row.key === 'ebita_margin' || row.key === 'effective_tax_rate' || row.key === 'adjusted_tax_rate' ? 100 : 1)
+                                                    if (row.key === 'roic') {
+                                                        if (value < 0) displayValue = 'negative'
+                                                        else if (value > 1) displayValue = '>100%'
+                                                        else displayValue = formatPercent(value, 100)
+                                                    }
+                                                } else if (row.isDecimal) {
+                                                    displayValue = formatDecimal(value, 4)
+                                                } else {
+                                                    displayValue = formatNumber(value, historicalCalculations.unit)
+                                                }
+
+                                                return (
+                                                    <tr key={row.key}>
+                                                        <td>{row.label}</td>
+                                                        <td className="text-right">{displayValue}</td>
+                                                        <td>Calculated</td>
+                                                        <td></td>
+                                                    </tr>
+                                                )
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         )}
                     </>
