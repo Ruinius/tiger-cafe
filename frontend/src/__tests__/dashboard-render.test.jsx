@@ -6,15 +6,7 @@ import { AuthContext } from '../contexts/AuthContext'
 import { ThemeContext } from '../contexts/ThemeContext'
 import { UploadContext } from '../contexts/UploadContext'
 
-// Mock the complex child components to isolate Dashboard testing
-vi.mock('../components/LeftPanel', () => ({
-    default: () => <div data-testid="left-panel">Left Panel Mock</div>
-}))
-
-vi.mock('../components/RightPanel', () => ({
-    default: () => <div data-testid="right-panel">Right Panel Mock</div>
-}))
-
+// Mock the child components to isolate Dashboard testing
 vi.mock('../components/layout/Header', () => ({
     default: ({ user }) => <div data-testid="header">Header Mock: {user?.name}</div>
 }))
@@ -22,10 +14,19 @@ vi.mock('../components/layout/Header', () => ({
 vi.mock('../components/layout/SplitScreen', () => ({
     default: ({ left, right }) => (
         <div data-testid="split-screen">
-            {left}
-            {right}
+            <div data-testid="left-panel">{left}</div>
+            <div data-testid="right-panel">{right}</div>
         </div>
     )
+}))
+
+// Mock View Components
+vi.mock('../components/views/global/CompanyList', () => ({
+    default: () => <div data-testid="company-list">Company List Mock</div>
+}))
+
+vi.mock('../components/views/global/WelcomeView', () => ({
+    default: () => <div data-testid="welcome-view">Welcome View Mock</div>
 }))
 
 describe('Dashboard Component', () => {
@@ -44,8 +45,9 @@ describe('Dashboard Component', () => {
 
         const mockUploadValue = {
             uploadingDocuments: [],
-            // Add other used functions as no-ops
             loadUploadProgress: vi.fn(),
+            showUploadProgress: false,
+            setShowUploadProgress: vi.fn()
         }
 
         render(
@@ -66,8 +68,12 @@ describe('Dashboard Component', () => {
         // 2. SplitScreen container should be rendered
         expect(screen.getByTestId('split-screen')).toBeDefined()
 
-        // 3. Left and Right panels should be rendered inside
+        // 3. Left and Right panels should be rendered inside (by SplitScreen mock)
         expect(screen.getByTestId('left-panel')).toBeDefined()
         expect(screen.getByTestId('right-panel')).toBeDefined()
+
+        // 4. Initial state should render CompanyList and WelcomeView
+        expect(screen.getByTestId('company-list')).toBeDefined()
+        expect(screen.getByTestId('welcome-view')).toBeDefined()
     })
 })

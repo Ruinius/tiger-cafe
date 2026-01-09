@@ -1,9 +1,8 @@
 import React, { useEffect } from 'react'
 import { useDocumentData } from '../../../hooks/useDocumentData'
 import { useUploadManager } from '../../../hooks/useUploadManager'
-import UploadModal from '../../modals/UploadModal'
 
-function DocumentList({ selectedCompany, onDocumentSelect }) {
+function DocumentList({ selectedCompany, onDocumentSelect, onBack, onOpenUploadModal, onShowUploadProgress }) {
     const {
         documents,
         loading,
@@ -11,16 +10,9 @@ function DocumentList({ selectedCompany, onDocumentSelect }) {
     } = useDocumentData(selectedCompany)
 
     const {
-        isUploadModalOpen,
-        openUploadModal,
-        closeUploadModal,
-        handleUploadSuccess,
         hasActiveUploads,
         uploadingDocuments,
-        showUploadProgress, // Used by parent/Orchestrator ideally, but here we can toggle it?
-                            // Wait, UploadProgressModal is global. useUploadManager exposes setShowUploadProgress.
-        setShowUploadProgress
-    } = useUploadManager(() => loadCompanyDocuments(selectedCompany?.id))
+    } = useUploadManager()
 
     // documents are loaded by the hook when selectedCompany changes
 
@@ -30,7 +22,14 @@ function DocumentList({ selectedCompany, onDocumentSelect }) {
     }
 
     return (
-        <>
+        <div className="panel-content">
+            <div className="panel-header">
+                <div className="breadcrumb">
+                    <button className="breadcrumb-link" onClick={onBack}>Companies</button>
+                    <span className="breadcrumb-separator">›</span>
+                    <span className="breadcrumb-current">{selectedCompany?.name}</span>
+                </div>
+            </div>
             <div className="document-list">
                 {loading ? (
                     <div className="loading">Loading documents...</div>
@@ -90,7 +89,7 @@ function DocumentList({ selectedCompany, onDocumentSelect }) {
 
                 <button
                     className={`add-document-button ${hasActiveUploads ? 'has-uploads' : ''}`}
-                    onClick={hasActiveUploads ? () => setShowUploadProgress(true) : openUploadModal}
+                    onClick={hasActiveUploads ? onShowUploadProgress : onOpenUploadModal}
                 >
                     {hasActiveUploads ? (
                         <>
@@ -102,13 +101,7 @@ function DocumentList({ selectedCompany, onDocumentSelect }) {
                     )}
                 </button>
             </div>
-
-            <UploadModal
-                isOpen={isUploadModalOpen}
-                onClose={closeUploadModal}
-                onUploadSuccess={handleUploadSuccess}
-            />
-        </>
+        </div>
     )
 }
 

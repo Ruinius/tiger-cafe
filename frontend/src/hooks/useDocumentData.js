@@ -18,7 +18,6 @@ export function useDocumentData(selectedCompany, selectedDocument) {
   // Polling refs
   const lastStatusRef = useRef({ indexingStatus: null, analysisStatus: null })
   const processingTriggeredRef = useRef(false)
-  const waitingForIndexingRef = useRef(false)
   const processingActionRef = useRef(null)
 
   // Load documents for a company
@@ -228,11 +227,6 @@ export function useDocumentData(selectedCompany, selectedDocument) {
                 await checkFinancialStatements(latestDoc.id)
             }
         }
-      }
-
-      // Stop polling if both are done
-      if (newIndexingStatus !== 'indexing' && newIndexingStatus !== 'INDEXING' && newAnalysisStatus !== 'processing') {
-          // Double check before stopping? The outer effect dependency will handle cleanup if state changes
       }
 
     }, 3000)
