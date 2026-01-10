@@ -16,12 +16,10 @@ from agents.income_statement_extractor import extract_income_statement
 from agents.non_operating_classifier import classify_non_operating_items
 from agents.organic_growth_extractor import extract_organic_growth
 from agents.other_assets_extractor import (
-    extract_original_name_from_standardized as extract_other_assets_label,
-)
-from agents.other_assets_extractor import (
     extract_other_assets,
 )
-from agents.other_liabilities_extractor import (
+from app.utils.line_item_utils import (
+    extract_original_name_from_standardized as extract_other_assets_label,
     extract_original_name_from_standardized as extract_other_liabilities_label,
 )
 from agents.other_liabilities_extractor import (
