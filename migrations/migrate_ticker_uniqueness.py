@@ -99,11 +99,11 @@ def migrate():
     cursor.execute("DROP TABLE IF EXISTS companies_new")
     cursor.execute("""
         CREATE TABLE companies_new (
-            id VARCHAR NOT NULL, 
-            name VARCHAR NOT NULL, 
-            ticker VARCHAR, 
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP, 
-            updated_at DATETIME, 
+            id VARCHAR NOT NULL,
+            name VARCHAR NOT NULL,
+            ticker VARCHAR,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME,
             PRIMARY KEY (id),
             UNIQUE (ticker)
         )
