@@ -1,8 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
 import axios from 'axios'
 import { useAuth } from './AuthContext'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+import { API_BASE_URL } from '../config'
 
 export const UploadContext = createContext()
 

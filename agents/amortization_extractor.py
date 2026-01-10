@@ -6,12 +6,8 @@ Earnings announcements use the separate GAAP reconciliation extractor.
 
 from __future__ import annotations
 
-import json
-import re
-
 from agents.extractor_utils import call_llm_and_parse_json
 from app.utils.document_section_finder import collect_top_chunk_texts
-from app.utils.gemini_client import generate_content_safe
 from app.utils.line_item_utils import normalize_line_name
 
 

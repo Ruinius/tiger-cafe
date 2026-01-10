@@ -26,9 +26,7 @@ def test_initialize_and_update_milestone_tracks_logs():
         )
 
         progress = get_progress(document_id)
-        milestone = progress["milestones"][
-            FinancialStatementMilestone.BALANCE_SHEET.value
-        ]
+        milestone = progress["milestones"][FinancialStatementMilestone.BALANCE_SHEET.value]
 
         assert milestone["status"] == MilestoneStatus.IN_PROGRESS.value
         assert milestone["message"] == "Started extraction"
@@ -57,9 +55,7 @@ def test_add_log_truncates_to_last_20_and_preserves_status():
             )
 
         progress = get_progress(document_id)
-        milestone = progress["milestones"][
-            FinancialStatementMilestone.INCOME_STATEMENT.value
-        ]
+        milestone = progress["milestones"][FinancialStatementMilestone.INCOME_STATEMENT.value]
 
         assert milestone["status"] == MilestoneStatus.IN_PROGRESS.value
         assert len(milestone["logs"]) == 20
@@ -95,9 +91,7 @@ def test_reset_balance_and_income_milestones():
         reset_balance_sheet_milestones(document_id)
         progress = get_progress(document_id)
 
-        balance_milestone = progress["milestones"][
-            FinancialStatementMilestone.BALANCE_SHEET.value
-        ]
+        balance_milestone = progress["milestones"][FinancialStatementMilestone.BALANCE_SHEET.value]
         income_milestone = progress["milestones"][
             FinancialStatementMilestone.INCOME_STATEMENT.value
         ]

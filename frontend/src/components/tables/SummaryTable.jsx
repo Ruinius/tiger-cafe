@@ -89,7 +89,7 @@ export default function SummaryTable({ historicalCalculations, organicGrowth, in
                         {simpleRevenueGrowth != null && (
                             <tr>
                                 <td className="col-name">Simple Revenue Growth</td>
-                                <td className="text-right col-value">{(parseFloat(simpleRevenueGrowth) * 100).toFixed(2)}%</td>
+                                <td className="text-right col-value">{parseFloat(simpleRevenueGrowth).toFixed(2)}%</td>
                             </tr>
                         )}
                         {revenueGrowth != null && (

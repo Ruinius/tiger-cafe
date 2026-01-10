@@ -1,7 +1,7 @@
 /* Global Dashboard View Specifics */
 
 /* Company List */
-.company-list {
+.companies-list {
     flex: 1;
     overflow-y: auto;
     display: flex;

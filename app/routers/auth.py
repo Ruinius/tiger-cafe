@@ -3,6 +3,7 @@ Authentication routes (Google OAuth)
 """
 
 import os
+
 import google.auth.transport.requests
 import google.oauth2.id_token
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -27,7 +28,7 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
             "email": "test@example.com",
             "name": "Test User",
             "picture": "https://example.com/avatar.png",
-            "iss": "https://accounts.google.com"
+            "iss": "https://accounts.google.com",
         }
 
     try:

@@ -14,6 +14,7 @@ from app.routers import (
     documents,
     historical_calculations,
     income_statement,
+    status_stream,
 )
 
 # Create database tables
@@ -42,6 +43,7 @@ app.include_router(additional_items.router, prefix="/api/documents", tags=["addi
 app.include_router(
     historical_calculations.router, prefix="/api/documents", tags=["historical-calculations"]
 )
+app.include_router(status_stream.router, prefix="/api/documents", tags=["status-stream"])
 
 
 @app.get("/")
@@ -52,3 +54,14 @@ async def root():
 @app.get("/api/health")
 async def health_check():
     return {"status": "healthy"}
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    # Gracefully shut down queue worker only if it was initialized
+    import sys
+
+    if "app.services.queue_service" in sys.modules:
+        from app.services.queue_service import queue_service
+
+        queue_service.shutdown()

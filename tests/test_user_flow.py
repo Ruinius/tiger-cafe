@@ -6,8 +6,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.database import Base, get_db
 from app import models  # noqa: F401
+from app.database import Base, get_db
 from app.models.user import User
 from app.routers.auth import get_current_user
 
@@ -68,7 +68,7 @@ def test_user_flow_company_document_lifecycle(client):
         "file_path": "data/uploads/tiger-cafe-q4.pdf",
         "document_type": "annual_filing",
         "time_period": "FY 2023",
-        "summary": "Initial upload"
+        "summary": "Initial upload",
     }
     document_response = client.post("/api/documents", json=document_payload)
 
@@ -89,10 +89,7 @@ def test_user_flow_company_document_lifecycle(client):
     assert detail_response.status_code == 200
     assert detail_response.json()["filename"] == "tiger-cafe-q4.pdf"
 
-    update_payload = {
-        "summary": "Updated summary",
-        "time_period": "FY 2023 (restated)"
-    }
+    update_payload = {"summary": "Updated summary", "time_period": "FY 2023 (restated)"}
     update_response = client.patch(f"/api/documents/{document['id']}", json=update_payload)
 
     assert update_response.status_code == 200

@@ -23,8 +23,8 @@ export function useDocumentData(selectedCompany, selectedDocument) {
   // Load documents for a company
   const loadCompanyDocuments = useCallback(async (companyId) => {
     if (!companyId) {
-        setDocuments([])
-        return
+      setDocuments([])
+      return
     }
     setLoading(true)
     try {
@@ -106,7 +106,7 @@ export function useDocumentData(selectedCompany, selectedDocument) {
 
     // Update local currentDocument when prop changes
     if (selectedDocument) {
-        setCurrentDocument(selectedDocument)
+      setCurrentDocument(selectedDocument)
     }
 
     if (!selectedDocument) {
@@ -135,7 +135,7 @@ export function useDocumentData(selectedCompany, selectedDocument) {
           await checkFinancialStatements(latestDoc.id)
         }
       } else if (isMounted) {
-          setIsCheckingProcessingStatus(false)
+        setIsCheckingProcessingStatus(false)
       }
     }
 
@@ -165,10 +165,10 @@ export function useDocumentData(selectedCompany, selectedDocument) {
 
       for (const doc of indexingDocuments) {
         try {
-            const endpoint = isAuthenticated ? 'status' : 'status-test'
-             // Note: using status endpoint which is standardized
-            const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
-            const response = await axios.get(`${API_BASE_URL}/documents/${doc.id}/${endpoint}`, { headers })
+          const endpoint = isAuthenticated ? 'status' : 'status-test'
+          // Note: using status endpoint which is standardized
+          const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+          const response = await axios.get(`${API_BASE_URL}/documents/${doc.id}/${endpoint}`, { headers })
 
           setDocuments(prevDocs =>
             prevDocs.map(d =>
@@ -213,7 +213,7 @@ export function useDocumentData(selectedCompany, selectedDocument) {
       const newAnalysisStatus = latestDoc.analysis_status
 
       if (newIndexingStatus !== lastStatusRef.current.indexingStatus ||
-          newAnalysisStatus !== lastStatusRef.current.analysisStatus) {
+        newAnalysisStatus !== lastStatusRef.current.analysisStatus) {
 
         lastStatusRef.current.indexingStatus = newIndexingStatus
         lastStatusRef.current.analysisStatus = newAnalysisStatus
@@ -221,11 +221,11 @@ export function useDocumentData(selectedCompany, selectedDocument) {
 
         // If processing completed
         if (lastStatusRef.current.analysisStatus === 'processing' && newAnalysisStatus !== 'processing') {
-            setIsProcessing(false)
-            processingTriggeredRef.current = false
-            if (latestDoc.document_type && ELIGIBLE_DOCUMENT_TYPES.includes(latestDoc.document_type)) {
-                await checkFinancialStatements(latestDoc.id)
-            }
+          setIsProcessing(false)
+          processingTriggeredRef.current = false
+          if (latestDoc.document_type && ELIGIBLE_DOCUMENT_TYPES.includes(latestDoc.document_type)) {
+            await checkFinancialStatements(latestDoc.id)
+          }
         }
       }
 
@@ -239,69 +239,73 @@ export function useDocumentData(selectedCompany, selectedDocument) {
 
   // Logic for re-run / delete actions
   const performAction = useCallback(async (actionType, documentId) => {
-      setIsProcessing(true)
-      processingTriggeredRef.current = true
-      processingActionRef.current = actionType
+    setIsProcessing(true)
+    processingTriggeredRef.current = true
+    processingActionRef.current = actionType
 
-      try {
-          const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
-          let endpoint = ''
-          let method = 'post'
+    try {
+      const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+      let endpoint = ''
+      let method = 'post'
 
-          switch (actionType) {
-              case 'rerun-indexing':
-                  endpoint = isAuthenticated ? 'rerun-indexing' : 'rerun-indexing-test'
-                  break
-              case 'rerun-extraction':
-                  endpoint = isAuthenticated ? 'rerun-financial-statements' : 'rerun-financial-statements/test'
-                   // Trigger UI events
-                   window.dispatchEvent(new CustomEvent('resetProgressToPending', { detail: { documentId } }))
-                   window.dispatchEvent(new CustomEvent('clearFinancialStatements'))
-                  break
-              case 'rerun-historical':
-                  endpoint = isAuthenticated ? 'historical-calculations/recalculate' : 'historical-calculations/recalculate/test'
-                  break
-              case 'delete-statements':
-                  endpoint = isAuthenticated ? 'financial-statements' : 'financial-statements/test'
-                  method = 'delete'
-                  break
-              case 'delete-document':
-                  endpoint = isAuthenticated ? 'permanent' : 'permanent/test'
-                  method = 'delete'
-                  break
-              default:
-                  throw new Error('Unknown action')
-          }
-
-          if (method === 'delete') {
-              await axios.delete(`${API_BASE_URL}/documents/${documentId}/${endpoint}`, { headers })
-          } else {
-              await axios.post(`${API_BASE_URL}/documents/${documentId}/${endpoint}`, {}, { headers })
-          }
-
-          // Post-action logic
-          if (actionType === 'delete-statements') {
-              window.dispatchEvent(new CustomEvent('clearFinancialStatements'))
-              setHasFinancialStatements(false)
-              const status = await fetchLatestStatus(documentId)
-              if (status) setCurrentDocument(status)
-          } else if (actionType === 'delete-document') {
-              // Caller handles navigation
-              loadCompanyDocuments(selectedCompany?.id)
-          } else if (actionType === 'rerun-historical') {
-              window.dispatchEvent(new CustomEvent('reloadHistoricalCalculations'))
-              setIsProcessing(false) // Historical usually quick, or handled by separate loading state in UI
-          } else {
-              // For long running processes (indexing, extraction), we rely on polling
-              const status = await fetchLatestStatus(documentId)
-              if (status) setCurrentDocument(status)
-          }
-
-      } catch (err) {
-          console.error(`Error performing ${actionType}:`, err)
-          setIsProcessing(false)
-          throw err
+      switch (actionType) {
+        case 'rerun-indexing':
+          endpoint = isAuthenticated ? 'rerun-indexing' : 'rerun-indexing-test'
+          break
+        case 'rerun-extraction':
+          console.log('[performAction] Starting rerun-extraction for document:', documentId)
+          endpoint = isAuthenticated ? 'rerun-financial-statements' : 'rerun-financial-statements/test'
+          // Trigger UI events
+          window.dispatchEvent(new CustomEvent('resetProgressToPending', { detail: { documentId } }))
+          window.dispatchEvent(new CustomEvent('clearFinancialStatements'))
+          console.log('[performAction] Dispatched UI events for rerun-extraction')
+          break
+        case 'rerun-historical':
+          endpoint = isAuthenticated ? 'historical-calculations/recalculate' : 'historical-calculations/recalculate/test'
+          break
+        case 'delete-statements':
+          endpoint = isAuthenticated ? 'financial-statements' : 'financial-statements/test'
+          method = 'delete'
+          break
+        case 'delete-document':
+          endpoint = isAuthenticated ? 'permanent' : 'permanent/test'
+          method = 'delete'
+          break
+        default:
+          throw new Error('Unknown action')
       }
+
+      if (method === 'delete') {
+        await axios.delete(`${API_BASE_URL}/documents/${documentId}/${endpoint}`, { headers })
+      } else {
+        console.log(`[performAction] Calling POST ${API_BASE_URL}/documents/${documentId}/${endpoint}`)
+        await axios.post(`${API_BASE_URL}/documents/${documentId}/${endpoint}`, {}, { headers })
+        console.log('[performAction] POST request completed successfully')
+      }
+
+      // Post-action logic
+      if (actionType === 'delete-statements') {
+        window.dispatchEvent(new CustomEvent('clearFinancialStatements'))
+        setHasFinancialStatements(false)
+        const status = await fetchLatestStatus(documentId)
+        if (status) setCurrentDocument(status)
+      } else if (actionType === 'delete-document') {
+        // Caller handles navigation
+        loadCompanyDocuments(selectedCompany?.id)
+      } else if (actionType === 'rerun-historical') {
+        window.dispatchEvent(new CustomEvent('reloadHistoricalCalculations'))
+        setIsProcessing(false) // Historical usually quick, or handled by separate loading state in UI
+      } else {
+        // For long running processes (indexing, extraction), we rely on polling
+        const status = await fetchLatestStatus(documentId)
+        if (status) setCurrentDocument(status)
+      }
+
+    } catch (err) {
+      console.error(`Error performing ${actionType}:`, err)
+      setIsProcessing(false)
+      throw err
+    }
   }, [isAuthenticated, token, fetchLatestStatus, selectedCompany?.id, loadCompanyDocuments])
 
   return {

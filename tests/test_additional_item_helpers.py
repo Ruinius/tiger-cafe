@@ -6,9 +6,7 @@ from app.utils.line_item_utils import (
 
 def test_extract_original_name_from_standardized():
     line_name = "Other Current Assets (Other current assets, net)"
-    assert (
-        extract_original_name_from_standardized(line_name) == "Other current assets, net"
-    )
+    assert extract_original_name_from_standardized(line_name) == "Other current assets, net"
     assert extract_original_name_from_standardized("Other Current Assets") is None
 
 

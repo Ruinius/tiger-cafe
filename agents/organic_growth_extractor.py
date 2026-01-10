@@ -5,7 +5,6 @@ Organic growth extraction agent using Gemini LLM and embeddings
 from __future__ import annotations
 
 import json
-import re
 
 from app.utils.document_section_finder import collect_top_chunk_texts
 from app.utils.gemini_client import generate_content_safe
@@ -87,7 +86,11 @@ def extract_organic_growth(
 
     if not text:
         validation_errors.append("Organic growth section not found")
-        extraction = {"acquisition_flag": False, "acquisition_revenue_impact": 0, "acquisition_revenue_impact_unit": None}
+        extraction = {
+            "acquisition_flag": False,
+            "acquisition_revenue_impact": 0,
+            "acquisition_revenue_impact_unit": None,
+        }
     else:
         extraction = extract_organic_growth_llm(text, time_period)
 

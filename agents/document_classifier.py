@@ -3,6 +3,7 @@ Document classification agent using Gemini LLM
 """
 
 import json
+import re
 
 from app.models.document import DocumentType
 from app.utils.gemini_client import generate_content_safe
@@ -31,7 +32,8 @@ def classify_document(text: str) -> dict[str, str | None]:
 Return a JSON object with the following structure:
 {{
     "document_type": one of ["earnings_announcement", "quarterly_filing", "annual_filing", "press_release", "analyst_report", "news_article", "transcript", "other"],
-    "time_period": the time period in format like "Q3 2024", "FY 2023", or null if not EXPLICITLY found in the document text,
+    "time_period": the time period MUST BE in a format "Q3 2024", "FY 2023", or null if not EXPLICITLY found in the document text,
+    "period_end_date": the period end date in YYYY-MM-DD format (e.g., "2024-03-31" for Q1 2024, "2024-09-30" for Q3 2024), or null if not EXPLICITLY found in the document text,
     "company_name": the company name or null if not EXPLICITLY found in the document text,
     "ticker": the stock ticker symbol or null if not EXPLICITLY found in the document text,
     "confidence": one of ["high", "medium", "low"] based on how confident you are in the classification
@@ -39,9 +41,11 @@ Return a JSON object with the following structure:
 
 CRITICAL ANTI-HALLUCINATION RULES:
 - ONLY extract information that is EXPLICITLY shown in the document text below
-- DO NOT invent, infer, or assume company names, tickers, or time periods
+- DO NOT invent, infer, or assume company names, tickers, time periods, or dates
 - If information is not visible in the document text, use null
 - DO NOT use external knowledge to fill in missing information
+- DO NOT include leading or trailing whitespace in "ticker" or "company_name"
+- For period_end_date, look for explicit date mentions like "For the quarter ended March 31, 2024" or "Three months ended September 30, 2024"
 
 IMPORTANT:
 document_type classification rules:
@@ -52,10 +56,6 @@ document_type classification rules:
 - "analyst_report": Reports from financial analysts or research firms
 - "news_article": Third-party news articles about the company
 - "other": Any document that doesn't fit the above categories
-
-time_period classification rules:
-- If the type is earnings_announcement classify FY annoucement as Q4
-- If the type if annual_filing classify as FY
 
 When in doubt between "earnings_announcement" and "press_release", choose "earnings_announcement" if the document primarily focuses on financial results, earnings, revenue, or quarterly/annual performance metrics.
 
@@ -76,6 +76,25 @@ Return only valid JSON, no additional text."""
             response_text = response_text.strip()
 
         result = json.loads(response_text)
+
+        # Post-processing rules
+        doc_type = result.get("document_type")
+        time_period = result.get("time_period")
+
+        if doc_type and time_period:
+            # Rule 1: Earnings Announcement FY -> Q4
+            if doc_type == "earnings_announcement":
+                match = re.match(r"^FY\s*(\d{4})$", time_period, re.IGNORECASE)
+                if match:
+                    year = match.group(1)
+                    result["time_period"] = f"Q4 {year}"
+
+            # Rule 2: Annual Filing Q4 -> FY
+            elif doc_type == "annual_filing":
+                match = re.match(r"^Q4\s*(\d{4})$", time_period, re.IGNORECASE)
+                if match:
+                    year = match.group(1)
+                    result["time_period"] = f"FY {year}"
 
         # Map document_type string to DocumentType enum
         if result.get("document_type"):
@@ -103,6 +122,7 @@ Return only valid JSON, no additional text."""
         return {
             "document_type": None,
             "time_period": None,
+            "period_end_date": None,
             "company_name": None,
             "ticker": None,
             "confidence": "low",

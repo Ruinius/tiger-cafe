@@ -67,7 +67,7 @@ export default function LineItemTable({
                                     <span className="text-muted">—</span>
                                 ) : (
                                     <span className={`type-badge ${item.is_operating ? 'operating' : 'non-operating'}`}>
-                                        {item.is_operating ? 'Operating' : 'Non-operating'}
+                                        {item.is_operating ? 'Operating' : 'Non-Operating'}
                                     </span>
                                 )
                             }
@@ -76,14 +76,14 @@ export default function LineItemTable({
                             const categoryLower = (categoryValue || '').toLowerCase()
                             const isKey = nameLower.includes('total') ||
                                 nameLower.includes('subtotal') ||
-                                nameLower.includes('revenue') ||
-                                nameLower === 'gross profit' ||
-                                nameLower === 'operating income' ||
-                                nameLower === 'net income' ||
-                                nameLower === 'ebita' ||
-                                nameLower === 'ebitda' ||
-                                nameLower === 'invested capital' ||
-                                nameLower === 'net working capital' ||
+                                (nameLower.includes('revenue') && !nameLower.includes('cost of')) ||
+                                nameLower.includes('gross profit') ||
+                                nameLower.includes('operating income') ||
+                                nameLower.includes('net income') ||
+                                nameLower.includes('ebita') ||
+                                nameLower.includes('ebitda') ||
+                                nameLower.includes('invested capital') ||
+                                nameLower.includes('net working capital') ||
                                 categoryLower === 'total'
 
                             return (

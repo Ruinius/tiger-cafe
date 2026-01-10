@@ -5,6 +5,7 @@ Non-operating items classification agent using Gemini LLM.
 from __future__ import annotations
 
 import json
+
 from app.utils.gemini_client import generate_content_safe
 from app.utils.line_item_utils import deduplicate_non_operating_items
 

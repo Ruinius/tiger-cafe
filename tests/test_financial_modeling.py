@@ -1,6 +1,7 @@
-import pytest
 from decimal import Decimal
+
 from app.utils.financial_modeling import calculate_dcf
+
 
 def test_calculate_dcf_basic():
     # Mock historical entries
@@ -9,7 +10,7 @@ def test_calculate_dcf_basic():
             "time_period": "FY 2020",
             "revenue": Decimal("100"),
             "invested_capital": Decimal("50"),
-            "capital_turnover": Decimal("2.0")
+            "capital_turnover": Decimal("2.0"),
         }
     ]
 
@@ -19,7 +20,7 @@ def test_calculate_dcf_basic():
         "ebita_margin_stage1": 0.20,
         "marginal_capital_turnover_stage1": 2.0,
         "adjusted_tax_rate": 0.25,
-        "wacc": 0.08
+        "wacc": 0.08,
     }
 
     result = calculate_dcf(historical_entries, assumptions)
@@ -44,13 +45,10 @@ def test_calculate_dcf_basic():
     # Check Enterprise Value exists
     assert result["enterprise_value"] > 0
 
+
 def test_calculate_dcf_defaults():
     historical_entries = [
-        {
-            "time_period": "FY 2020",
-            "revenue": Decimal("1000"),
-            "invested_capital": Decimal("500")
-        }
+        {"time_period": "FY 2020", "revenue": Decimal("1000"), "invested_capital": Decimal("500")}
     ]
 
     # Empty assumptions should use defaults

@@ -17,6 +17,24 @@ from app.models.company import Company
 from app.models.document import Document
 from app.models.user import User
 
+# Initialize all model variables to None
+AnalysisResult = None
+Amortization = None
+AmortizationLineItem = None
+BalanceSheet = None
+BalanceSheetLineItem = None
+FinancialAssumption = None
+FinancialMetric = None
+HistoricalCalculation = None
+IncomeStatement = None
+IncomeStatementLineItem = None
+OrganicGrowth = None
+OtherAssets = None
+OtherAssetsLineItem = None
+OtherLiabilities = None
+OtherLiabilitiesLineItem = None
+Valuation = None
+
 # Import all models
 try:
     from app.models.analysis_result import AnalysisResult
@@ -24,27 +42,44 @@ try:
     from app.models.financial_metric import FinancialMetric
     from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
 
-    HAS_ALL_MODELS = True
+    # New models
+    try:
+        from app.models.amortization import Amortization, AmortizationLineItem
+    except ImportError:
+        pass
+
+    try:
+        from app.models.financial_assumption import FinancialAssumption
+    except ImportError:
+        pass
+
+    try:
+        from app.models.historical_calculation import HistoricalCalculation
+    except ImportError:
+        pass
+
+    try:
+        from app.models.organic_growth import OrganicGrowth
+    except ImportError:
+        pass
+
+    try:
+        from app.models.other_assets import OtherAssets, OtherAssetsLineItem
+    except ImportError:
+        pass
+
+    try:
+        from app.models.other_liabilities import OtherLiabilities, OtherLiabilitiesLineItem
+    except ImportError:
+        pass
+
+    try:
+        from app.models.valuation import Valuation
+    except ImportError:
+        pass
+
 except ImportError as e:
     print(f"Warning: Could not import some models: {e}")
-    HAS_ALL_MODELS = False
-    # Try to import what we can
-    try:
-        from app.models.analysis_result import AnalysisResult
-        from app.models.financial_metric import FinancialMetric
-    except ImportError:
-        FinancialMetric = None
-        AnalysisResult = None
-    try:
-        from app.models.balance_sheet import BalanceSheet, BalanceSheetLineItem
-    except ImportError:
-        BalanceSheet = None
-        BalanceSheetLineItem = None
-    try:
-        from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
-    except ImportError:
-        IncomeStatement = None
-        IncomeStatementLineItem = None
 
 from config.config import DATA_STORAGE_DIR, UPLOAD_DIR
 
@@ -56,65 +91,168 @@ def clear_database():
         print("Clearing database...")
 
         # Delete in order to respect foreign key constraints
-        # Start with child tables that reference documents
 
-        # Delete balance sheet line items first (they reference balance sheets)
+        # 1. DELETE LINE ITEMS (Leaf nodes)
+        # =======================================================
+
+        # Balance sheet line items
         if BalanceSheetLineItem:
             try:
-                bs_line_count = db.query(BalanceSheetLineItem).count()
+                count = db.query(BalanceSheetLineItem).count()
                 db.query(BalanceSheetLineItem).delete()
-                print(f"  - Deleted {bs_line_count} balance sheet line items")
+                print(f"  - Deleted {count} balance sheet line items")
             except Exception as e:
                 print(f"  - Skipped balance sheet line items: {e}")
 
-        # Delete income statement line items first (they reference income statements)
+        # Income statement line items
         if IncomeStatementLineItem:
             try:
-                is_line_count = db.query(IncomeStatementLineItem).count()
+                count = db.query(IncomeStatementLineItem).count()
                 db.query(IncomeStatementLineItem).delete()
-                print(f"  - Deleted {is_line_count} income statement line items")
+                print(f"  - Deleted {count} income statement line items")
             except Exception as e:
                 print(f"  - Skipped income statement line items: {e}")
 
-        # Delete balance sheets (they reference documents)
+        # Amortization line items
+        if AmortizationLineItem:
+            try:
+                count = db.query(AmortizationLineItem).count()
+                db.query(AmortizationLineItem).delete()
+                print(f"  - Deleted {count} amortization line items")
+            except Exception as e:
+                print(f"  - Skipped amortization line items: {e}")
+
+        # Other Assets line items
+        if OtherAssetsLineItem:
+            try:
+                count = db.query(OtherAssetsLineItem).count()
+                db.query(OtherAssetsLineItem).delete()
+                print(f"  - Deleted {count} other assets line items")
+            except Exception as e:
+                print(f"  - Skipped other assets line items: {e}")
+
+        # Other Liabilities line items
+        if OtherLiabilitiesLineItem:
+            try:
+                count = db.query(OtherLiabilitiesLineItem).count()
+                db.query(OtherLiabilitiesLineItem).delete()
+                print(f"  - Deleted {count} other liabilities line items")
+            except Exception as e:
+                print(f"  - Skipped other liabilities line items: {e}")
+
+        # 2. DELETE EXTRACTION RESULTS (Reference Documents)
+        # =======================================================
+
+        # Balance sheets
         if BalanceSheet:
             try:
-                bs_count = db.query(BalanceSheet).count()
+                count = db.query(BalanceSheet).count()
                 db.query(BalanceSheet).delete()
-                print(f"  - Deleted {bs_count} balance sheets")
+                print(f"  - Deleted {count} balance sheets")
             except Exception as e:
                 print(f"  - Skipped balance sheets: {e}")
 
-        # Delete income statements (they reference documents)
+        # Income statements
         if IncomeStatement:
             try:
-                is_count = db.query(IncomeStatement).count()
+                count = db.query(IncomeStatement).count()
                 db.query(IncomeStatement).delete()
-                print(f"  - Deleted {is_count} income statements")
+                print(f"  - Deleted {count} income statements")
             except Exception as e:
                 print(f"  - Skipped income statements: {e}")
 
-        # Delete financial metrics and analysis results if they exist
+        # Amortization
+        if Amortization:
+            try:
+                count = db.query(Amortization).count()
+                db.query(Amortization).delete()
+                print(f"  - Deleted {count} amortizations")
+            except Exception as e:
+                print(f"  - Skipped amortizations: {e}")
+
+        # Other Assets
+        if OtherAssets:
+            try:
+                count = db.query(OtherAssets).count()
+                db.query(OtherAssets).delete()
+                print(f"  - Deleted {count} other assets")
+            except Exception as e:
+                print(f"  - Skipped other assets: {e}")
+
+        # Other Liabilities
+        if OtherLiabilities:
+            try:
+                count = db.query(OtherLiabilities).count()
+                db.query(OtherLiabilities).delete()
+                print(f"  - Deleted {count} other liabilities")
+            except Exception as e:
+                print(f"  - Skipped other liabilities: {e}")
+
+        # Organic Growth
+        if OrganicGrowth:
+            try:
+                count = db.query(OrganicGrowth).count()
+                db.query(OrganicGrowth).delete()
+                print(f"  - Deleted {count} organic growth records")
+            except Exception as e:
+                print(f"  - Skipped organic growth: {e}")
+
+        # Historical Calculations
+        if HistoricalCalculation:
+            try:
+                count = db.query(HistoricalCalculation).count()
+                db.query(HistoricalCalculation).delete()
+                print(f"  - Deleted {count} historical calculations")
+            except Exception as e:
+                print(f"  - Skipped historical calculations: {e}")
+
+        # 3. DELETE METRICS & ANALYSES (Reference Companies/Docs)
+        # =======================================================
+
+        # Financial metrics
         if FinancialMetric:
             try:
-                metric_count = db.query(FinancialMetric).count()
+                count = db.query(FinancialMetric).count()
                 db.query(FinancialMetric).delete()
-                print(f"  - Deleted {metric_count} financial metrics")
+                print(f"  - Deleted {count} financial metrics")
             except Exception as e:
                 print(f"  - Skipped financial metrics: {e}")
 
+        # Analysis results
         if AnalysisResult:
             try:
-                result_count = db.query(AnalysisResult).count()
+                count = db.query(AnalysisResult).count()
                 db.query(AnalysisResult).delete()
-                print(f"  - Deleted {result_count} analysis results")
+                print(f"  - Deleted {count} analysis results")
             except Exception as e:
                 print(f"  - Skipped analysis results: {e}")
 
-        # Delete documents (they reference companies and users)
+        # Valuations (Reference Company and User)
+        if Valuation:
+            try:
+                count = db.query(Valuation).count()
+                db.query(Valuation).delete()
+                print(f"  - Deleted {count} valuations")
+            except Exception as e:
+                print(f"  - Skipped valuations: {e}")
+
+        # Financial Assumptions (Reference Company)
+        if FinancialAssumption:
+            try:
+                count = db.query(FinancialAssumption).count()
+                db.query(FinancialAssumption).delete()
+                print(f"  - Deleted {count} financial assumptions")
+            except Exception as e:
+                print(f"  - Skipped financial assumptions: {e}")
+
+        # 4. DELETE DOCUMENTS
+        # =======================================================
         doc_count = db.query(Document).count()
         db.query(Document).delete()
         print(f"  - Deleted {doc_count} documents")
+
+        # 5. DELETE COMPANIES & USERS
+        # =======================================================
 
         # Companies (after documents are deleted)
         company_count = db.query(Company).count()

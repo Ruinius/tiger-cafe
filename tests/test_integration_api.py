@@ -1,6 +1,6 @@
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -9,8 +9,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.database import Base, get_db
 from app import models  # noqa: F401
+from app.database import Base, get_db
 from app.models.company import Company
 from app.models.document import Document, DocumentType
 from app.models.historical_calculation import HistoricalCalculation
@@ -174,7 +174,7 @@ def test_company_historical_calculations_returns_sorted_entries(client, db_sessi
                 time_period="Q1 2024",
                 currency="USD",
                 unit="millions",
-                calculated_at=datetime(2024, 3, 31, tzinfo=timezone.utc),
+                calculated_at=datetime(2024, 3, 31, tzinfo=UTC),
                 ebita=Decimal("10.00"),
             ),
             HistoricalCalculation(
@@ -183,7 +183,7 @@ def test_company_historical_calculations_returns_sorted_entries(client, db_sessi
                 time_period="FY 2023",
                 currency="EUR",
                 unit="thousands",
-                calculated_at=datetime(2024, 1, 15, tzinfo=timezone.utc),
+                calculated_at=datetime(2024, 1, 15, tzinfo=UTC),
                 ebita=Decimal("25.00"),
             ),
         ]

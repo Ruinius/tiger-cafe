@@ -19,6 +19,7 @@ class Valuation(ValuationBase):
     user_id: str | None = None
     date: datetime
     user_email: str | None = None  # To display user name/email
+    user_name: str | None = None  # To display user name
 
     class Config:
         from_attributes = True

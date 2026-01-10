@@ -51,9 +51,10 @@ def extract_income_statement(
     document_id: str,
     file_path: str,
     time_period: str,
-    max_retries: int = 3,
+    max_retries: int = 4,
     document_type: str | None = None,
     balance_sheet_chunk_index: int | None = None,
+    period_end_date: str | None = None,
 ) -> dict:
     """
     Main function to extract income statement with two-stage validation and retries.
@@ -65,7 +66,7 @@ def extract_income_statement(
         document_id: Document ID
         file_path: Path to PDF file
         time_period: Time period (e.g., "Q3 2023")
-        max_retries: Maximum number of retry attempts for section finding (3 total: before, after, 2 after)
+        max_retries: Maximum number of retry attempts for section finding (4 total: same, before, after, 2 after)
         document_type: Document type (e.g., "earnings_announcement", "annual_filing", "quarterly_filing")
 
     Returns:
@@ -78,9 +79,10 @@ def extract_income_statement(
     extracted_data = None
     successful_chunk_index = None  # Track successful chunk index for persistence
 
-    for section_attempt in range(max_retries):  # 3 tries: before, after, 2 after
+    for section_attempt in range(max_retries):  # 4 tries: same, before, after, 2 after
         try:
-            section_msg = f"Stage 1: Finding income statement section (attempt {section_attempt + 1}: {'before' if section_attempt == 0 else 'after' if section_attempt == 1 else '2 after'} balance sheet)"
+            attempt_labels = ["same as", "before", "after", "2 after"]
+            section_msg = f"Stage 1: Finding income statement section (attempt {section_attempt + 1}: {attempt_labels[section_attempt]} balance sheet)"
             print(section_msg)
             add_log(document_id, FinancialStatementMilestone.INCOME_STATEMENT, section_msg)
 
@@ -130,12 +132,12 @@ def extract_income_statement(
                     completeness_check_msg,
                 )
 
-                is_complete = check_income_statement_completeness_llm(
-                    income_statement_text, time_period
+                is_complete, reason = check_income_statement_completeness_llm(
+                    income_statement_text, time_period, period_end_date
                 )
 
                 if not is_complete:
-                    section_failed_msg = "Stage 1 validation failed: LLM determined chunk does not contain complete income statement"
+                    section_failed_msg = f"Stage 1 validation failed: {reason}"
                     print(section_failed_msg)
                     add_log(
                         document_id,
@@ -154,7 +156,12 @@ def extract_income_statement(
                     extraction_msg,
                 )
 
-                extracted_data = extract_income_statement_llm(income_statement_text, time_period)
+                extracted_data = extract_income_statement_llm(
+                    income_statement_text,
+                    time_period,
+                    currency=None,
+                    period_end_date=period_end_date,
+                )
 
                 # Classify line items immediately (Step 4: Resolve redundancy by using specialized classifier early)
                 extracted_data["line_items"] = classify_line_items_llm(extracted_data["line_items"])
@@ -278,6 +285,8 @@ def extract_income_statement(
                 time_period,
                 extracted_data,  # Previous extraction
                 normalization_errors,
+                currency=None,
+                period_end_date=period_end_date,
             )
 
             # Classify re-extracted items
@@ -361,7 +370,7 @@ def find_income_statement_near_balance_sheet(
         file_path: Path to PDF file
         time_period: Time period to search for (e.g., "Q3 2023")
         document_type: Document type (e.g., "earnings_announcement", "annual_filing", "quarterly_filing")
-        attempt: 0 = chunk before balance sheet, 1 = chunk after balance sheet, 2 = 2 chunks after
+        attempt: 0 = same chunk as balance sheet, 1 = chunk before, 2 = chunk after, 3 = 2 chunks after
         balance_sheet_chunk_index: Optional balance sheet chunk index to use directly (if known from successful extraction)
 
     Returns:
@@ -416,20 +425,24 @@ def find_income_statement_near_balance_sheet(
         num_chunks = chunk_metadata.get("num_chunks", 0)
 
         # Determine which chunk to use based on attempt
-        # attempt 0 = chunk before balance sheet
-        # attempt 1 = chunk after balance sheet
-        # attempt 2 = 2 chunks after balance sheet
+        # attempt 0 = same chunk as balance sheet
+        # attempt 1 = chunk before balance sheet
+        # attempt 2 = chunk after balance sheet
+        # attempt 3 = 2 chunks after balance sheet
         if attempt == 0:
+            target_chunk_index = balance_chunk_index
+            direction = "same as"
+        elif attempt == 1:
             target_chunk_index = balance_chunk_index - 1
             direction = "before"
-        elif attempt == 1:
+        elif attempt == 2:
             target_chunk_index = balance_chunk_index + 1
             direction = "after"
-        elif attempt == 2:
+        elif attempt == 3:
             target_chunk_index = balance_chunk_index + 2
             direction = "2 after"
         else:
-            print(f"Invalid attempt number: {attempt}, must be 0, 1, or 2")
+            print(f"Invalid attempt number: {attempt}, must be 0, 1, 2, or 3")
             return None, None, None
 
         # Validate chunk index
@@ -486,7 +499,9 @@ def find_income_statement_near_balance_sheet(
         return None, None, None
 
 
-def check_income_statement_completeness_llm(text: str, time_period: str) -> bool:
+def check_income_statement_completeness_llm(
+    text: str, time_period: str, period_end_date: str | None = None
+) -> tuple[bool, str]:
     """
     Use LLM to check if the chunk text contains a complete consolidated income statement.
     This is called BEFORE extraction to validate we have the right chunk.
@@ -494,26 +509,25 @@ def check_income_statement_completeness_llm(text: str, time_period: str) -> bool
     Args:
         text: Text containing income statement section (chunk text)
         time_period: Time period (e.g., "Q3 2023")
+        period_end_date: Period end date (e.g., "2024-03-31")
 
     Returns:
-        True if complete, False otherwise
+        Tuple of (is_complete, reason)
     """
     validation_criteria = """- Start with revenue (total net revenue, net sales, etc.)
 - Include cost of revenue/cost of goods sold
-- Have a gross profit line
 - Include operating expenses (R&D, SG&A, etc.)
-- Have an operating income/income from operations line
-- Include interest income/expense and other non-operating items
-- Have an income before taxes/pretax income line
 - Include tax expense
 - End with net income/net earnings"""
 
     return check_section_completeness_llm(
-        text, time_period, "consolidated income statement", validation_criteria
+        text, time_period, "consolidated income statement", validation_criteria, period_end_date
     )
 
 
-def extract_income_statement_llm(text: str, time_period: str, currency: str | None = None) -> dict:
+def extract_income_statement_llm(
+    text: str, time_period: str, currency: str | None = None, period_end_date: str | None = None
+) -> dict:
     """
     Use LLM to extract income statement line items exactly line by line.
     Also extracts revenue for the same period in the prior year.
@@ -522,11 +536,16 @@ def extract_income_statement_llm(text: str, time_period: str, currency: str | No
         text: Text containing income statement
         time_period: Time period (e.g., "Q3 2023")
         currency: Currency code if known
+        period_end_date: Period end date (e.g., "2024-03-31")
 
     Returns:
         Dictionary with income statement data
     """
-    prompt = f"""Extract the income statement (also called "consolidated statement of operations" or "statement of earnings") from the following document text for the time period: {time_period}.
+    period_info = f"time period: {time_period}"
+    if period_end_date:
+        period_info += f" (period ending {period_end_date})"
+
+    prompt = f"""Extract the income statement (also called "consolidated statement of operations" or "statement of earnings") from the following document text for the {period_info}.
 Extract the income statement exactly line by line, including all line items and their values starting with revenue.
 If the company is foreign, extract the values in the local currency.
 
@@ -548,6 +567,7 @@ Return a JSON object with the following structure:
     "currency": currency code,
     "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract ONLY if explicitly stated like "in millions", "in thousands", etc., otherwise null),
     "time_period": "{time_period}",
+    "period_end_date": "{period_end_date}" if known else null,
     "revenue_prior_year": revenue for the same period in the prior year (as number, null if not EXPLICITLY found in document),
     "revenue_prior_year_unit": unit for revenue_prior_year - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (usually same as "unit", null if revenue_prior_year is null),
     "line_items": [
@@ -601,6 +621,7 @@ def extract_income_statement_llm_with_feedback(
     previous_extraction: dict,
     validation_errors: list[str],
     currency: str | None = None,
+    period_end_date: str | None = None,
 ) -> dict:
     """
     Use LLM to extract income statement with validation error feedback for retry.
@@ -611,6 +632,7 @@ def extract_income_statement_llm_with_feedback(
         previous_extraction: Previous extraction attempt (to show what was extracted)
         validation_errors: List of validation errors with calculated differences
         currency: Currency code if known
+        period_end_date: Period end date (e.g., "2024-03-31")
 
     Returns:
         Dictionary with income statement data
@@ -618,7 +640,11 @@ def extract_income_statement_llm_with_feedback(
     errors_text = "\n".join(f"- {error}" for error in validation_errors)
     previous_items_text = json.dumps(previous_extraction.get("line_items", []), indent=2)
 
-    prompt = f"""Extract the income statement (also called "consolidated statement of operations" or "statement of earnings") from the following document text for the time period: {time_period}.
+    period_info = f"time period: {time_period}"
+    if period_end_date:
+        period_info += f" (period ending {period_end_date})"
+
+    prompt = f"""Extract the income statement (also called "consolidated statement of operations" or "statement of earnings") from the following document text for the {period_info}.
 Extract the income statement exactly line by line, including all line items and their values starting with revenue.
 If the company is foreign, extract the values in the local currency.
 
@@ -639,6 +665,7 @@ Return a JSON object with the following structure:
     "currency": currency code,
     "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract from document, e.g., if values are in millions, use "millions"),
     "time_period": "{time_period}",
+    "period_end_date": "{period_end_date}" if known else null,
     "revenue_prior_year": revenue for the same period in the prior year (as number, null if not found),
     "revenue_prior_year_unit": unit for revenue_prior_year - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (usually same as "unit", null if revenue_prior_year is null),
     "line_items": [

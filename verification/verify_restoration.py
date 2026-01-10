@@ -1,5 +1,7 @@
 import time
+
 from playwright.sync_api import sync_playwright
+
 
 def verify_restored_sections():
     with sync_playwright() as p:
@@ -14,35 +16,47 @@ def verify_restored_sections():
         API_BASE_URL = "http://localhost:8000/api"
 
         # Mock Auth
-        page.route(f"{API_BASE_URL}/auth/me", lambda route: route.fulfill(
-            status=200,
-            content_type="application/json",
-            body='{"id": 1, "email": "test@example.com", "name": "Test User"}'
-        ))
+        page.route(
+            f"{API_BASE_URL}/auth/me",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body='{"id": 1, "email": "test@example.com", "name": "Test User"}',
+            ),
+        )
 
         # Mock Companies
-        page.route(f"{API_BASE_URL}/companies/", lambda route: route.fulfill(
-            status=200,
-            content_type="application/json",
-            body='[{"id": 1, "name": "Test Company", "ticker": "TEST"}]'
-        ))
+        page.route(
+            f"{API_BASE_URL}/companies/",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body='[{"id": 1, "name": "Test Company", "ticker": "TEST"}]',
+            ),
+        )
 
         # Mock Documents
-        page.route(f"{API_BASE_URL}/documents/?company_id=1", lambda route: route.fulfill(
-            status=200,
-            content_type="application/json",
-            body='[{"id": 101, "filename": "10-K.pdf", "document_type": "annual_filing", "time_period": "FY2023", "indexing_status": "indexed", "analysis_status": "completed"}]'
-        ))
+        page.route(
+            f"{API_BASE_URL}/documents/?company_id=1",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body='[{"id": 101, "filename": "10-K.pdf", "document_type": "annual_filing", "time_period": "FY2023", "indexing_status": "indexed", "analysis_status": "completed"}]',
+            ),
+        )
 
         # Mock Document Status
-        page.route(f"{API_BASE_URL}/documents/101/status", lambda route: route.fulfill(
-            status=200,
-            content_type="application/json",
-            body='{"id": 101, "indexing_status": "indexed", "analysis_status": "completed", "document_type": "annual_filing"}'
-        ))
+        page.route(
+            f"{API_BASE_URL}/documents/101/status",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body='{"id": 101, "indexing_status": "indexed", "analysis_status": "completed", "document_type": "annual_filing"}',
+            ),
+        )
 
         # Mock Progress (All completed)
-        progress_body = '''{
+        progress_body = """{
                 "status": "completed",
                 "milestones": {
                     "balance_sheet": {"status": "completed"},
@@ -50,32 +64,51 @@ def verify_restored_sections():
                     "extracting_additional_items": {"status": "completed"},
                     "classifying_non_operating_items": {"status": "completed"}
                 }
-            }'''
-        page.route(f"{API_BASE_URL}/documents/101/financial-statement-progress", lambda route: route.fulfill(
-            status=200, content_type="application/json", body=progress_body))
-        page.route(f"{API_BASE_URL}/documents/101/financial-statement-progress-test", lambda route: route.fulfill(
-            status=200, content_type="application/json", body=progress_body))
+            }"""
+        page.route(
+            f"{API_BASE_URL}/documents/101/financial-statement-progress",
+            lambda route: route.fulfill(
+                status=200, content_type="application/json", body=progress_body
+            ),
+        )
+        page.route(
+            f"{API_BASE_URL}/documents/101/financial-statement-progress-test",
+            lambda route: route.fulfill(
+                status=200, content_type="application/json", body=progress_body
+            ),
+        )
 
         # Mock Balance Sheet (Simplified)
         bs_body = '{"status": "exists", "data": {"unit": "millions", "currency": "USD", "line_items": []}}'
-        page.route(f"{API_BASE_URL}/documents/101/balance-sheet", lambda route: route.fulfill(
-            status=200, content_type="application/json", body=bs_body))
+        page.route(
+            f"{API_BASE_URL}/documents/101/balance-sheet",
+            lambda route: route.fulfill(status=200, content_type="application/json", body=bs_body),
+        )
 
         # Mock Income Statement (Simplified)
         is_body = '{"status": "exists", "data": {"unit": "millions", "currency": "USD", "line_items": []}}'
-        page.route(f"{API_BASE_URL}/documents/101/income-statement", lambda route: route.fulfill(
-            status=200, content_type="application/json", body=is_body))
+        page.route(
+            f"{API_BASE_URL}/documents/101/income-statement",
+            lambda route: route.fulfill(status=200, content_type="application/json", body=is_body),
+        )
 
         # Mock Additional Items
-        for endpoint in ['organic-growth', 'amortization', 'other-assets', 'other-liabilities', 'non-operating-classification']:
-            page.route(f"{API_BASE_URL}/documents/101/{endpoint}", lambda route: route.fulfill(
-                status=200,
-                content_type="application/json",
-                body='{"data": {"line_items": []}}'
-            ))
+        for endpoint in [
+            "organic-growth",
+            "amortization",
+            "other-assets",
+            "other-liabilities",
+            "non-operating-classification",
+        ]:
+            page.route(
+                f"{API_BASE_URL}/documents/101/{endpoint}",
+                lambda route: route.fulfill(
+                    status=200, content_type="application/json", body='{"data": {"line_items": []}}'
+                ),
+            )
 
         # Mock Historical Calculations
-        historical_body = '''
+        historical_body = """
         {
             "unit": "millions",
             "currency": "USD",
@@ -136,11 +169,19 @@ def verify_restored_sections():
                 }
             ]
         }
-        '''
-        page.route(f"{API_BASE_URL}/documents/101/historical-calculations", lambda route: route.fulfill(
-            status=200, content_type="application/json", body=historical_body))
-        page.route(f"{API_BASE_URL}/documents/101/historical-calculations/test", lambda route: route.fulfill(
-            status=200, content_type="application/json", body=historical_body))
+        """
+        page.route(
+            f"{API_BASE_URL}/documents/101/historical-calculations",
+            lambda route: route.fulfill(
+                status=200, content_type="application/json", body=historical_body
+            ),
+        )
+        page.route(
+            f"{API_BASE_URL}/documents/101/historical-calculations/test",
+            lambda route: route.fulfill(
+                status=200, content_type="application/json", body=historical_body
+            ),
+        )
 
         # Go to app
         page.goto("http://localhost:3000/login")
@@ -174,6 +215,7 @@ def verify_restored_sections():
         print("Verification screenshot captured: verification/restored_sections.png")
 
         browser.close()
+
 
 if __name__ == "__main__":
     verify_restored_sections()

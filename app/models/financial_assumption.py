@@ -2,11 +2,13 @@
 Financial assumption model
 """
 
-from sqlalchemy import Column, ForeignKey, Numeric, String, Enum
-from sqlalchemy.orm import relationship
-from app.database import Base
-import enum
 import uuid
+
+from sqlalchemy import Column, ForeignKey, Numeric, String
+from sqlalchemy.orm import relationship
+
+from app.database import Base
+
 
 class FinancialAssumption(Base):
     __tablename__ = "financial_assumptions"

@@ -26,6 +26,7 @@ def extract_balance_sheet(
     time_period: str,
     max_retries: int = 3,
     document_type: str | None = None,
+    period_end_date: str | None = None,
 ) -> dict:
     """
     Main function to extract balance sheet with two-stage validation and retries.
@@ -84,10 +85,12 @@ def extract_balance_sheet(
                 completeness_check_msg,
             )
 
-            is_complete = check_balance_sheet_completeness_llm(balance_sheet_text, time_period)
+            is_complete, reason = check_balance_sheet_completeness_llm(
+                balance_sheet_text, time_period, period_end_date
+            )
 
             if not is_complete:
-                section_failed_msg = "Stage 1 validation failed: LLM determined chunk does not contain complete balance sheet"
+                section_failed_msg = f"Stage 1 validation failed: {reason}"
                 print(section_failed_msg)
                 add_log(
                     document_id,
@@ -117,7 +120,9 @@ def extract_balance_sheet(
                 extraction_msg,
             )
 
-            extracted_data = extract_balance_sheet_llm(balance_sheet_text, time_period)
+            extracted_data = extract_balance_sheet_llm(
+                balance_sheet_text, time_period, currency=None, period_end_date=period_end_date
+            )
 
             # Ensure line_items exists and is a list
             if "line_items" not in extracted_data:
@@ -251,6 +256,8 @@ def extract_balance_sheet(
                 time_period,
                 extracted_data,  # Previous extraction
                 calc_errors,
+                currency=None,
+                period_end_date=period_end_date,
             )
 
             # Post-process and Re-validate final attempt
@@ -438,7 +445,9 @@ def find_balance_sheet_section(
         return None, None, None
 
 
-def check_balance_sheet_completeness_llm(text: str, time_period: str) -> bool:
+def check_balance_sheet_completeness_llm(
+    text: str, time_period: str, period_end_date: str | None = None
+) -> tuple[bool, str]:
     """
     Use LLM to check if the chunk text contains a complete consolidated balance sheet.
     This is called BEFORE extraction to validate we have the right chunk.
@@ -446,27 +455,24 @@ def check_balance_sheet_completeness_llm(text: str, time_period: str) -> bool:
     Args:
         text: Text containing balance sheet section (chunk text)
         time_period: Time period (e.g., "Q3 2023")
+        period_end_date: Period end date (e.g., "2024-03-31")
 
     Returns:
-        True if complete, False otherwise
+        Tuple of (is_complete, reason)
     """
     validation_criteria = """- Start with cash or cash equivalents
-- Include current assets (cash, accounts receivable, inventory, etc.)
-- Include non-current assets (property, plant & equipment, intangible assets, etc.)
 - Have a "Total Assets" line
-- Include current liabilities (accounts payable, short-term debt, etc.)
-- Include non-current liabilities (long-term debt, etc.)
 - Have a "Total Liabilities" line
-- Include equity items (common stock, retained earnings, etc.)
-- Have a "Total Liabilities and Equity" or "Total Shareholder's Equity" line
-- Balance (Total Assets = Total Liabilities and Equity)"""
+- Have a "Total Liabilities and Equity line"""
 
     return check_section_completeness_llm(
-        text, time_period, "consolidated balance sheet", validation_criteria
+        text, time_period, "consolidated balance sheet", validation_criteria, period_end_date
     )
 
 
-def extract_balance_sheet_llm(text: str, time_period: str, currency: str | None = None) -> dict:
+def extract_balance_sheet_llm(
+    text: str, time_period: str, currency: str | None = None, period_end_date: str | None = None
+) -> dict:
     """
     Use LLM to extract balance sheet line items exactly line by line.
 
@@ -474,11 +480,16 @@ def extract_balance_sheet_llm(text: str, time_period: str, currency: str | None 
         text: Text containing balance sheet
         time_period: Time period (e.g., "Q3 2023")
         currency: Currency code if known
+        period_end_date: Period end date (e.g., "2024-03-31")
 
     Returns:
         Dictionary with balance sheet data
     """
-    prompt = f"""Extract the balance sheet from the following document text for the time period: {time_period}.
+    period_info = f"time period: {time_period}"
+    if period_end_date:
+        period_info += f" (period ending {period_end_date})"
+
+    prompt = f"""Extract the balance sheet from the following document text for the {period_info}.
 Extract the balance sheet exactly line by line, including all line items and their values.
 If the company is foreign, extract the values in the local currency.
 
@@ -497,6 +508,7 @@ Return a JSON object with the following structure:
     "currency": currency code,
     "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract ONLY if explicitly stated like "in millions", "in thousands", etc., otherwise null),
     "time_period": "{time_period}",
+    "period_end_date": "{period_end_date}" if known else null,
     "line_items": [
         {{
             "line_name": "exact name as it appears in the document but do not include long notes in parentheses",
@@ -556,6 +568,7 @@ def extract_balance_sheet_llm_with_feedback(
     previous_extraction: dict,
     validation_errors: list[str],
     currency: str | None = None,
+    period_end_date: str | None = None,
 ) -> dict:
     """
     Use LLM to extract balance sheet with validation error feedback for retry.
@@ -566,6 +579,7 @@ def extract_balance_sheet_llm_with_feedback(
         previous_extraction: Previous extraction attempt (to show what was extracted)
         validation_errors: List of validation errors with calculated differences
         currency: Currency code if known
+        period_end_date: Period end date (e.g., "2024-03-31")
 
     Returns:
         Dictionary with balance sheet data
@@ -573,7 +587,11 @@ def extract_balance_sheet_llm_with_feedback(
     errors_text = "\n".join(f"- {error}" for error in validation_errors)
     previous_items_text = json.dumps(previous_extraction.get("line_items", []), indent=2)
 
-    prompt = f"""Extract the balance sheet from the following document text for the time period: {time_period}.
+    period_info = f"time period: {time_period}"
+    if period_end_date:
+        period_info += f" (period ending {period_end_date})"
+
+    prompt = f"""Extract the balance sheet from the following document text for the {period_info}.
 Extract the balance sheet exactly line by line, including all line items and their values.
 If the company is foreign, extract the values in the local currency.
 
@@ -594,6 +612,7 @@ Return a JSON object with the following structure:
     "currency": currency code,
     "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract from document, e.g., if values are in millions, use "millions"),
     "time_period": "{time_period}",
+    "period_end_date": "{period_end_date}" if known else null,
     "line_items": [
         {{
             "line_name": "exact name as it appears in the document but do not include long notes in parentheses",

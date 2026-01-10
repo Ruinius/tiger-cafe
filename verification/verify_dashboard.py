@@ -1,5 +1,5 @@
-import time
 from playwright.sync_api import sync_playwright
+
 
 def verify_dashboard():
     with sync_playwright() as p:
@@ -12,53 +12,72 @@ def verify_dashboard():
         API_BASE_URL = "http://localhost:8000/api"
 
         # Mock Login (if redirected)
-        page.route(f"{API_BASE_URL}/auth/me", lambda route: route.fulfill(
-            status=200,
-            content_type="application/json",
-            body='{"id": 1, "email": "test@example.com", "name": "Test User"}'
-        ))
+        page.route(
+            f"{API_BASE_URL}/auth/me",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body='{"id": 1, "email": "test@example.com", "name": "Test User"}',
+            ),
+        )
 
         # Mock Companies
-        page.route(f"{API_BASE_URL}/companies/", lambda route: route.fulfill(
-            status=200,
-            content_type="application/json",
-            body='[{"id": 1, "name": "Apple Inc.", "ticker": "AAPL"}, {"id": 2, "name": "Microsoft", "ticker": "MSFT"}]'
-        ))
+        page.route(
+            f"{API_BASE_URL}/companies/",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body='[{"id": 1, "name": "Apple Inc.", "ticker": "AAPL"}, {"id": 2, "name": "Microsoft", "ticker": "MSFT"}]',
+            ),
+        )
 
         # Mock Documents for Company 1
-        page.route(f"{API_BASE_URL}/documents/?company_id=1", lambda route: route.fulfill(
-            status=200,
-            content_type="application/json",
-            body='[{"id": 101, "filename": "10-K 2023.pdf", "document_type": "annual_filing", "time_period": "FY2023", "indexing_status": "indexed", "analysis_status": "completed", "uploaded_at": "2023-01-01T00:00:00Z"}]'
-        ))
+        page.route(
+            f"{API_BASE_URL}/documents/?company_id=1",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body='[{"id": 101, "filename": "10-K 2023.pdf", "document_type": "annual_filing", "time_period": "FY2023", "indexing_status": "indexed", "analysis_status": "completed", "uploaded_at": "2023-01-01T00:00:00Z"}]',
+            ),
+        )
 
         # Mock Company Analysis (Historical)
-        page.route(f"{API_BASE_URL}/companies/1/historical-calculations", lambda route: route.fulfill(
-            status=200,
-            content_type="application/json",
-            body='{"entries": [], "unit": "millions", "currency": "USD"}'
-        ))
+        page.route(
+            f"{API_BASE_URL}/companies/1/historical-calculations",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body='{"entries": [], "unit": "millions", "currency": "USD"}',
+            ),
+        )
 
         # Mock Document Status
-        page.route(f"{API_BASE_URL}/documents/101/status", lambda route: route.fulfill(
-            status=200,
-            content_type="application/json",
-            body='{"id": 101, "indexing_status": "indexed", "analysis_status": "completed", "document_type": "annual_filing"}'
-        ))
+        page.route(
+            f"{API_BASE_URL}/documents/101/status",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body='{"id": 101, "indexing_status": "indexed", "analysis_status": "completed", "document_type": "annual_filing"}',
+            ),
+        )
 
         # Mock Document Chunks
-        page.route(f"{API_BASE_URL}/documents/101/chunks", lambda route: route.fulfill(
-            status=200,
-            content_type="application/json",
-            body='{"chunks": [{"chunk_index": 0, "text": "This is a mock chunk.", "page_start": 1, "page_end": 1}]}'
-        ))
+        page.route(
+            f"{API_BASE_URL}/documents/101/chunks",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body='{"chunks": [{"chunk_index": 0, "text": "This is a mock chunk.", "page_start": 1, "page_end": 1}]}',
+            ),
+        )
 
         # Mock Document File (PDF)
-        page.route(f"{API_BASE_URL}/documents/101/file", lambda route: route.fulfill(
-            status=200,
-            content_type="application/pdf",
-            body=b'%PDF-1.4\n%...'
-        ))
+        page.route(
+            f"{API_BASE_URL}/documents/101/file",
+            lambda route: route.fulfill(
+                status=200, content_type="application/pdf", body=b"%PDF-1.4\n%..."
+            ),
+        )
 
         # Manually set local storage to simulate authentication
         # The app checks 'tiger-cafe-token' in localStorage
@@ -112,7 +131,7 @@ def verify_dashboard():
 
         # Should be back to Company View
         page.wait_for_selector("text=Apple Inc. Financial Analysis")
-        page.wait_for_selector("text=Companies") # Breadcrumb to global
+        page.wait_for_selector("text=Companies")  # Breadcrumb to global
         page.screenshot(path="verification/4_dashboard_back_to_company.png")
         print("Captured Back to Company View")
 
@@ -129,6 +148,7 @@ def verify_dashboard():
         print("Captured Upload Modal")
 
         browser.close()
+
 
 if __name__ == "__main__":
     verify_dashboard()

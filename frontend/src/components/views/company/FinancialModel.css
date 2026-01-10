@@ -91,3 +91,40 @@
 .assumption-group input[type=number] {
     -moz-appearance: textfield;
 }
+
+.delete-valuation-btn {
+    background: none;
+    border: none;
+    padding: 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    opacity: 0.4;
+    margin-left: auto;
+}
+
+.financial-table tr:hover .delete-valuation-btn {
+    opacity: 0.8;
+}
+
+.delete-valuation-btn:hover {
+    background-color: rgba(239, 68, 68, 0.08);
+    /* Minimal red tint */
+    color: #ef4444;
+    /* Soft red */
+    opacity: 1 !important;
+    transform: scale(1.05);
+}
+
+.delete-valuation-btn:active {
+    transform: scale(0.95);
+}
+
+.delete-valuation-btn svg {
+    width: 16px;
+    height: 16px;
+}

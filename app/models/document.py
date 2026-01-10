@@ -9,6 +9,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from app.database import Base
+from app.models.document_status import DocumentStatus
 
 
 class DocumentType(enum.Enum):
@@ -44,17 +45,30 @@ class Document(Base):
     # Document metadata
     filename = Column(String, nullable=False)
     file_path = Column(String, nullable=False)  # Path to stored PDF file
+    file_size = Column(Integer, nullable=True)  # File size in bytes (for duplicate check)
     document_type = Column(Enum(DocumentType), nullable=True)
     time_period = Column(String, nullable=True)  # e.g., "Q3 2023", "FY 2023"
+    period_end_date = Column(String, nullable=True)  # e.g., "2024-03-31" (YYYY-MM-DD)
     unique_id = Column(
         String, nullable=True, index=True
     )  # Unique identifier (URL, article ID, report ID, etc.)
 
-    # Processing status
+    # Processing status (Unified)
+    status = Column(
+        String, nullable=False, default=DocumentStatus.PENDING, index=True
+    )  # Unified status tracking (see DocumentStatus enum)
+
+    # Detailed status tracking
+    error_message = Column(Text, nullable=True)  # Failure details
+    processing_metadata = Column(Text, nullable=True)  # JSON: {current_step, details}
+    current_step = Column(String, nullable=True)  # e.g., "3/7: Indexing"
+
+    # DEPRECATED Fields (Retained for migration/rollback):
     indexing_status = Column(
         Enum(ProcessingStatus), default=ProcessingStatus.PENDING
     )  # Tracks: PENDING → UPLOADING → CLASSIFYING → INDEXING → INDEXED
     analysis_status = Column(Enum(ProcessingStatus), default=ProcessingStatus.PENDING)
+
     duplicate_detected = Column(Boolean, default=False)  # Flag to indicate duplicate was detected
     existing_document_id = Column(String, nullable=True)  # ID of existing document if duplicate
 

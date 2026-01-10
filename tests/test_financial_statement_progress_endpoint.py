@@ -12,8 +12,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.database import Base, get_db
 from app import models  # noqa: F401
+from app.database import Base, get_db
 from app.models.company import Company
 from app.models.document import Document, DocumentType
 from app.models.user import User
@@ -98,13 +98,12 @@ def test_financial_statement_progress_endpoint_handles_all_models(client, db_ses
     # Even if no financial statements exist, it should return milestones with "not_found" status
     assert response.status_code == 200
     data = response.json()
-    
+
     # Verify the response structure
     assert "status" in data or "milestones" in data
-    
+
     # If milestones are present, verify they have the expected structure
     if "milestones" in data:
         milestones = data["milestones"]
         # Should have milestone entries (even if status is "not_found")
         assert isinstance(milestones, dict)
-

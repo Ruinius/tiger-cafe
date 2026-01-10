@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import re
 
-from agents.extractor_utils import call_llm_with_retry
+from agents.extractor_utils import call_llm_with_retry, check_section_completeness_llm
 from app.models.document import DocumentType
 from app.utils.document_section_finder import find_document_section
 from app.utils.financial_statement_progress import (
@@ -24,6 +24,7 @@ def extract_gaap_reconciliation(
     file_path: str,
     time_period: str,
     document_type: DocumentType | None = None,
+    period_end_date: str | None = None,
 ) -> dict:
     """
     Extract line items from operating income or EBITDA reconciliation table for earnings announcements.
@@ -83,7 +84,9 @@ def extract_gaap_reconciliation(
             document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, completeness_msg
         )
 
-        is_complete, explanation = check_table_completeness(chunk_text, time_period)
+        is_complete, explanation = check_table_completeness(
+            chunk_text, time_period, period_end_date
+        )
 
         if is_complete:
             complete_msg = f"Found complete reconciliation table in chunk{rank_text}: {explanation}"
@@ -122,7 +125,7 @@ def extract_gaap_reconciliation(
     add_log(document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, extraction_msg)
 
     validation_errors: list[str] = []
-    extraction = extract_gaap_reconciliation_llm(text, time_period)
+    extraction = extract_gaap_reconciliation_llm(text, time_period, period_end_date)
     line_items = extraction.get("line_items", []) if isinstance(extraction, dict) else []
 
     extracted_count_msg = f"Extracted {len(line_items)} line items from reconciliation table"
@@ -191,7 +194,7 @@ def extract_gaap_reconciliation(
             )
 
             retry_result = retry_extraction_with_feedback(
-                text, time_period, line_items, validation_error
+                text, time_period, line_items, validation_error, period_end_date
             )
 
             final_line_items = retry_result.get("line_items", [])
@@ -383,69 +386,64 @@ def find_gaap_ebitda_reconciliation_section(
         return None, None, None
 
 
-def check_table_completeness(text: str, time_period: str) -> tuple[bool, str]:
+def check_table_completeness(
+    text: str, time_period: str, period_end_date: str | None = None
+) -> tuple[bool, str]:
     """
     Check if the chunk contains a complete GAAP to non-GAAP reconciliation table for EBITDA or operating income.
 
     Args:
         text: Text from chunk to check
         time_period: Time period (e.g., "Q3 2024")
+        period_end_date: Period end date (e.g., "2024-03-31")
 
     Returns:
         Tuple of (is_complete, explanation)
     """
-    prompt = f"""Analyze the following document text for the time period: {time_period} and determine if it contains a COMPLETE GAAP to non-GAAP reconciliation table for either:
-- EBITDA (Earnings Before Interest, Taxes, Depreciation, and Amortization)
-- Operating Income or something similar
-
-A complete reconciliation table should:
-1. Start with an operating income, or something similar
-2. List all adjustments/addbacks (amortization, depreciation, stock-based compensation, etc.)
-3. End with the non-GAAP measure (non-GAAP operating income, EBITDA, adjusted EBITDA, etc.)
-4. The sum of the starting measure plus all adjustments should equal the ending non-GAAP measure
+    validation_criteria = """- Be for either: EBITDA (Earnings Before Interest, Taxes, Depreciation, and Amortization) or Operating Income/Loss or Income from Operations
+- Start with an operating income, other GAAP results, or something similar
+- List all adjustments/addbacks (amortization, depreciation, stock-based compensation, etc.)
+- End with the non-GAAP measure (non-GAAP operating income, EBITDA, adjusted EBITDA, etc.)
+- The sum of the starting measure plus all adjustments should equal the ending non-GAAP measure
 
 IMPORTANT: The table must be for EBITDA or operating income reconciliation.
 DO NOT consider:
 - Net income reconciliation tables
 - Margin reconciliation tables
 - EPS (earnings per share) reconciliation tables
-- Any other type of reconciliation table
+- Any other types of reconciliation table
+RARE CASES, the table has Gross Profit, Operating Income, Taxes, Net Income all mixed. In this case pull the correct column.
+"""
 
-Return a JSON object:
-{{
-  "is_complete": true or false,
-  "explanation": "brief explanation of why it is or isn't complete"
-}}
-
-Document text:
-{text[:30000]}
-
-Return only valid JSON, no additional text."""
-
-    response_text = generate_content_safe(prompt, temperature=0.0)
-    if response_text.startswith("```"):
-        response_text = response_text.split("```")[1]
-        if response_text.startswith("json"):
-            response_text = response_text[4:]
-        response_text = response_text.strip()
-
-    result = json.loads(response_text)
-    return result.get("is_complete", False), result.get("explanation", "")
+    return check_section_completeness_llm(
+        text,
+        time_period,
+        "GAAP to non-GAAP reconciliation table",
+        validation_criteria,
+        period_end_date,
+    )
 
 
-def extract_gaap_reconciliation_llm(text: str, time_period: str) -> dict:
+def extract_gaap_reconciliation_llm(
+    text: str, time_period: str, period_end_date: str | None = None
+) -> dict:
     """
     Extract line items from operating income or EBITDA reconciliation table.
 
     Args:
         text: Text containing GAAP reconciliation table
         time_period: Time period (e.g., "Q3 2024")
+        period_end_date: Period end date (e.g., "2024-03-31")
 
     Returns:
         Dictionary with extracted line items
     """
+    period_info = f"time period: {time_period}"
+    if period_end_date:
+        period_info += f" (period ending {period_end_date})"
+
     prompt = f"""Extract all line items from the OPERATING INCOME reconciliation table or EBITDA reconciliation table
-in the following document text for the time period: {time_period}.
+in the following document text for the {period_info}.
 
 IMPORTANT: Extract ONLY from operating income reconciliation or EBITDA reconciliation tables.
 DO NOT extract from:
@@ -612,6 +610,7 @@ def retry_extraction_with_feedback(
     time_period: str,
     current_line_items: list[dict],
     validation_error: str,
+    period_end_date: str | None = None,
 ) -> dict:
     """
     Final retry attempt: pass full context, validation error, and current table to LLM
@@ -622,13 +621,18 @@ def retry_extraction_with_feedback(
         time_period: Expected time period
         current_line_items: Current extracted line items that failed validation
         validation_error: The validation error message
+        period_end_date: Period end date (e.g., "2024-03-31")
 
     Returns:
         Dictionary with new line items
     """
     items_json = json.dumps(current_line_items, indent=2)
 
-    prompt = f"""I attempted to extract an operating income or EBITDA reconciliation table for {time_period}, but validation failed.
+    period_info = f"time period: {time_period}"
+    if period_end_date:
+        period_info += f" (period ending {period_end_date})"
+
+    prompt = f"""I attempted to extract an operating income or EBITDA reconciliation table for {period_info}, but validation failed.
 
 Current extraction:
 {items_json}

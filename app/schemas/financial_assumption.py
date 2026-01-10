@@ -3,7 +3,9 @@ Financial assumption schemas
 """
 
 from decimal import Decimal
+
 from pydantic import BaseModel
+
 
 class FinancialAssumptionBase(BaseModel):
     revenue_growth_stage1: Decimal | None = None
@@ -18,8 +20,10 @@ class FinancialAssumptionBase(BaseModel):
     adjusted_tax_rate: Decimal | None = None
     wacc: Decimal | None = None
 
+
 class FinancialAssumptionCreate(FinancialAssumptionBase):
     pass
+
 
 class FinancialAssumption(FinancialAssumptionBase):
     id: str

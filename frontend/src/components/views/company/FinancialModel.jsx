@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { useAuth } from '../../../contexts/AuthContext'
+import { API_BASE_URL } from '../../../config'
 import './FinancialModel.css'
 
 function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) {
-    const API_BASE_URL = 'http://localhost:8000/api'
     const { isAuthenticated, token } = useAuth()
     const [modelData, setModelData] = useState(null)
     const [assumptions, setAssumptions] = useState(null)
@@ -739,7 +739,7 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                                     <thead>
                                         <tr>
                                             <th>Date</th>
-                                            <th>User</th>
+                                            <th>Created By</th>
                                             <th className="text-right">Fair Value</th>
                                             <th className="text-right">Share Price</th>
                                             <th className="text-right">% Diff</th>
@@ -757,7 +757,7 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                                             valuations.map(v => (
                                                 <tr key={v.id}>
                                                     <td>{new Date(v.date).toLocaleDateString()}</td>
-                                                    <td>{v.user_email || 'Unknown'}</td>
+                                                    <td>{v.user_name || v.user_email || 'Unknown'}</td>
                                                     <td className="text-right">${formatDecimal(parseFloat(v.fair_value))}</td>
                                                     <td className="text-right">{v.share_price_at_time ? `$${formatDecimal(parseFloat(v.share_price_at_time))}` : 'N/A'}</td>
                                                     <td className={`text-right ${parseFloat(v.percent_undervalued) > 0 ? 'text-green' : 'text-red'}`}>
@@ -766,10 +766,23 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                                                     <td className="text-right">
                                                         <button
                                                             onClick={() => handleDeleteValuation(v.id)}
-                                                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}
+                                                            className="delete-valuation-btn"
                                                             title="Delete"
                                                         >
-                                                            🗑
+                                                            <svg
+                                                                viewBox="0 0 24 24"
+                                                                fill="none"
+                                                                stroke="currentColor"
+                                                                strokeWidth="1.5"
+                                                                strokeLinecap="round"
+                                                                strokeLinejoin="round"
+                                                            >
+                                                                <path d="M3 6h18"></path>
+                                                                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                                                                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                                                                <line x1="10" y1="11" x2="10" y2="17"></line>
+                                                                <line x1="14" y1="11" x2="14" y2="17"></line>
+                                                            </svg>
                                                         </button>
                                                     </td>
                                                 </tr>

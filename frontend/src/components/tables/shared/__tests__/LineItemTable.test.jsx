@@ -42,6 +42,6 @@ describe('LineItemTable', () => {
         render(<LineItemTable data={mockData} formatNumber={mockFormatNumber} />)
         const operatingBadges = screen.getAllByText('Operating')
         expect(operatingBadges.length).toBeGreaterThan(0)
-        expect(screen.getByText('Non-operating')).toBeInTheDocument()
+        expect(screen.getByText('Non-Operating')).toBeInTheDocument()
     })
 })

@@ -115,6 +115,8 @@ def calculate_and_save_historical_calculations(
         )
         existing_calc.invested_capital = results["invested_capital"]
         existing_calc.capital_turnover = results["capital_turnover"]
+        existing_calc.ebita = results["ebita"]
+        existing_calc.ebita_breakdown = ebita_breakdown_json
         existing_calc.ebita_margin = results["ebita_margin"]
         existing_calc.effective_tax_rate = results["effective_tax_rate"]
         existing_calc.adjusted_tax_rate = results["adjusted_tax_rate"]

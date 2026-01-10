@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from agents.balance_sheet_extractor import extract_balance_sheet
 from app.database import get_db
 from app.models.balance_sheet import BalanceSheet, BalanceSheetLineItem
-from app.models.document import Document, DocumentType, ProcessingStatus
+from app.models.document import Document, DocumentStatus, DocumentType, ProcessingStatus
 from app.models.user import User
 from app.routers.auth import get_current_user
 from app.schemas.balance_sheet import BalanceSheet as BalanceSheetSchema
@@ -108,6 +108,7 @@ def process_balance_sheet_async(document_id: str, db: Session):
             time_period=time_period,
             max_retries=3,
             document_type=document.document_type,
+            period_end_date=document.period_end_date,
         )
 
         # Store successful balance sheet chunk index in progress for income statement extraction
@@ -200,6 +201,10 @@ def process_balance_sheet_async(document_id: str, db: Session):
 
             # Create line items
             for idx, item in enumerate(line_items):
+                # Skip items with no value (prevents database integrity errors)
+                if item.get("line_value") is None:
+                    continue
+
                 line_item = BalanceSheetLineItem(
                     id=str(uuid.uuid4()),
                     balance_sheet_id=balance_sheet.id,
@@ -460,14 +465,21 @@ async def rerun_financial_statements(
 
     initialize_progress(document_id)
 
-    # Queue document for financial statement processing (lower priority)
-    from app.utils.document_processing_queue import queue_financial_statements_processing
+    # Queue document for processing - it will go through the full pipeline
+    from app.services.queue_service import queue_service
 
-    queue_financial_statements_processing(document_id)
+    print(
+        f"[rerun_financial_statements] Resetting document {document_id} to PENDING and adding to queue"
+    )
 
-    # Update status to processing
-    document.analysis_status = ProcessingStatus.PROCESSING
+    # Reset to PENDING - this will trigger the full pipeline (classification is fast if already done)
+    document.status = DocumentStatus.PENDING
+    document.analysis_status = ProcessingStatus.PENDING
+    document.error_message = None
     db.commit()
+
+    queue_service.add_document(document_id)
+    print("[rerun_financial_statements] Document added to queue")
 
     return {
         "message": "Financial statement extraction and classification re-run started",
@@ -601,9 +613,9 @@ async def rerun_financial_statements_test(
     initialize_progress(document_id)
 
     # Queue document for financial statement processing (lower priority)
-    from app.utils.document_processing_queue import queue_financial_statements_processing
+    from app.services.queue_service import queue_service
 
-    queue_financial_statements_processing(document_id)
+    queue_service.add_document(document_id)
 
     # Update status to processing
     document.analysis_status = ProcessingStatus.PROCESSING

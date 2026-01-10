@@ -167,6 +167,7 @@ def process_income_statement_async(document_id: str, db: Session):
             max_retries=3,  # 3 attempts: before, after, 2 after balance sheet
             document_type=document.document_type,
             balance_sheet_chunk_index=balance_sheet_chunk_index,
+            period_end_date=document.period_end_date,
         )
 
         # Check if extraction returned valid data with line items
@@ -287,6 +288,10 @@ def process_income_statement_async(document_id: str, db: Session):
 
             # Create line items
             for idx, item in enumerate(line_items):
+                # Skip items with no value (prevents database integrity errors)
+                if item.get("line_value") is None:
+                    continue
+
                 line_item = IncomeStatementLineItem(
                     id=str(uuid.uuid4()),
                     income_statement_id=income_statement.id,
@@ -395,6 +400,7 @@ def process_income_statement_async(document_id: str, db: Session):
                         file_path=document.file_path,
                         time_period=time_period,
                         document_type=document.document_type,
+                        period_end_date=document.period_end_date,
                     )
                     if amortization_result.get("line_items"):
                         existing_amortization = (

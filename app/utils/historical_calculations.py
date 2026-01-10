@@ -267,6 +267,18 @@ def get_revenue(income_statement: IncomeStatement) -> Decimal | None:
     return revenue_item.line_value if revenue_item else None
 
 
+def get_non_operating_line_items(
+    income_statement: IncomeStatement,
+) -> list[IncomeStatementLineItem]:
+    """
+    Identify non-operating line items using persisted classification.
+    """
+    if not income_statement or not income_statement.line_items:
+        return []
+
+    return [item for item in income_statement.line_items if item.is_operating is False]
+
+
 def get_operating_income_line_item(
     income_statement: IncomeStatement, llm_insights: dict[str, Any] | None = None
 ) -> IncomeStatementLineItem | None:
@@ -280,13 +292,14 @@ def get_operating_income_line_item(
     # First, try to find standardized "Operating Income" name
     for item in income_statement.line_items:
         if "Operating Income (" in item.line_name:
-            return item
+            if item.line_value is not None:
+                return item
 
     # Fallback to LLM insights if available
     if llm_insights:
         llm_line = llm_insights.get("operating_income_line")
         matched_item = _match_line_item(income_statement.line_items, llm_line)
-        if matched_item:
+        if matched_item and matched_item.line_value is not None:
             return matched_item
 
     # Fallback to original logic
@@ -301,35 +314,18 @@ def get_operating_income_line_item(
                 "operating profit",
                 "operating earnings",
                 "operating result",
+                "operating loss",
+                "loss from operations",
             ]
         ):
-            if "total" not in name_lower and "subtotal" not in name_lower:
-                return item
+            # Allow "Total Operating Income" as it's often the correct line
+            # Only exclude "subtotal" unless it's the only match?
+            # Safer to just remove the total check as "Operating Expenses" won't match the terms above.
+            if "subtotal" not in name_lower:
+                if item.line_value is not None:
+                    return item
 
     return None
-
-
-def get_operating_income(
-    income_statement: IncomeStatement, llm_insights: dict[str, Any] | None = None
-) -> Decimal | None:
-    """
-    Extract operating income from income statement line items.
-    Uses standardized name "Operating Income" if available.
-    """
-    item = get_operating_income_line_item(income_statement, llm_insights)
-    return item.line_value if item else None
-
-
-def get_non_operating_line_items(
-    income_statement: IncomeStatement,
-) -> list[IncomeStatementLineItem]:
-    """
-    Identify non-operating line items using persisted classification.
-    """
-    if not income_statement or not income_statement.line_items:
-        return []
-
-    return [item for item in income_statement.line_items if item.is_operating is False]
 
 
 def calculate_ebita(
@@ -345,10 +341,11 @@ def calculate_ebita(
     - operating_income: The operating income value used
     - adjustments: List of adjustment items used
     """
-    operating_income = get_operating_income(income_statement)
-    if operating_income is None:
+    op_income_item = get_operating_income_line_item(income_statement)
+    if op_income_item is None or op_income_item.line_value is None:
         return None
 
+    operating_income = op_income_item.line_value
     ebita = operating_income
     adjustments = []
 
@@ -379,15 +376,6 @@ def calculate_ebita(
                 line_value = item.get("line_value", 0)
 
             # Add to EBITA
-            # Assuming values in reconciliation table are positive for addbacks
-            # If they are expenses stored as negative in existing structure, we might need to flip sign?
-            # But typically in AmortizationLineItem they are just extracted values.
-            # Let's assume positive magnitude implies addback.
-            # If context suggests expenses are negative, we should ADD them if they are reduced from income?
-            # Wait, usually: GAAP Op Inc + Addbacks = Non-GAAP Op Inc.
-            # Addbacks like Stock Comp are positive.
-            # Addbacks like Amortization are positive.
-            # If we extract "Amortization ... 500", we add 500.
             ebita += Decimal(str(line_value))
 
             # Get category
@@ -401,6 +389,52 @@ def calculate_ebita(
                     "line_value": float(line_value),
                     "is_operating": False,
                     "category": category,
+                }
+            )
+    else:
+        # Fallback: Use Income Statement "Non-Operating" items
+        # Logic: Items marked is_operating=False explicitly
+        # Constraint: Must be BEFORE Operating Income line
+
+        op_income_order = op_income_item.line_order
+
+        sorted_items = sorted(income_statement.line_items, key=lambda x: x.line_order)
+
+        for item in sorted_items:
+            # Must be before Operating Income
+            if item.line_order >= op_income_order:
+                continue
+
+            # Must be explicitly non-operating
+            if item.is_operating is not False:
+                continue
+
+            # Skip totals
+            name_lower = item.line_name.lower()
+            if "total" in name_lower or "subtotal" in name_lower:
+                continue
+
+            # Reverse sign: Expenses are usually negative in extraction (-100).
+            # To "Add Back", we subtract the negative (- -100 = +100).
+            # Or if they are positive costs, we add them.
+            # Standard convention in this app: Expenses are negative numbers?
+            # Let's check: "Tax Expense (100)" -> extracted as 100 or -100?
+            # Usually standard extraction keeps positive magnitude if it's just a table,
+            # but "net income" calcs imply sign.
+            # User instruction: "Make sure to reverse the signs in the calculation."
+
+            # So if value is V, we use -V.
+            val_decimal = Decimal(str(item.line_value))
+            adjustment_val = -val_decimal
+
+            ebita += adjustment_val
+
+            adjustments.append(
+                {
+                    "line_name": item.line_name,
+                    "line_value": float(adjustment_val),
+                    "is_operating": False,
+                    "category": item.line_category,
                 }
             )
 

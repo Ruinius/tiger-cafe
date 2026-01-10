@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { useAuth } from '../../../contexts/AuthContext'
+import { API_BASE_URL } from '../../../config'
 import FinancialModel from './FinancialModel'
 import './Company.css'
-
-const API_BASE_URL = 'http://localhost:8000/api'
 
 function CompanyAnalysisView({ selectedCompany }) {
     const { isAuthenticated, token } = useAuth()
@@ -175,6 +174,18 @@ function CompanyAnalysisView({ selectedCompany }) {
             formatStats: (val) => val ? Number(val).toLocaleString() : 'N/A'
         }
     ]
+
+    if (!selectedCompany) {
+        return (
+            <div className="right-panel">
+                <div className="panel-content">
+                    <p className="placeholder-text">
+                        Select a company to view financial analysis
+                    </p>
+                </div>
+            </div>
+        )
+    }
 
     return (
         <div className="right-panel">

@@ -1,5 +1,7 @@
-import yfinance as yf
 from decimal import Decimal
+
+import yfinance as yf
+
 
 def get_latest_share_price(ticker: str) -> Decimal:
     """
@@ -17,10 +19,10 @@ def get_latest_share_price(ticker: str) -> Decimal:
         price = ticker_obj.fast_info.last_price
 
         if price is None:
-             # Fallback to history
-             hist = ticker_obj.history(period="1d")
-             if not hist.empty:
-                 price = hist['Close'].iloc[-1]
+            # Fallback to history
+            hist = ticker_obj.history(period="1d")
+            if not hist.empty:
+                price = hist["Close"].iloc[-1]
 
         if price is not None:
             return Decimal(str(price))

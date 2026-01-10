@@ -71,12 +71,20 @@ def call_llm_with_retry(
 
 
 def check_section_completeness_llm(
-    text: str, time_period: str, statement_name: str, validation_criteria: str
-) -> bool:
+    text: str,
+    time_period: str,
+    statement_name: str,
+    validation_criteria: str,
+    period_end_date: str | None = None,
+) -> tuple[bool, str]:
     """
     Generic function to check if a document section contains a complete financial statement.
     """
-    prompt = f"""Analyze the following document text to determine if it contains a COMPLETE {statement_name} for the time period: {time_period}.
+    period_info = f"time period: {time_period}"
+    if period_end_date:
+        period_info += f" (period ending {period_end_date})"
+
+    prompt = f"""Analyze the following document text to determine if it contains a COMPLETE {statement_name} for the {period_info}.
 
 CRITICAL ANTI-HALLUCINATION RULES:
 - ONLY use information from the provided document text below
@@ -100,10 +108,10 @@ Return only valid JSON, no additional text."""
 
     try:
         result = call_llm_with_retry(prompt)
-        return result.get("is_complete", False)
+        return result.get("is_complete", False), result.get("reason", "")
     except Exception as e:
         print(f"Error checking {statement_name} completeness: {str(e)}")
-        return False
+        return False, str(e)
 
 
 def get_llm_insights_generic(

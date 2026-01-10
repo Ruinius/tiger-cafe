@@ -58,9 +58,27 @@ export function useUploadManager(onUploadComplete) {
     handleUploadSuccess,
     handleReplaceAndIndex,
     handleCancelDuplicate,
+    checkDuplicates: (files) => checkDuplicates(files, token),
     hasActiveUploads,
     uploadingDocuments,
     showUploadProgress,
-    setShowUploadProgress
+    setShowUploadProgress,
   }
+}
+
+// Add duplicate check function
+async function checkDuplicates(files, token) {
+  const { computeQuickHash } = await import('../utils/fileHash');
+
+  const filesMetadata = await Promise.all(Array.from(files).map(async (file) => ({
+    filename: file.name,
+    size: file.size,
+    quick_hash: await computeQuickHash(file)
+  })));
+
+  const response = await axios.post(`${API_BASE_URL}/documents/check-duplicates-batch`, filesMetadata, {
+    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+  });
+
+  return response.data;
 }

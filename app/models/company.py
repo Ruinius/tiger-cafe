@@ -14,7 +14,7 @@ class Company(Base):
 
     id = Column(String, primary_key=True, index=True)
     name = Column(String, nullable=False, index=True)
-    ticker = Column(String, nullable=True, index=True)  # Stock ticker symbol
+    ticker = Column(String, nullable=True, index=True, unique=True)  # Stock ticker symbol
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

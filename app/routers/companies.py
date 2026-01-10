@@ -121,7 +121,22 @@ async def create_company(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new company"""
-    db_company = Company(id=str(uuid.uuid4()), name=company.name, ticker=company.ticker)
+    ticker = company.ticker.strip().upper() if company.ticker else None
+    name = company.name.strip() if company.name else "Unknown"
+
+    # If ticker is provided, check if it already exists
+    if ticker:
+        existing = db.query(Company).filter(Company.ticker == ticker).first()
+        if existing:
+            # If the existing company has a placeholder name, update it
+            if existing.name == "Processing..." and name and name != "Processing...":
+                existing.name = name
+                db.commit()
+                db.refresh(existing)
+            return existing
+
+    # Otherwise create new
+    db_company = Company(id=str(uuid.uuid4()), name=name, ticker=ticker)
     db.add(db_company)
     db.commit()
     db.refresh(db_company)
@@ -531,9 +546,10 @@ async def save_valuation(
     db.commit()
     db.refresh(valuation)
 
-    # Enrich response with user email
+    # Enrich response with user email and name
     result = valuation.__dict__
     result["user_email"] = current_user.email
+    result["user_name"] = current_user.name
     return result
 
 
@@ -557,6 +573,7 @@ async def list_valuations(
         res = v.__dict__
         if v.user:
             res["user_email"] = v.user.email
+            res["user_name"] = v.user.name
         results.append(res)
     return results
 

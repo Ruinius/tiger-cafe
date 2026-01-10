@@ -2,21 +2,30 @@ import React, { useState, useRef, useCallback } from 'react'
 import axios from 'axios'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
+import { useUploadManager } from '../../hooks/useUploadManager'
+import DuplicateConfirmationModal from './DuplicateConfirmationModal'
+import { API_BASE_URL } from '../../config'
 import './UploadModal.css'
-
-const API_BASE_URL = 'http://localhost:8000/api'
 
 function UploadModal({ isOpen, onClose, onUploadSuccess }) {
   const [files, setFiles] = useState([])
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState(null)
+
+  // Duplicate handling state
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false)
+  const [duplicateResults, setDuplicateResults] = useState([])
+
   const fileInputRef = useRef(null)
   const dropZoneRef = useRef(null)
-  
+
+  // Use upload manager for duplicate checking
+  const { checkDuplicates } = useUploadManager()
+
   // Always call hooks at the top level - never conditionally
   const themeContext = useTheme()
   const authContext = useAuth()
-  
+
   // Extract values with safe defaults
   const theme = themeContext?.theme || 'light'
   const isAuthenticated = authContext?.isAuthenticated || false
@@ -45,27 +54,27 @@ function UploadModal({ isOpen, onClose, onUploadSuccess }) {
       dropZoneRef.current.classList.remove('drag-over')
     }
 
-    const droppedFiles = Array.from(e.dataTransfer.files).filter(file => 
+    const droppedFiles = Array.from(e.dataTransfer.files).filter(file =>
       file.name.endsWith('.pdf')
     )
-    
+
     if (droppedFiles.length === 0) {
       setError('Only PDF files are supported')
       return
     }
-    
+
     if (droppedFiles.length + files.length > 10) {
       setError('Maximum 10 files allowed')
       return
     }
-    
+
     setFiles(prev => [...prev, ...droppedFiles])
     setError(null)
   }, [files])
 
   // Regular functions (not hooks) can be defined after hooks
   const handleFileSelect = (e) => {
-    const selectedFiles = Array.from(e.target.files).filter(file => 
+    const selectedFiles = Array.from(e.target.files).filter(file =>
       file.name.endsWith('.pdf')
     )
     if (selectedFiles.length === 0) {
@@ -84,19 +93,14 @@ function UploadModal({ isOpen, onClose, onUploadSuccess }) {
     setFiles(prev => prev.filter((_, i) => i !== index))
   }
 
-  const handleUpload = async () => {
-    if (files.length === 0) {
-      setError('Please select at least one file')
-      return
-    }
-
+  const performUpload = async (filesToUpload) => {
     setUploading(true)
     setError(null)
+    setShowDuplicateModal(false)
 
     // Close modal immediately - don't wait for response
-    // Processing happens asynchronously in the background
     const formData = new FormData()
-    files.forEach(file => {
+    filesToUpload.forEach(file => {
       formData.append('files', file)
     })
 
@@ -107,27 +111,65 @@ function UploadModal({ isOpen, onClose, onUploadSuccess }) {
       {
         headers: {
           'Content-Type': 'multipart/form-data',
+          ...(isAuthenticated && authContext?.token ? { 'Authorization': `Bearer ${authContext.token}` } : {})
         },
       }
     )
 
     // Close modal and call success handler immediately
     handleClose()
-    onUploadSuccess({ message: `Uploading ${files.length} file(s)...` })
+    onUploadSuccess({ message: `Uploading ${filesToUpload.length} file(s)...` })
 
-    // Handle response/errors in background (won't block modal closing)
+    // Handle response/errors in background
     uploadPromise
       .then((response) => {
-        // Success - response handled by parent component
         if (onUploadSuccess) {
           onUploadSuccess(response.data)
         }
       })
       .catch((err) => {
         console.error('Upload error:', err)
-        // Show error to user (could use a toast notification)
         alert(err.response?.data?.detail || 'Failed to upload documents. Please try again.')
       })
+  }
+
+  const handleUploadClick = async () => {
+    if (files.length === 0) {
+      setError('Please select at least one file')
+      return
+    }
+
+    setUploading(true)
+    setError(null)
+
+    try {
+      // 1. Check for duplicates
+      const results = await checkDuplicates(files)
+      const hasDuplicates = results.some(r => r.is_potential_duplicate)
+
+      if (hasDuplicates) {
+        setDuplicateResults(results)
+        setShowDuplicateModal(true)
+        setUploading(false)
+        return
+      }
+
+      // 2. If no duplicates, proceed with all files
+      await performUpload(files)
+    } catch (err) {
+      console.error('Error checking duplicates:', err)
+      // Fallback to uploading everything if check fails
+      await performUpload(files)
+    }
+  }
+
+  const handleDuplicateConfirm = (selectedFilenames) => {
+    const filesToUpload = files.filter(f => selectedFilenames.includes(f.name))
+    if (filesToUpload.length === 0) {
+      handleClose()
+      return
+    }
+    performUpload(filesToUpload)
   }
 
   const handleClose = () => {
@@ -144,8 +186,8 @@ function UploadModal({ isOpen, onClose, onUploadSuccess }) {
 
   return (
     <div className="modal-overlay" onClick={handleClose} data-theme={theme}>
-      <div 
-        className="modal-content" 
+      <div
+        className="modal-content"
         onClick={(e) => e.stopPropagation()}
         data-theme={theme}
       >
@@ -222,7 +264,7 @@ function UploadModal({ isOpen, onClose, onUploadSuccess }) {
             </button>
             <button
               className="button-primary"
-              onClick={handleUpload}
+              onClick={handleUploadClick}
               disabled={files.length === 0 || uploading}
             >
               {uploading ? 'Uploading...' : `Upload ${files.length} File${files.length !== 1 ? 's' : ''}`}
@@ -230,6 +272,13 @@ function UploadModal({ isOpen, onClose, onUploadSuccess }) {
           </div>
         </div>
       </div>
+
+      <DuplicateConfirmationModal
+        isOpen={showDuplicateModal}
+        onClose={() => setShowDuplicateModal(false)}
+        duplicateResults={duplicateResults}
+        onProceed={handleDuplicateConfirm}
+      />
     </div>
   )
 }

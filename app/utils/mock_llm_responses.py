@@ -44,6 +44,7 @@ MOCK_EXTRACTION_RESPONSE = """
 }
 """
 
+
 def get_mock_response(prompt: str) -> str:
     """Return a mock response based on the prompt content."""
     prompt_lower = prompt.lower()
@@ -54,7 +55,7 @@ def get_mock_response(prompt: str) -> str:
     elif "summarize" in prompt_lower:
         return "This is a mock summary of the document."
     elif "identify" in prompt_lower:
-         return "Mock Identification: This looks like a 10-K."
+        return "Mock Identification: This looks like a 10-K."
 
     # Default fallback
     return '{"mock_response": "default", "content": "This is a default mock response."}'

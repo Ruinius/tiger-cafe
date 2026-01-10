@@ -34,9 +34,7 @@ class AmortizationLineItem(Base):
     __tablename__ = "amortization_line_items"
 
     id = Column(String, primary_key=True, index=True)
-    amortization_id = Column(
-        String, ForeignKey("amortizations.id"), nullable=False, index=True
-    )
+    amortization_id = Column(String, ForeignKey("amortizations.id"), nullable=False, index=True)
 
     line_name = Column(String, nullable=False)
     line_value = Column(Numeric(20, 2), nullable=False)

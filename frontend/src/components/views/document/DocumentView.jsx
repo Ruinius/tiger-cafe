@@ -151,6 +151,9 @@ function DocumentView({ selectedDocument, selectedCompany, onBack }) {
                             <strong>Time Period:</strong> {doc.time_period || 'N/A'}
                         </div>
                         <div className="metadata-item">
+                            <strong>Period Ending:</strong> {doc.period_end_date || 'N/A'}
+                        </div>
+                        <div className="metadata-item">
                             <strong>Pages:</strong> {doc.page_count || 'N/A'}
                         </div>
                         <div className="metadata-item">
@@ -179,14 +182,6 @@ function DocumentView({ selectedDocument, selectedCompany, onBack }) {
                         <div className="summary-section" style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
                             <strong>Re-run Processing</strong>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
-                                <button
-                                    className="button-secondary"
-                                    disabled={isCheckingProcessingStatus || isProcessing || doc.indexing_status === 'indexing' || doc.analysis_status === 'processing' || buttonDebouncing['rerun-indexing']}
-                                    onClick={() => debounceAction('rerun-indexing', () => performAction('rerun-indexing', doc.id))}
-                                    style={{ width: '100%', textAlign: 'left' }}
-                                >
-                                    Re-run Indexing
-                                </button>
                                 <button
                                     className="button-secondary"
                                     disabled={
@@ -239,7 +234,7 @@ function DocumentView({ selectedDocument, selectedCompany, onBack }) {
                         </button>
                         <button
                             className="button-warning"
-                            disabled={isCheckingProcessingStatus || isProcessing || doc.indexing_status === 'indexing' || doc.analysis_status === 'processing' || buttonDebouncing['delete-document']}
+                            disabled={buttonDebouncing['delete-document']}
                             style={{ width: '100%', textAlign: 'left', marginTop: '0.75rem', backgroundColor: 'var(--error, #E5484D)', color: 'white' }}
                             onClick={() => debounceAction('delete-document', () => {
                                 if (window.confirm('Are you sure you want to permanently delete this document?')) {

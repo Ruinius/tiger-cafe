@@ -37,9 +37,7 @@ async def get_amortization(
     document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     _get_document_or_404(document_id, db)
-    amortization = (
-        db.query(Amortization).filter(Amortization.document_id == document_id).first()
-    )
+    amortization = db.query(Amortization).filter(Amortization.document_id == document_id).first()
     if not amortization:
         raise HTTPException(status_code=404, detail="Amortization not found for this document")
 
@@ -84,9 +82,7 @@ async def get_other_liabilities(
         db.query(OtherLiabilities).filter(OtherLiabilities.document_id == document_id).first()
     )
     if not other_liabilities:
-        raise HTTPException(
-            status_code=404, detail="Other liabilities not found for this document"
-        )
+        raise HTTPException(status_code=404, detail="Other liabilities not found for this document")
 
     other_liabilities_schema = OtherLiabilitiesSchema.model_validate(other_liabilities)
     return {"status": "exists", "data": other_liabilities_schema.model_dump()}

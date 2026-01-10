@@ -5,12 +5,10 @@ Other assets extraction agent using Gemini LLM and embeddings
 from __future__ import annotations
 
 import json
-import re
 
 from app.utils.document_section_finder import collect_top_chunk_texts
 from app.utils.gemini_client import generate_content_safe
 from app.utils.line_item_utils import (
-    extract_original_name_from_standardized,
     normalize_line_name,
 )
 

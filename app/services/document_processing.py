@@ -106,27 +106,50 @@ def process_document(
     document_hash = generate_document_hash(hash_text)
 
     classification_data = classify_document(extracted_text)
-    company_name = classification_data.get("company_name")
+    ticker = (
+        classification_data.get("ticker").strip().upper()
+        if classification_data.get("ticker")
+        else None
+    )
+    company_name = (
+        classification_data.get("company_name").strip()
+        if classification_data.get("company_name")
+        else None
+    )
 
-    if not company_name:
+    if not ticker and not company_name:
         if document:
             document.indexing_status = ProcessingStatus.ERROR
             db_session.commit()
-        raise ValueError("Could not identify company from document.")
+        raise ValueError("Could not identify company (no ticker or name) from document.")
 
-    company = db_session.query(Company).filter(Company.name.ilike(company_name)).first()
+    # 1. Try to find by ticker (the primary unique identifier)
+    company = None
+    if ticker:
+        company = db_session.query(Company).filter(Company.ticker == ticker).first()
+
+    # 2. Fallback to name if not found by ticker
+    if not company and company_name:
+        company = db_session.query(Company).filter(Company.name.ilike(company_name)).first()
+        # If found by name but it has no ticker, link the ticker now
+        if company and ticker and not company.ticker:
+            company.ticker = ticker
+            db_session.commit()
+            print(f"Updated ticker for company {company.name} to {ticker}")
+
+    # 3. Create new if still not found
     if not company:
-        company = Company(
-            id=str(uuid.uuid4()), name=company_name, ticker=classification_data.get("ticker")
-        )
+        company = Company(id=str(uuid.uuid4()), name=company_name or ticker, ticker=ticker)
         db_session.add(company)
         db_session.commit()
         db_session.refresh(company)
+        print(f"Created new company: {company.name} ({company.ticker})")
 
     if document:
         document.company_id = company.id
         document.document_type = classification_data.get("document_type")
         document.time_period = classification_data.get("time_period")
+        document.period_end_date = classification_data.get("period_end_date")
         document.unique_id = document_hash
         document.page_count = total_pages
         document.character_count = character_count

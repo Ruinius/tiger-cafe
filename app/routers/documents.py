@@ -16,26 +16,22 @@ from agents.document_classifier import classify_document
 from app.database import get_db
 from app.models.company import Company
 from app.models.document import Document, DocumentType, ProcessingStatus
+from app.models.document_status import DocumentStatus
 from app.models.user import User
 from app.routers.auth import get_current_user
+from app.schemas.document import Document as DocumentSchema
 from app.schemas.document import (
-    ClassificationResult,
     DocumentCreate,
     DocumentUpdate,
     DocumentUploadResponse,
-    DuplicateInfo,
 )
-from app.schemas.document import Document as DocumentSchema
-from app.services.document_processing import DocumentProcessingMode, process_document
+from app.schemas.file_metadata import DuplicateCheckResult, ExistingDocumentInfo, FileMetadata
 from app.utils.document_hash import generate_document_hash
 from app.utils.document_indexer import delete_chunk_embeddings, get_chunk_metadata, get_chunk_text
 from app.utils.pdf_extractor import extract_text_from_pdf
 from config.config import DEBUG, UPLOAD_DIR
 
 router = APIRouter()
-
-# In-memory tracking of active uploads (in production, use Redis or database)
-active_uploads = {}  # {document_id: {"status": "uploading|classifying|indexing", "progress": 0-100}}
 
 
 def add_uploader_name_to_document(db: Session, document: Document) -> dict:
@@ -50,6 +46,7 @@ def add_uploader_name_to_document(db: Session, document: Document) -> dict:
         "file_path": document.file_path,
         "document_type": document.document_type,
         "time_period": document.time_period,
+        "period_end_date": document.period_end_date,
         "summary": document.summary,
         "unique_id": document.unique_id,
         "indexing_status": document.indexing_status,
@@ -85,50 +82,88 @@ def add_uploader_name_to_document(db: Session, document: Document) -> dict:
 
 
 # New batch upload endpoint for multi-file upload
-@router.post("/upload-batch")
-async def upload_batch(
-    files: list[UploadFile] = File(...),
-    background_tasks: BackgroundTasks = BackgroundTasks(),
+@router.post("/check-duplicates-batch", response_model=list[DuplicateCheckResult])
+async def check_duplicates_batch(
+    files: list[FileMetadata],
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    Upload multiple documents (up to 10) and process them asynchronously.
-    Returns immediately with document IDs. Processing happens in background.
+    Check for potential duplicates before upload.
+    Returns list of potential matches for user confirmation.
+    """
+    results = []
+    for file_meta in files:
+        # Check by filename + size first (fast)
+        # Note: We rely on file_size being populated in Phase 1
+        potential_dupe = (
+            db.query(Document)
+            .filter(Document.filename == file_meta.filename, Document.file_size == file_meta.size)
+            .first()
+        )
+
+        existing_info = None
+        if potential_dupe:
+            uploader = db.query(User).filter(User.id == potential_dupe.user_id).first()
+            uploader_name = uploader.name if uploader else "Unknown"
+
+            existing_info = ExistingDocumentInfo(
+                id=potential_dupe.id,
+                uploaded_by=uploader_name,
+                uploaded_at=potential_dupe.uploaded_at,
+                filename=potential_dupe.filename,
+            )
+
+        results.append(
+            DuplicateCheckResult(
+                filename=file_meta.filename,
+                is_potential_duplicate=potential_dupe is not None,
+                existing_document=existing_info,
+            )
+        )
+
+    return results
+
+
+# New batch upload endpoint for multi-file upload
+@router.post("/upload-batch")
+async def upload_batch(
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Upload multiple documents (up to 10) and process them asynchronously via the queue.
     """
     if len(files) > 10:
         raise HTTPException(status_code=400, detail="Maximum 10 files allowed per upload")
 
-    document_ids = []
-    import asyncio
+    results = []
 
-    async def read_file_content(file: UploadFile) -> tuple[bytes, str, str]:
-        """Read file content asynchronously"""
-        document_id = str(uuid.uuid4())
-        file_content = await file.read()
-        return file_content, file.filename, document_id
+    # Process files sequentially using the internal logic
+    # Note: upload_document_internal saves file and enqueues it, so it's fast.
+    for file in files:
+        if not file.filename.endswith(".pdf"):
+            continue  # Skip non-pdfs or handle error
 
-    # Read all files in parallel
-    file_tasks = [read_file_content(file) for file in files if file.filename.endswith(".pdf")]
+        # We need to reset the file pointer if it was read previously,
+        # but here we receive fresh SpooledTemporaryFile objects.
+        # upload_document_internal reads from file.file
 
-    if not file_tasks:
-        raise HTTPException(status_code=400, detail="No valid PDF files provided")
+        try:
+            result = await upload_document_internal(file, db, current_user)
+            results.append(result.document_id)
+        except HTTPException:
+            # If one fails, we log/skip? Or fail batch?
+            # For simplicity, we skip error handling per-file here or handle basic
+            pass
+        except Exception as e:
+            print(f"Batch upload error for {file.filename}: {e}")
 
-    file_results = await asyncio.gather(*file_tasks)
+    if not results:
+        raise HTTPException(status_code=400, detail="No valid PDF files processed or all failed")
 
-    # Start background tasks for all files
-    for file_content, filename, document_id in file_results:
-        document_ids.append(document_id)
-        background_tasks.add_task(
-            upload_and_process_async_with_content,
-            file_content,
-            filename,
-            document_id,
-            current_user.id,
-            db,
-        )
-
-    return {"document_ids": document_ids, "message": f"Uploading {len(document_ids)} documents"}
+    return {"document_ids": results, "message": f"Queued {len(results)} documents"}
 
 
 if DEBUG:
@@ -136,7 +171,6 @@ if DEBUG:
     @router.post("/upload-batch-test")
     async def upload_batch_test(
         files: list[UploadFile] = File(...),
-        background_tasks: BackgroundTasks = BackgroundTasks(),
         db: Session = Depends(get_db),
     ):
         """
@@ -154,36 +188,23 @@ if DEBUG:
         if len(files) > 10:
             raise HTTPException(status_code=400, detail="Maximum 10 files allowed per upload")
 
-        document_ids = []
-        import asyncio
+        results = []
+        for file in files:
+            if not file.filename.endswith(".pdf"):
+                continue
 
-        async def read_file_content(file: UploadFile) -> tuple[bytes, str, str]:
-            """Read file content asynchronously"""
-            document_id = str(uuid.uuid4())
-            file_content = await file.read()
-            return file_content, file.filename, document_id
+            try:
+                result = await upload_document_internal(file, db, test_user)
+                results.append(result.document_id)
+            except Exception as e:
+                print(f"Test batch upload error for {file.filename}: {e}")
 
-        # Read all files in parallel
-        file_tasks = [read_file_content(file) for file in files if file.filename.endswith(".pdf")]
-
-        if not file_tasks:
-            raise HTTPException(status_code=400, detail="No valid PDF files provided")
-
-        file_results = await asyncio.gather(*file_tasks)
-
-        # Start background tasks for all files
-        for file_content, filename, document_id in file_results:
-            document_ids.append(document_id)
-            background_tasks.add_task(
-                upload_and_process_async_with_content,
-                file_content,
-                filename,
-                document_id,
-                test_user.id,
-                db,
+        if not results:
+            raise HTTPException(
+                status_code=400, detail="No valid PDF files processed or all failed"
             )
 
-        return {"document_ids": document_ids, "message": f"Uploading {len(document_ids)} documents"}
+        return {"document_ids": results, "message": f"Queued {len(results)} documents"}
 
 
 @router.get("/upload-progress", response_model=list[DocumentSchema])
@@ -210,6 +231,14 @@ async def get_upload_progress(
     return [add_uploader_name_to_document(db, doc) for doc in documents]
 
 
+@router.get("/processing-queue-status")
+async def get_queue_status():
+    """Get the current status of the document processing queue."""
+    from app.services.queue_service import queue_service
+
+    return queue_service.get_status()
+
+
 if DEBUG:
 
     @router.get("/upload-progress-test", response_model=list[DocumentSchema])
@@ -231,156 +260,6 @@ if DEBUG:
             .all()
         )
         return [add_uploader_name_to_document(db, doc) for doc in documents]
-
-
-def upload_and_process_async_with_content(
-    file_content: bytes, filename: str, document_id: str, user_id: str, db: Session
-):
-    """
-    Complete async workflow with file content already read: upload → classify → check duplicate → index (if no duplicate).
-    This function handles the entire process in the background.
-    """
-
-    from app.database import SessionLocal
-
-    db_session = SessionLocal()
-    file_path = None
-
-    try:
-        # Create a temporary document record with UPLOADING status
-        placeholder_company = db_session.query(Company).first()
-        if not placeholder_company:
-            # Create a temporary placeholder company
-            placeholder_company = Company(id=str(uuid.uuid4()), name="Processing...", ticker=None)
-            db_session.add(placeholder_company)
-            db_session.commit()
-
-        # Create document record with UPLOADING status
-        document = Document(
-            id=document_id,
-            user_id=user_id,
-            company_id=placeholder_company.id,
-            filename=filename,
-            file_path="",  # Will be set after upload
-            indexing_status=ProcessingStatus.UPLOADING,
-        )
-        db_session.add(document)
-        db_session.commit()
-        db_session.refresh(document)  # Ensure document is fully committed and visible
-
-        # Step 1: Save file
-        os.makedirs(UPLOAD_DIR, exist_ok=True)
-        file_extension = os.path.splitext(filename)[1]
-        saved_filename = f"{document_id}{file_extension}"
-        file_path = os.path.join(UPLOAD_DIR, saved_filename)
-
-        with open(file_path, "wb") as buffer:
-            buffer.write(file_content)
-
-        # Update document with file path
-        document.file_path = file_path
-        db_session.commit()
-
-        # Queue document for classification and indexing (sequential processing)
-        # Upload is complete, now classification and indexing will happen in the queue
-        from app.utils.document_processing_queue import queue_document_for_processing
-
-        queue_document_for_processing(document_id)
-
-    except Exception as e:
-        print(f"Error processing document {document_id}: {str(e)}")
-        import traceback
-
-        traceback.print_exc()
-        if db_session:
-            try:
-                document = db_session.query(Document).filter(Document.id == document_id).first()
-                if document:
-                    document.indexing_status = ProcessingStatus.ERROR
-                    db_session.commit()
-            except Exception:
-                pass
-        # Clean up file if it exists
-        if file_path and os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-            except OSError:
-                pass
-    finally:
-        if db_session:
-            db_session.close()
-
-
-def upload_and_process_async(file: UploadFile, document_id: str, user_id: str, db: Session):
-    """
-    Complete async workflow: upload → classify → check duplicate → index (if no duplicate).
-    This function handles the entire process in the background.
-    """
-    from app.database import SessionLocal
-
-    db_session = SessionLocal()
-    file_path = None
-
-    try:
-        # Create a temporary document record with UPLOADING status
-        # We need to get company first, but we'll update it later
-        # For now, create a placeholder company
-        placeholder_company = db_session.query(Company).first()
-        if not placeholder_company:
-            # Create a temporary placeholder company
-            placeholder_company = Company(id=str(uuid.uuid4()), name="Processing...", ticker=None)
-            db_session.add(placeholder_company)
-            db_session.commit()
-
-        # Create document record with UPLOADING status
-        document = Document(
-            id=document_id,
-            user_id=user_id,
-            company_id=placeholder_company.id,
-            filename=file.filename,
-            file_path="",  # Will be set after upload
-            indexing_status=ProcessingStatus.UPLOADING,
-        )
-        db_session.add(document)
-        db_session.commit()
-
-        # Step 1: Upload file
-        os.makedirs(UPLOAD_DIR, exist_ok=True)
-        file_extension = os.path.splitext(file.filename)[1]
-        saved_filename = f"{document_id}{file_extension}"
-        file_path = os.path.join(UPLOAD_DIR, saved_filename)
-
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-
-        # Update document with file path
-        document.file_path = file_path
-        db_session.commit()
-        process_document(
-            db_session=db_session,
-            document_id=document_id,
-            mode=DocumentProcessingMode.FULL,
-        )
-
-    except Exception as e:
-        print(f"Error processing document {document_id}: {str(e)}")
-        if db_session:
-            try:
-                document = db_session.query(Document).filter(Document.id == document_id).first()
-                if document:
-                    document.indexing_status = ProcessingStatus.ERROR
-                    db_session.commit()
-            except Exception:
-                pass
-        # Clean up file if it exists
-        if file_path and os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-            except OSError:
-                pass
-    finally:
-        if db_session:
-            db_session.close()
 
 
 # Temporary test endpoint without authentication (for development/testing only)
@@ -409,6 +288,12 @@ if DEBUG:
 async def upload_document_internal(file: UploadFile, db: Session, current_user: User):
     """
     Internal upload function shared by authenticated and test endpoints.
+    New Flow (Phase 4):
+    1. Validate PDF.
+    2. Save file to UPLOAD_DIR.
+    3. Create Document record (Pending).
+    4. Queue for processing.
+    5. Return immediate response.
     """
     # Validate file type
     if not file.filename.endswith(".pdf"):
@@ -430,83 +315,42 @@ async def upload_document_internal(file: UploadFile, db: Session, current_user: 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
 
-    try:
-        processing_result = process_document(
-            db_session=db,
-            mode=DocumentProcessingMode.PREVIEW,
-            file_path=file_path,
-            filename=file.filename,
-            document_id=document_id,
-        )
-    except ValueError as e:
-        os.remove(file_path)
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        os.remove(file_path)
-        raise HTTPException(status_code=500, detail=f"Error processing document: {str(e)}")
+    # Create Document record
+    # Use placeholder company if none exists (logic retained from old flow but simplified)
+    # We really should have a proper "Unassigned" company or require selection.
+    # For now, we grab the first one or create a placeholder to satisfy FK constraints.
+    placeholder_company = db.query(Company).first()
+    if not placeholder_company:
+        placeholder_company = Company(id=str(uuid.uuid4()), name="Processing...", ticker=None)
+        db.add(placeholder_company)
+        db.commit()
 
-    classification_data = processing_result.classification_data
-    text_preview = processing_result.extracted_text_preview
-    preliminary_summary = processing_result.summary
-
-    # Get or create company
-    company_name = classification_data.get("company_name")
-    ticker = classification_data.get("ticker")
-
-    if not company_name:
-        # Clean up file on error
-        os.remove(file_path)
-        raise HTTPException(
-            status_code=400,
-            detail="Could not identify company from document. Please ensure the document contains company information.",
-        )
-
-    # Check for duplicates
-    duplicate_info = None
-    document_type = classification_data.get("document_type")
-    time_period = classification_data.get("time_period")
-    duplicate_check = processing_result.duplicate_check
-
-    if duplicate_check and duplicate_check.get("is_duplicate"):
-        existing_doc = duplicate_check["existing_document"]
-        existing_user = db.query(User).filter(User.id == existing_doc.user_id).first()
-
-        duplicate_info = DuplicateInfo(
-            is_duplicate=True,
-            existing_document_id=existing_doc.id,
-            existing_document_filename=existing_doc.filename,
-            existing_document_uploaded_at=existing_doc.uploaded_at,
-            existing_document_uploaded_by=existing_user.name if existing_user else "Unknown",
-            match_reason=duplicate_check["match_reason"],
-        )
-
-    # Create classification result
-    classification_result = ClassificationResult(
-        document_type=document_type,
-        time_period=time_period,
-        company_name=company_name,
-        ticker=ticker,
-        confidence=classification_data.get("confidence"),
-        extracted_text_preview=text_preview,
-        summary=preliminary_summary,
+    document = Document(
+        id=document_id,
+        user_id=current_user.id,
+        company_id=placeholder_company.id,
+        filename=file.filename,
+        file_path=file_path,
+        indexing_status=ProcessingStatus.PENDING,
+        # Unified status
+        status=DocumentStatus.PENDING,
+        uploaded_at=datetime.utcnow(),
     )
+    db.add(document)
+    db.commit()
 
-    # Determine if confirmation is required
-    requires_confirmation = (
-        duplicate_info is None  # New document needs confirmation
-        or (duplicate_info and duplicate_info.is_duplicate)  # Duplicate also needs confirmation
-    )
+    # Enqueue for processing
+    from app.services.queue_service import queue_service
 
-    message = "Document uploaded and classified successfully."
-    if duplicate_info and duplicate_info.is_duplicate:
-        message = f"Potential duplicate detected. A similar document was uploaded by {duplicate_info.existing_document_uploaded_by}."
+    queue_service.add_document(document_id)
 
+    # Return immediate response
     return DocumentUploadResponse(
         document_id=document_id,
-        classification=classification_result,
-        duplicate_info=duplicate_info,
-        requires_confirmation=requires_confirmation,
-        message=message,
+        classification=None,  # Will be determined in background
+        duplicate_info=None,  # Checked pre-upload (Phase 2)
+        requires_confirmation=False,
+        message="File uploaded and queued for processing.",
     )
 
 
@@ -755,12 +599,11 @@ async def confirm_upload_internal(
 
     # Queue document for full processing and indexing (sequential processing)
     # This includes: full text extraction, re-classification, summary generation, and indexing
-    from app.utils.document_processing_queue import queue_document_for_processing
+    from app.services.queue_service import queue_service
 
-    # Set status to UPLOADING so queue knows to do full classification and indexing
-    document.indexing_status = ProcessingStatus.UPLOADING
+    document.status = DocumentStatus.UPLOADING
     db.commit()
-    queue_document_for_processing(document.id)
+    queue_service.add_document(document.id)
 
     db.refresh(document)
     return document
@@ -837,9 +680,11 @@ async def replace_and_index(
 
     # Queue document for indexing (sequential processing)
     # Document is already classified, just needs indexing
-    from app.utils.document_processing_queue import queue_document_for_processing
+    from app.services.queue_service import queue_service
 
-    queue_document_for_processing(existing_document_id)
+    existing_doc.status = DocumentStatus.PENDING
+    db.commit()
+    queue_service.add_document(existing_document_id)
 
     db.refresh(existing_doc)
     return existing_doc
@@ -875,9 +720,12 @@ async def rerun_indexing(
     db.commit()
 
     # Queue document for INDEX_ONLY processing
-    from app.utils.document_processing_queue import queue_document_for_processing
+    # Queue for re-indexing using the new queue service
+    from app.services.queue_service import queue_service
 
-    queue_document_for_processing(document_id)
+    document.status = DocumentStatus.PENDING  # Or another status that triggers indexing
+    db.commit()
+    queue_service.add_document(document_id)
 
     db.refresh(document)
     return document

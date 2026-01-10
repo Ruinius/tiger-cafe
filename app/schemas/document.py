@@ -13,6 +13,7 @@ class DocumentBase(BaseModel):
     filename: str
     document_type: DocumentType | None = None
     time_period: str | None = None
+    period_end_date: str | None = None
     summary: str | None = None
     unique_id: str | None = None
 
@@ -25,6 +26,7 @@ class DocumentCreate(DocumentBase):
 class DocumentUpdate(BaseModel):
     document_type: DocumentType | None = None
     time_period: str | None = None
+    period_end_date: str | None = None
     summary: str | None = None
     page_count: int | None = None
     character_count: int | None = None
@@ -57,6 +59,7 @@ class Document(DocumentBase):
 class ClassificationResult(BaseModel):
     document_type: DocumentType | None = None
     time_period: str | None = None
+    period_end_date: str | None = None
     company_name: str | None = None
     ticker: str | None = None
     confidence: str | None = None  # "high", "medium", "low"
@@ -77,7 +80,7 @@ class DuplicateInfo(BaseModel):
 
 class DocumentUploadResponse(BaseModel):
     document_id: str | None = None
-    classification: ClassificationResult
+    classification: ClassificationResult | None = None
     duplicate_info: DuplicateInfo | None = None
     requires_confirmation: bool = False
     message: str
