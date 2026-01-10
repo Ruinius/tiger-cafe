@@ -450,12 +450,20 @@ hr.calc-section-divider {
 */
 
 
-/* Premium Table Variables for Document Extraction */
-.document-extraction-view {
-    --doc-table-last-col-width: 15%;
-    --doc-table-2nd-last-col-width: 15%;
-    --doc-table-3rd-last-col-width: 20%;
+/* Document Extraction Specific Table Column Widths */
+.document-extraction-view .col-type {
+    width: 15%;
 }
+
+.document-extraction-view .col-value {
+    width: 15%;
+}
+
+.document-extraction-view .col-category {
+    width: 15%;
+}
+
+/* .col-name automatically takes remaining space (~50%) */
 
 /* Consistent spacing for all sections in Document Extraction View */
 .document-extraction-view>div[style*="marginBottom"] {
@@ -465,93 +473,4 @@ hr.calc-section-divider {
 /* Consistent spacing for all extraction sections */
 .extraction-section {
     margin-bottom: 2.5rem;
-}
-
-/* Document Extraction Specific Table Column Widths */
-/* Apply to all financial tables in the document extraction view */
-.document-extraction-view .financial-table th:last-child,
-.document-extraction-view .table-container .financial-table th:last-child {
-    width: var(--doc-table-last-col-width);
-}
-
-.document-extraction-view .financial-table th:nth-last-child(2),
-.document-extraction-view .table-container .financial-table th:nth-last-child(2) {
-    width: var(--doc-table-2nd-last-col-width);
-}
-
-.document-extraction-view .financial-table th:nth-last-child(3),
-.document-extraction-view .table-container .financial-table th:nth-last-child(3) {
-    width: var(--doc-table-3rd-last-col-width);
-}
-
-
-/* Status Pills / Badges (Operating/Non-Operating) */
-.type-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.25rem 0.75rem;
-    border-radius: 9999px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.025em;
-    white-space: nowrap;
-}
-
-.type-badge.operating {
-    background-color: rgba(16, 185, 129, 0.1);
-    color: #059669;
-    border: 1px solid rgba(16, 185, 129, 0.2);
-}
-
-.type-badge.non-operating {
-    background-color: rgba(245, 158, 11, 0.1);
-    color: #d97706;
-    border: 1px solid rgba(245, 158, 11, 0.2);
-}
-
-/* Validation Badges */
-.validation-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 0.25rem 0.6rem;
-    border-radius: 6px;
-    font-size: 0.75rem;
-    font-weight: 600;
-}
-
-.validation-badge.valid {
-    background-color: rgba(16, 185, 129, 0.1);
-    color: #059669;
-}
-
-.validation-badge.invalid {
-    background-color: rgba(239, 68, 68, 0.1);
-    color: #dc2626;
-}
-
-/* Validation Errors Container */
-.validation-errors {
-    margin-top: 1rem;
-    padding: 1rem;
-    background-color: #FEF2F2;
-    border: 1px solid #FEE2E2;
-    border-radius: 8px;
-}
-
-.validation-errors h4 {
-    color: #991B1B;
-    font-size: 0.875rem;
-    margin-bottom: 0.5rem;
-}
-
-.validation-errors ul {
-    padding-left: 1.5rem;
-    margin: 0;
-    color: #7F1D1D;
-}
-
-.validation-errors li {
-    font-size: 0.85rem;
-    margin-bottom: 0.25rem;
 }

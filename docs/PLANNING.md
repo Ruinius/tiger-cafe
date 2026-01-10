@@ -44,7 +44,6 @@ The system currently supports:
     - [ ] Comparison Table (compare metrics across selected companies)
     - [ ] Scatter plots (e.g., ROIC vs. Valuation)
 
-
 ### Phase 11: Sensitivity Analysis
 - [ ] Revenue growth sensitivity
 - [ ] Margin sensitivity
@@ -70,7 +69,8 @@ See `docs/COMPLETED_TASKS.md` for details.
 
 ## Immediate Priorities
 
-
+- [ ] Figure out how to handle the BIDU case
+- [ ] Figure out how to handle the INTU case
 
 ## Architecture Overview
 

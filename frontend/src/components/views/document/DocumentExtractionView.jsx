@@ -248,18 +248,6 @@ function DocumentExtractionView({ selectedDocument }) {
                                                         )}
                                                     </>
                                                 )}
-
-                                                {/* Special case: Add buttons if extraction failed */}
-                                                {(milestone.key === 'balance_sheet' && status === 'error') && (
-                                                    <div style={{ marginTop: '0.5rem', marginLeft: '2rem' }}>
-                                                        <button className="button-secondary small" onClick={loadBalanceSheet}>Retry Extraction</button>
-                                                    </div>
-                                                )}
-                                                {(milestone.key === 'income_statement' && status === 'error') && (
-                                                    <div style={{ marginTop: '0.5rem', marginLeft: '2rem' }}>
-                                                        <button className="button-secondary small" onClick={loadIncomeStatement}>Retry Extraction</button>
-                                                    </div>
-                                                )}
                                             </div>
                                         )
                                     })}

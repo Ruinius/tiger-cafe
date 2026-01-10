@@ -285,6 +285,8 @@
     border-collapse: collapse;
     font-size: 0.9rem;
     font-family: 'Inter', sans-serif;
+    table-layout: auto;
+    /* Auto layout allows content-based sizing while respecting width hints */
 }
 
 /* Table Header */
@@ -295,7 +297,7 @@
 
 .financial-table th {
     padding: 0.75rem 1.5rem;
-    text-align: left;
+    text-align: center;
     font-weight: 500;
     text-transform: uppercase;
     font-size: 0.75rem;
@@ -303,7 +305,13 @@
     color: var(--text-secondary);
 }
 
-.financial-table th.text-right {
+/* First column: left-aligned */
+.financial-table th:first-child {
+    text-align: left;
+}
+
+/* Last column: right-aligned */
+.financial-table th:last-child {
     text-align: right;
 }
 
@@ -326,6 +334,17 @@
     padding: 0.75rem 1.5rem;
     vertical-align: middle;
     color: var(--text-primary);
+    text-align: center;
+}
+
+/* First column: left-aligned */
+.financial-table td:first-child {
+    text-align: left;
+}
+
+/* Last column: right-aligned */
+.financial-table td:last-child {
+    text-align: right;
 }
 
 /* Common Table Columns */
@@ -337,6 +356,7 @@
 .col-category {
     color: var(--text-secondary);
     font-size: 0.875rem;
+    text-align: center;
 }
 
 .col-value {
@@ -344,6 +364,10 @@
     font-weight: 500;
     text-align: right;
     white-space: nowrap;
+}
+
+.col-type {
+    text-align: right;
 }
 
 .text-right {
@@ -371,4 +395,75 @@
 .financial-table tbody tr.summary-spacer-row {
     height: 1rem;
     border-bottom: none;
+}
+
+/* Status Pills / Badges (Operating/Non-Operating) */
+.type-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.025em;
+    white-space: nowrap;
+}
+
+.type-badge.operating {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: #059669;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.type-badge.non-operating {
+    background-color: rgba(245, 158, 11, 0.1);
+    color: #d97706;
+    border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+/* Validation Badges */
+.validation-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.validation-badge.valid {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: #059669;
+}
+
+.validation-badge.invalid {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: #dc2626;
+}
+
+/* Validation Errors Container */
+.validation-errors {
+    margin-top: 1rem;
+    padding: 1rem;
+    background-color: #FEF2F2;
+    border: 1px solid #FEE2E2;
+    border-radius: 8px;
+}
+
+.validation-errors h4 {
+    color: #991B1B;
+    font-size: 0.875rem;
+    margin-bottom: 0.5rem;
+}
+
+.validation-errors ul {
+    padding-left: 1.5rem;
+    margin: 0;
+    color: #7F1D1D;
+}
+
+.validation-errors li {
+    font-size: 0.85rem;
+    margin-bottom: 0.25rem;
 }
