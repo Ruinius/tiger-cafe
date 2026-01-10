@@ -1,3 +1,264 @@
+/*
+   ---------------------------
+   PREMIUM TABLE SYSTEM
+   (Migrated from Document.css)
+   ---------------------------
+*/
+
+/* Outer Container (Section) */
+.table-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+/* Header & Metadata */
+.table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.table-meta {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.table-meta strong {
+    color: var(--text-primary);
+    font-weight: 500;
+    margin-right: 0.5rem;
+}
+
+/* Table Wrapper (Card style) */
+.financial-table-container {
+    background-color: var(--bg-surface);
+    border-radius: 12px;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+    border: 1px solid var(--border);
+    overflow: hidden;
+}
+
+/* Base Table */
+.financial-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    font-family: 'Inter', sans-serif;
+    table-layout: fixed; /* Fixed layout for better column control */
+}
+
+/* Table Header */
+.financial-table thead {
+    background-color: var(--bg-primary);
+    border-bottom: 1px solid var(--border);
+}
+
+.financial-table th {
+    padding: 1rem 1.5rem; /* Gold Standard Padding */
+    text-align: left;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    vertical-align: middle;
+}
+
+.financial-table th.text-right {
+    text-align: right;
+}
+
+/* Table Body */
+.financial-table tbody tr {
+    height: 48px;
+    border-bottom: 1px solid var(--border-subtle);
+    transition: background-color 0.15s ease;
+}
+
+.financial-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.financial-table tbody tr:hover {
+    background-color: var(--bg-primary);
+}
+
+.financial-table td {
+    padding: 0.75rem 1.5rem;
+    vertical-align: middle;
+    color: var(--text-primary);
+}
+
+/* Common Table Columns */
+.col-name {
+    font-weight: 500;
+    color: var(--text-primary);
+    width: 40%;
+}
+
+.col-category {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    width: 20%;
+}
+
+.col-value {
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+    text-align: right;
+    white-space: nowrap;
+    width: 20%;
+}
+
+.col-type {
+    width: 20%;
+    text-align: right;
+}
+
+.text-right {
+    text-align: right;
+}
+
+/* Key Rows */
+.financial-table tbody tr.key-total-row {
+    background-color: var(--bg-primary);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+}
+
+.financial-table tbody tr.key-total-row td {
+    color: var(--text-primary);
+    font-weight: 700;
+}
+
+.financial-table tbody tr.total-row {
+    background-color: rgba(0, 0, 0, 0.02);
+    font-weight: 600;
+}
+
+.financial-table tbody tr.summary-spacer-row {
+    height: 1rem;
+    border-bottom: none;
+}
+
+/* Premium Table Variables for Document Extraction */
+.document-extraction-view {
+    --doc-table-last-col-width: 15%;
+    --doc-table-2nd-last-col-width: 15%;
+    --doc-table-3rd-last-col-width: 20%;
+}
+
+/* Consistent spacing for all sections in Document Extraction View */
+.document-extraction-view>div[style*="marginBottom"] {
+    margin-bottom: 2.5rem !important;
+}
+
+/* Consistent spacing for all extraction sections */
+.extraction-section {
+    margin-bottom: 2.5rem;
+}
+
+/* Document Extraction Specific Table Column Widths - Using Classes for Robustness */
+.document-extraction-view .financial-table th.col-type,
+.document-extraction-view .table-container .financial-table th.col-type,
+.document-extraction-view .financial-table td.col-type,
+.document-extraction-view .table-container .financial-table td.col-type {
+    width: var(--doc-table-last-col-width);
+}
+
+.document-extraction-view .financial-table th.col-value,
+.document-extraction-view .table-container .financial-table th.col-value,
+.document-extraction-view .financial-table td.col-value,
+.document-extraction-view .table-container .financial-table td.col-value {
+    width: var(--doc-table-2nd-last-col-width);
+}
+
+.document-extraction-view .financial-table th.col-category,
+.document-extraction-view .table-container .financial-table th.col-category,
+.document-extraction-view .financial-table td.col-category,
+.document-extraction-view .table-container .financial-table td.col-category {
+    width: var(--doc-table-3rd-last-col-width);
+}
+
+/* Status Pills / Badges (Operating/Non-Operating) */
+.type-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.025em;
+    white-space: nowrap;
+}
+
+.type-badge.operating {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: #059669;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.type-badge.non-operating {
+    background-color: rgba(245, 158, 11, 0.1);
+    color: #d97706;
+    border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+/* Validation Badges */
+.validation-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.validation-badge.valid {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: #059669;
+}
+
+.validation-badge.invalid {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: #dc2626;
+}
+
+/* Validation Errors Container */
+.validation-errors {
+    margin-top: 1rem;
+    padding: 1rem;
+    background-color: #FEF2F2;
+    border: 1px solid #FEE2E2;
+    border-radius: 8px;
+}
+
+.validation-errors h4 {
+    color: #991B1B;
+    font-size: 0.875rem;
+    margin-bottom: 0.5rem;
+}
+
+.validation-errors ul {
+    padding-left: 1.5rem;
+    margin: 0;
+    color: #7F1D1D;
+}
+
+.validation-errors li {
+    font-size: 0.85rem;
+    margin-bottom: 0.25rem;
+}
+
 /* Breadcrumbs */
 .breadcrumb {
     display: flex;
@@ -228,147 +489,4 @@
     to {
         transform: rotate(360deg);
     }
-}
-
-
-
-/* 
-   ---------------------------
-   PREMIUM TABLE SYSTEM
-   (Migrated from Document.css)
-   ---------------------------
-*/
-
-/* Outer Container (Section) */
-.table-container {
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-}
-
-/* Header & Metadata */
-.table-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 1rem;
-    margin-bottom: 0.5rem;
-}
-
-.table-meta {
-    display: flex;
-    gap: 1.5rem;
-    align-items: center;
-    font-size: 0.875rem;
-    color: var(--text-secondary);
-}
-
-.table-meta strong {
-    color: var(--text-primary);
-    font-weight: 500;
-    margin-right: 0.5rem;
-}
-
-/* Table Wrapper (Card style) */
-.financial-table-container {
-    background-color: var(--bg-surface);
-    border-radius: 12px;
-    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
-    border: 1px solid var(--border);
-    overflow: hidden;
-}
-
-/* Base Table */
-.financial-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.9rem;
-    font-family: 'Inter', sans-serif;
-}
-
-/* Table Header */
-.financial-table thead {
-    background-color: var(--bg-primary);
-    border-bottom: 1px solid var(--border);
-}
-
-.financial-table th {
-    padding: 0.75rem 1.5rem;
-    text-align: left;
-    font-weight: 500;
-    text-transform: uppercase;
-    font-size: 0.75rem;
-    letter-spacing: 0.05em;
-    color: var(--text-secondary);
-}
-
-.financial-table th.text-right {
-    text-align: right;
-}
-
-/* Table Body */
-.financial-table tbody tr {
-    height: 48px;
-    border-bottom: 1px solid var(--border-subtle);
-    transition: background-color 0.15s ease;
-}
-
-.financial-table tbody tr:last-child {
-    border-bottom: none;
-}
-
-.financial-table tbody tr:hover {
-    background-color: var(--bg-primary);
-}
-
-.financial-table td {
-    padding: 0.75rem 1.5rem;
-    vertical-align: middle;
-    color: var(--text-primary);
-}
-
-/* Common Table Columns */
-.col-name {
-    font-weight: 500;
-    color: var(--text-primary);
-}
-
-.col-category {
-    color: var(--text-secondary);
-    font-size: 0.875rem;
-}
-
-.col-value {
-    font-variant-numeric: tabular-nums;
-    font-weight: 500;
-    text-align: right;
-    white-space: nowrap;
-}
-
-.text-right {
-    text-align: right;
-}
-
-/* Key Rows */
-.financial-table tbody tr.key-total-row {
-    background-color: var(--bg-primary);
-    border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-    font-weight: 600;
-}
-
-.financial-table tbody tr.key-total-row td {
-    color: var(--text-primary);
-    font-weight: 700;
-}
-
-.financial-table tbody tr.total-row {
-    background-color: rgba(0, 0, 0, 0.02);
-    font-weight: 600;
-}
-
-.financial-table tbody tr.summary-spacer-row {
-    height: 1rem;
-    border-bottom: none;
 }

@@ -1,3 +1,33 @@
 /* Company Overview View Specifics */
-/* Currently this view uses shared components or generic panel styles.
-   Reserved for specific company dashboard widgets. */
+
+/* Company Analysis Table Styling */
+.company-analysis-table th:first-child,
+.company-analysis-table td:first-child {
+    width: 250px;
+    min-width: 200px;
+    max-width: 300px;
+    white-space: normal; /* Allow wrapping if needed, but width constrains it */
+}
+
+/* Ensure data columns are uniform width if possible, or at least minimum */
+.company-analysis-table th:not(:first-child),
+.company-analysis-table td:not(:first-child) {
+    width: auto;
+    min-width: 100px;
+}
+
+/* Ensure numeric columns don't wrap awkwardly */
+.company-analysis-table td.text-right {
+    white-space: nowrap;
+}
+
+/* L4Q Average and Median headers alignment */
+.company-analysis-table th.text-right {
+    vertical-align: bottom; /* Align header text to bottom */
+}
+
+/* Make the header row slightly taller if needed for wrapped text */
+.company-analysis-table thead tr {
+    height: auto;
+    min-height: 48px;
+}
