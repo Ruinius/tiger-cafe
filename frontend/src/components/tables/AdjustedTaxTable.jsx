@@ -40,13 +40,8 @@ export default function AdjustedTaxTable({ historicalCalculations, incomeStateme
     )
     const taxExpenseName = taxExpenseItem?.line_name || 'Provision (Benefit) for Income Taxes'
 
-    // Look for pre-tax income for effective rate
-    const preTaxIncomeItem = incomeStatement?.line_items?.find(item =>
-        item.line_name.includes('Income Before Income Taxes') ||
-        item.line_name.includes('Pre-tax Income')
-    )
-    const preTaxIncome = preTaxIncomeItem?.line_value || 0
-    const effectiveTaxRate = preTaxIncome ? (reportedTax / preTaxIncome) : null
+    // Use backend-calculated effective tax rate (already computed in historical_calculations.py)
+    const effectiveTaxRate = historicalCalculations.effective_tax_rate
 
     return (
         <div>

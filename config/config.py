@@ -25,7 +25,9 @@ DATA_STORAGE_DIR = "data/storage"
 UPLOAD_DIR = "data/uploads"  # Directory for uploaded PDF files
 
 # Agent settings - Gemini with very low temperature for consistent analysis
-DEFAULT_MODEL = "gemini-2.5-flash-lite"  # or "gemini-pro" for earlier version
+DEFAULT_MODEL = (
+    "gemini-2.5-flash-lite"  # small model is enough. Did not see real performance difference
+)
 TEMPERATURE = 0.1  # Very low temperature for focused, deterministic responses
 EMBEDDING_MODEL = "models/embedding-001"  # Gemini embedding model
 

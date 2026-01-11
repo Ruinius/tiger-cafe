@@ -140,9 +140,27 @@ function DocumentView({ selectedDocument, selectedCompany, onBack }) {
                     <div className="metadata-grid">
                         <div className="metadata-item">
                             <strong>Status:</strong>
-                            <span className={`status-badge status-${doc.indexing_status?.toLowerCase() || 'pending'}`}>
-                                {doc.indexing_status || 'pending'}
-                            </span>
+                            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <span className={`status-badge status-${doc.indexing_status?.toLowerCase() || 'pending'}`}>
+                                    {doc.indexing_status || 'pending'}
+                                </span>
+                                {doc.balance_sheet_status && doc.balance_sheet_status !== 'not_extracted' && (
+                                    <span
+                                        className={`status-badge status-${doc.balance_sheet_status === 'valid' ? 'indexed' : 'classified'}`}
+                                        title={`Balance Sheet: ${doc.balance_sheet_status}`}
+                                    >
+                                        BS
+                                    </span>
+                                )}
+                                {doc.income_statement_status && doc.income_statement_status !== 'not_extracted' && (
+                                    <span
+                                        className={`status-badge status-${doc.income_statement_status === 'valid' ? 'indexed' : 'classified'}`}
+                                        title={`Income Statement: ${doc.income_statement_status}`}
+                                    >
+                                        IS
+                                    </span>
+                                )}
+                            </div>
                         </div>
                         <div className="metadata-item">
                             <strong>Type:</strong> {doc.document_type?.replace(/_/g, ' ') || 'N/A'}
@@ -166,7 +184,7 @@ function DocumentView({ selectedDocument, selectedCompany, onBack }) {
                         )}
                         {doc.uploaded_at && (
                             <div className="metadata-item">
-                                <strong>Uploaded:</strong> {new Date(doc.uploaded_at).toLocaleString()}
+                                <strong>Uploaded:</strong> {new Date(doc.uploaded_at).toLocaleDateString()}
                             </div>
                         )}
                     </div>

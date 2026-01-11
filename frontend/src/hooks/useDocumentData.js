@@ -30,7 +30,30 @@ export function useDocumentData(selectedCompany, selectedDocument) {
     try {
       const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
       const response = await axios.get(`${API_BASE_URL}/documents/?company_id=${companyId}`, { headers })
-      setDocuments(response.data)
+      const sortedDocs = response.data.sort((a, b) => {
+        // Primary sort: Period End Date (descending)
+        // We prioritize documents with a parsed period end date
+        const dateA = a.period_end_date ? new Date(a.period_end_date).getTime() : -1
+        const dateB = b.period_end_date ? new Date(b.period_end_date).getTime() : -1
+
+        if (dateA !== dateB) {
+          // If only one has a date, it comes first (if we consider it "higher quality")
+          // OR, if neither has date, we go to fallback.
+          // Actually, if a document doesn't have a period date (yet), it might be very new (just uploaded).
+          // Maybe fallback to uploaded_at is better for everything.
+          // Let's rely on dateA/dateB logic: valid dates > invalid (-1).
+          // So valid dates will float to top.
+          if (dateA === -1 && dateB !== -1) return 1 // B has date, A doesn't -> B first
+          if (dateA !== -1 && dateB === -1) return -1 // A has date, B doesn't -> A first
+          return dateB - dateA
+        }
+
+        // Secondary sort: Uploaded At (descending)
+        const uploadA = a.uploaded_at ? new Date(a.uploaded_at).getTime() : 0
+        const uploadB = b.uploaded_at ? new Date(b.uploaded_at).getTime() : 0
+        return uploadB - uploadA
+      })
+      setDocuments(sortedDocs)
       setError(null)
     } catch (err) {
       console.error('Error loading documents:', err)

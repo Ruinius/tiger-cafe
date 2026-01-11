@@ -79,9 +79,9 @@ def extract_income_statement(
     extracted_data = None
     successful_chunk_index = None  # Track successful chunk index for persistence
 
-    for section_attempt in range(max_retries):  # 4 tries: same, before, after, 2 after
+    for section_attempt in range(max_retries):  # 4 tries: same, before, after, full search
         try:
-            attempt_labels = ["same as", "before", "after", "2 after"]
+            attempt_labels = ["same as", "before", "after", "full search"]
             section_msg = f"Stage 1: Finding income statement section (attempt {section_attempt + 1}: {attempt_labels[section_attempt]} balance sheet)"
             print(section_msg)
             add_log(document_id, FinancialStatementMilestone.INCOME_STATEMENT, section_msg)
@@ -187,10 +187,17 @@ def extract_income_statement(
                 if log_info:
                     successful_chunk_index = log_info.get("income_statement_chunk_index")
                 break  # Section found and validated, proceed to Stage 2
-
-            # If not found or not complete, try next attempt
-            if section_attempt == max_retries - 1 and not extracted_data:
-                print("All specific section attempts failed. Proceeding to fallback.")
+            else:
+                # Section finder returned None
+                not_found_msg = f"Attempt {section_attempt + 1} did not find a valid section"
+                print(not_found_msg)
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.INCOME_STATEMENT,
+                    not_found_msg,
+                )
+                # Continue to next attempt
+                continue
 
         except Exception as e:
             error_str = str(e).lower()
@@ -428,7 +435,7 @@ def find_income_statement_near_balance_sheet(
         # attempt 0 = same chunk as balance sheet
         # attempt 1 = chunk before balance sheet
         # attempt 2 = chunk after balance sheet
-        # attempt 3 = 2 chunks after balance sheet
+        # attempt 3 = full document search for best chunk (excluding 0, 1, 2)
         if attempt == 0:
             target_chunk_index = balance_chunk_index
             direction = "same as"
@@ -438,19 +445,84 @@ def find_income_statement_near_balance_sheet(
         elif attempt == 2:
             target_chunk_index = balance_chunk_index + 1
             direction = "after"
+
+            # Validate chunk index for attempts 0, 1, 2 (before continuing)
+            if target_chunk_index < 0 or target_chunk_index >= num_chunks:
+                print(
+                    f"Target chunk index {target_chunk_index} is out of bounds (0-{num_chunks - 1}), skipping to next attempt"
+                )
+                return None, None, None
         elif attempt == 3:
-            target_chunk_index = balance_chunk_index + 2
-            direction = "2 after"
+            # Full document search using income statement queries
+            from app.utils.document_section_finder import find_document_section
+
+            # Income statement specific queries
+            query_texts = ["net income", "revenue", "sales", "interest", "tax", "cost", "expenses"]
+
+            # Search full document (no ignore fractions)
+            income_text, income_start_page, income_log_info = find_document_section(
+                document_id=document_id,
+                file_path=file_path,
+                query_texts=query_texts,
+                chunk_size=chunk_size,
+                score_threshold=0.3,
+                pages_before=1,
+                pages_after=1,
+                rerank_top_k=0,  # No reranking needed
+                ignore_front_fraction=0.0,
+                ignore_back_fraction=0.0,
+                chunk_rank=0,  # Get best match
+            )
+
+            if not income_log_info or "best_chunk_index" not in income_log_info:
+                print("Full document search failed to find income statement")
+                return None, None, None
+
+            target_chunk_index = income_log_info["best_chunk_index"]
+
+            # Check if this chunk was already tried in attempts 0, 1, or 2
+            tried_chunks = {
+                balance_chunk_index,  # attempt 0
+                balance_chunk_index - 1,  # attempt 1
+                balance_chunk_index + 1,  # attempt 2
+            }
+
+            if target_chunk_index in tried_chunks:
+                print(
+                    f"Full document search returned chunk {target_chunk_index} which was already tried"
+                )
+                return None, None, None
+
+            direction = f"full search (chunk {target_chunk_index})"
+
+            # Use the text from find_document_section directly
+            log_info = {
+                "balance_sheet_chunk_index": balance_chunk_index,
+                "income_statement_chunk_index": target_chunk_index,
+                "direction": direction,
+                "chunk_start_page": income_log_info.get("chunk_start_page"),
+                "chunk_end_page": income_log_info.get("chunk_end_page"),
+                "start_extract_page": income_log_info.get("start_extract_page"),
+                "end_extract_page": income_log_info.get("end_extract_page"),
+            }
+
+            print(
+                f"Income statement found via {direction}: chunk {target_chunk_index} "
+                f"(pages {income_log_info.get('chunk_start_page')}-{income_log_info.get('chunk_end_page')}), "
+                f"extracting pages {income_log_info.get('start_extract_page')}-{income_log_info.get('end_extract_page')}"
+            )
+
+            return income_text, income_start_page, log_info
         else:
             print(f"Invalid attempt number: {attempt}, must be 0, 1, 2, or 3")
             return None, None, None
 
-        # Validate chunk index
-        if target_chunk_index < 0 or target_chunk_index >= num_chunks:
+        # Validate chunk index (for attempts 0, 1 only - attempt 2 validated above)
+        if attempt in [0, 1] and (target_chunk_index < 0 or target_chunk_index >= num_chunks):
             print(f"Target chunk index {target_chunk_index} is out of bounds (0-{num_chunks - 1})")
             return None, None, None
 
-        # Get chunk text
+        # Get chunk text (for attempts 0, 1, 2)
         chunk_text, chunk_start_page, chunk_end_page = get_chunk_text(
             file_path, target_chunk_index, chunk_size
         )
@@ -514,11 +586,11 @@ def check_income_statement_completeness_llm(
     Returns:
         Tuple of (is_complete, reason)
     """
-    validation_criteria = """- Start with revenue (total net revenue, net sales, etc.)
-- Include cost of revenue/cost of goods sold
+    validation_criteria = """- Start with revenue or sales
+- Include cost of revenue, cost of sales, or cost of goods sold
 - Include operating expenses (R&D, SG&A, etc.)
 - Include tax expense
-- End with net income/net earnings"""
+- End with net income or net earnings"""
 
     return check_section_completeness_llm(
         text, time_period, "consolidated income statement", validation_criteria, period_end_date
@@ -1027,7 +1099,9 @@ def get_income_statement_llm_insights(
 - Operating income: Operating Income, Income from Operations, Operating Profit, Operating Earnings
 - Pretax income: Income Before Tax, Earnings Before Income Tax, Profit Before Tax, Income Before Income Tax Expense
 - Tax expense: Income Tax Expense, Provision for Income Taxes, Income Taxes, Taxes
-- Net income: Net Income, Net Earnings, Profit After Tax, After Tax Profit"""
+- Net income: Net Income, Net Earnings, Profit After Tax, After Tax Profit
+CANNOT have the word Other in any of the names!
+"""
 
     return get_llm_insights_generic(line_items, "an income statement", json_structure, guidance)
 

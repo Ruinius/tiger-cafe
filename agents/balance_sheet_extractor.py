@@ -460,9 +460,9 @@ def check_balance_sheet_completeness_llm(
     Returns:
         Tuple of (is_complete, reason)
     """
-    validation_criteria = """- Start with cash or cash equivalents
-- Have a "Total Assets" line
-- Have a "Total Liabilities" line
+    validation_criteria = """- Start with cash
+- Have multiple asset lines with a total
+- Have multiple liability lines with a total
 - Have a "Total Liabilities and Equity line"""
 
     return check_section_completeness_llm(
@@ -523,7 +523,7 @@ Return a JSON object with the following structure:
                 "Non-Current Liabilities",
                 "Total Liabilities",
                 "Equity",
-                "Total Liabilities and Equity"
+                "Total Liabilities and Equity",
             ]
         }},
         ...
@@ -790,10 +790,7 @@ def validate_balance_sheet_calculations(line_items: list[dict]) -> tuple[bool, l
     """
     errors = []
 
-    # Convert to dictionary for easier lookup
-    items_dict = {item["line_name"].lower(): item["line_value"] for item in line_items}
-
-    # Find key totals
+    # Find key totals using standardized line_category field
     current_assets = None
     total_assets = None
     current_liabilities = None
@@ -801,49 +798,23 @@ def validate_balance_sheet_calculations(line_items: list[dict]) -> tuple[bool, l
     total_equity = None
     total_liabilities_equity = None
 
-    for key, value in items_dict.items():
-        # Use more precise matching for totals
-        if _is_balance_sheet_total_line_name(key):
-            # Check for "total current assets" - must contain both "total" and "current assets", but NOT "non-current"
-            if (
-                "current assets" in key
-                and "non-current" not in key
-                and "total non-current assets" not in key
-            ):
-                current_assets = value
-            # Check for "total assets" - must contain "total assets" but NOT "non-current", "current", or "liabilities"
-            elif (
-                "total assets" in key
-                and "non-current" not in key
-                and "current" not in key
-                and "liabilities" not in key
-                and "total non-current assets" not in key
-            ):
-                total_assets = value
-            # Check for "total current liabilities" - must contain both "total" and "current liabilities", but NOT "non-current"
-            elif (
-                "current liabilities" in key
-                and "non-current" not in key
-                and "total non-current liabilities" not in key
-            ):
-                current_liabilities = value
-            # Check for "total liabilities" - must contain "total liabilities" but NOT "non-current", "current", or "equity"
-            elif (
-                "total liabilities" in key
-                and "non-current" not in key
-                and "current" not in key
-                and "equity" not in key
-                and "total non-current liabilities" not in key
-            ):
-                total_liabilities = value
-            # Check for "total equity" - must contain "total equity" but NOT "liabilities"
-            elif "total equity" in key and "liabilities" not in key:
-                total_equity = value
-            # Check for "total liabilities and equity" or "total liabilities and shareholders"
-            elif (
-                "total liabilities and equity" in key or "total liabilities and shareholders" in key
-            ):
-                total_liabilities_equity = value
+    for item in line_items:
+        category = item.get("line_category", "").strip()
+        value = item.get("line_value")
+
+        # Use exact category matching - much more robust than parsing line names
+        if category == "Total Current Assets":
+            current_assets = value
+        elif category == "Total Assets":
+            total_assets = value
+        elif category == "Total Current Liabilities":
+            current_liabilities = value
+        elif category == "Total Liabilities":
+            total_liabilities = value
+        elif category == "Total Equity":
+            total_equity = value
+        elif category == "Total Liabilities and Equity":
+            total_liabilities_equity = value
 
     # Calculate sums from line items
     # Only sum base line items, exclude any totals or subtotals

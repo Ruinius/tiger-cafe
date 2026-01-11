@@ -53,6 +53,7 @@ Update the values in `.env`:
 GEMINI_API_KEY=your-gemini-api-key-here
 GOOGLE_CLIENT_ID=your-google-client-id-here
 GOOGLE_CLIENT_SECRET=your-google-client-secret-here
+VITE_GOOGLE_CLIENT_ID=your-google-client-id-here
 ```
 
 Optional settings (defaults are defined in `config/config.py`):
@@ -93,12 +94,6 @@ API endpoints:
 ```bash
 cd frontend
 npm install
-```
-
-Create `frontend/.env` with:
-
-```
-VITE_GOOGLE_CLIENT_ID=your-google-client-id-here
 ```
 
 Start the dev server:

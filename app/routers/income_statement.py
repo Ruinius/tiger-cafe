@@ -18,10 +18,6 @@ from agents.organic_growth_extractor import extract_organic_growth
 from agents.other_assets_extractor import (
     extract_other_assets,
 )
-from app.utils.line_item_utils import (
-    extract_original_name_from_standardized as extract_other_assets_label,
-    extract_original_name_from_standardized as extract_other_liabilities_label,
-)
 from agents.other_liabilities_extractor import (
     extract_other_liabilities,
 )
@@ -42,6 +38,12 @@ from app.models.user import User
 from app.routers.auth import get_current_user
 from app.routers.historical_calculations import calculate_and_save_historical_calculations
 from app.schemas.income_statement import IncomeStatement as IncomeStatementSchema
+from app.utils.line_item_utils import (
+    extract_original_name_from_standardized as extract_other_assets_label,
+)
+from app.utils.line_item_utils import (
+    extract_original_name_from_standardized as extract_other_liabilities_label,
+)
 
 router = APIRouter()
 
@@ -162,7 +164,7 @@ def process_income_statement_async(document_id: str, db: Session):
             document_id=document_id,
             file_path=document.file_path,
             time_period=time_period,
-            max_retries=3,  # 3 attempts: before, after, 2 after balance sheet
+            max_retries=4,  # 4 attempts: same, before, after, full search
             document_type=document.document_type,
             balance_sheet_chunk_index=balance_sheet_chunk_index,
             period_end_date=document.period_end_date,

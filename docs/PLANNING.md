@@ -77,21 +77,21 @@ See `docs/COMPLETED_TASKS.md` for details.
 - [ ] Improve page loading speed and/or content order
 - [ ] Tool tips for key formulas and assumptions
 - [ ] Enable editing extracted values in Document Extraction View
-- [ ] Fix Status in the Document View to show BS and IS
-- [ ] Fix Uploaded: to not show time, just date
-- [ ] Set default panel splits for each view. 50/50 for Document View, 20/80 for Company View, 20/80 for Company List
 - [ ] Fix UI and frontend for Uploading flow
-- [ ] Fix categorization of "Total non-current assets" and "Total non-current liabilities" may require custom embedding
-- [ ] Fix bolding of deferred revenue
-- [ ] Fix Time Period classification
-- [ ] Fix Period Ending classification
-- [ ] Organize the list of Documents by the Time Period with most recent showing on top
+- [ ] Fix Time Period identification. LLM is not following the format restriction
 - [ ] Failing to find the Non-GAAP Reconciliation should just be a warning instead of an error
+- [ ] For financial statement extraction, the chunks need to have a critical mass of numbers (at least 15 for balance sheet and income statement. At least 10 for Non-GAAP Reconciliation) to be included in the list of chunks considered
+- [ ] For finding the balance sheet, if the best rank chunk is the first or last chunk, push its rank down by two (given three tries, it will still be tried but last)
+
 
 ## Backlog and Notes of Bigger Outstanding Issues
 - [ ] BIDU case - screwed up numbers in PDF and Validation failed: unsupported operand type(s) for +: 'int' and 'NoneType'
 - [ ] INTU case - edge case balance sheet
 - [ ] TGT case - edge case balance sheet
+- [ ] EL case - interest income and interest expense lines are both positive!
+- [ ] Create an extraction field for document date, which will have many uses. First use is to organize the list of documents (current logic is not great)
+- [ ] Create a custom tiny transformer to rename line items and manage classification
+- [ ] Use the results from the tiny transformer to handle bolding logic (current logic is not great)
 
 
 ## Architecture Overview

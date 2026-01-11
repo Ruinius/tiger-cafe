@@ -42,18 +42,35 @@ function Dashboard() {
     setShowUploadProgress
   } = useUploadManager(() => setRefreshKey(prev => prev + 1))
 
-  const [splitRatio, setSplitRatio] = useState(() => {
-    const saved = localStorage.getItem('tiger-cafe-split-ratio')
-    return saved ? parseFloat(saved) : 0.5
+  // Default split ratios per view type
+  const DEFAULT_RATIOS = {
+    GLOBAL: 0.2,
+    COMPANY: 0.2,
+    DOCUMENT: 0.5,
+  }
+
+  // Manage split ratios per view type
+  const [splitRatios, setSplitRatios] = useState(() => {
+    const getRatio = (type) => {
+      const saved = localStorage.getItem(`tiger-cafe-split-ratio-${type}`)
+      return saved ? parseFloat(saved) : DEFAULT_RATIOS[type]
+    }
+    return {
+      GLOBAL: getRatio('GLOBAL'),
+      COMPANY: getRatio('COMPANY'),
+      DOCUMENT: getRatio('DOCUMENT')
+    }
   })
 
-  useEffect(() => {
-    localStorage.setItem('tiger-cafe-split-ratio', splitRatio.toString())
-  }, [splitRatio])
+  const currentSplitRatio = splitRatios[viewState.type] || 0.5
 
   const handleSplitChange = useCallback((newRatio) => {
-    setSplitRatio(newRatio)
-  }, [])
+    setSplitRatios(prev => ({
+      ...prev,
+      [viewState.type]: newRatio
+    }))
+    localStorage.setItem(`tiger-cafe-split-ratio-${viewState.type}`, newRatio.toString())
+  }, [viewState.type])
 
   // Navigation Handlers
   const handleCompanySelect = useCallback((company) => {
@@ -151,7 +168,7 @@ function Dashboard() {
       <SplitScreen
         left={leftPanelContent}
         right={rightPanelContent}
-        splitRatio={splitRatio}
+        splitRatio={currentSplitRatio}
         onSplitChange={handleSplitChange}
       />
 

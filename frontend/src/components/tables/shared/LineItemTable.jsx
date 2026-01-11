@@ -76,7 +76,7 @@ export default function LineItemTable({
                             const categoryLower = (categoryValue || '').toLowerCase()
                             const isKey = nameLower.includes('total') ||
                                 nameLower.includes('subtotal') ||
-                                (nameLower.includes('revenue') && !nameLower.includes('cost of')) ||
+                                (nameLower.includes('revenue') && !nameLower.includes('cost of') && !nameLower.includes('deferred revenue')) ||
                                 nameLower.includes('gross profit') ||
                                 nameLower.includes('operating income') ||
                                 nameLower.includes('net income') ||
