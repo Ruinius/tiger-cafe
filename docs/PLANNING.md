@@ -21,7 +21,7 @@ Build AI agents that can analyze equity investments using principles from Tim Ko
 - [ ] **UI Interactivity**: Implementation capability to change "Category" and "Type" directly in the UI.
 - [ ] Explore using small specialized embedding / encoder models to replace the AUTHORITATIVE_LOOKUP and the classify using LLM
 
-## Current Status (Phases 1-9 & 13 Complete)
+## Current Status (Phases 1-10 Complete)
 *See `docs/COMPLETED_TASKS.md` for detailed history.*
 
 The system currently supports:
@@ -35,42 +35,64 @@ The system currently supports:
 
 ## Active Roadmap
 
-### Phase 10: App-wide Analysis and Dashboard
-- [ ] Analysis Dashboard (Home Page)
-    - [ ] Recent Valuations Table (Company, Date, Fair Value, % Undervalued)
-    - [ ] Market Overview (Aggregate stats of analyzed companies)
-    - [ ] User's Portfolio / saved list tracking
-- [ ] Cross-Company Analysis View
-    - [ ] Comparison Table (compare metrics across selected companies)
-    - [ ] Scatter plots (e.g., ROIC vs. Valuation)
-
-### Phase 11: Sensitivity Analysis
-- [ ] Revenue growth sensitivity
-- [ ] Margin sensitivity
-- [ ] WACC sensitivity
-- [ ] Multi-variable scenario analysis
-
-### Phase 12: Additional Data Sources
-- [ ] Integrate transcripts, news, and analyst reports
-- [ ] Enhanced 10-K and 10-Q parsing for additional details
-- [ ] Improved organic growth analysis
-
-### Phase 13: View-Based Frontend Architecture (COMPLETE)
+### Phase 10: View-Based Frontend Architecture (COMPLETE)
 See `docs/COMPLETED_TASKS.md` for details.
 - [x] Structural Reorganization (`views/`, `layout/`, `modals/`)
 - [x] Logic Extraction (Custom Hooks)
 - [x] Dashboard Orchestration
 - [x] Removal of Monoliths (`LeftPanel`, `RightPanel`)
 
+### Phase 11: Financial Model enhancements
+- [ ] CAPM for WACC in a separate column
+    - risk-free rate and global assumption
+    - expected market return and global assumption
+    - beta for company (Yahoo Finance?)
+- [ ] New Assumption Fields in the Other column
+    - Diluted Shares Outstanding
+    - Base Revenue
+
+### Phase 12: App-wide Analysis and Dashboard
+- [ ] Improve the Company list
+    - Remove the # of documents badge
+    - Add the date of last valuation with color
+- [ ] Analysis Dashboard (Home Page)
+
+### Phase 13: Company View feature enhancements
+- [ ] Improve the Document list
+- [ ] Revenue Growth and Margin Sensitivity
+
 ### Phase 14: Company-Centric Data Model Refactor
 - [ ] Refactor app to focus on company → time period → documents
 - [ ] Enable incorporating multiple document types per period
 - [ ] Historical trend analysis across periods
 
-## Immediate Priorities
+### Phase 15: Transcripts, news, and analyst repots
+- [ ] Growth, margin, and capital efficiency assumptions
 
-- [ ] Figure out how to handle the BIDU case
-- [ ] Figure out how to handle the INTU case
+### Phase 16: 10-K and 10-Q
+- [ ] Improved organic growth analysis
+- [ ] Extract details on other assets and other liabilities
+
+## Ongoing List of UI Improvements and Bugs
+- [ ] Improve page loading speed and/or content order
+- [ ] Tool tips for key formulas and assumptions
+- [ ] Enable editing extracted values in Document Extraction View
+- [ ] Fix Status in the Document View to show BS and IS
+- [ ] Fix Uploaded: to not show time, just date
+- [ ] Set default panel splits for each view. 50/50 for Document View, 20/80 for Company View, 20/80 for Company List
+- [ ] Fix UI and frontend for Uploading flow
+- [ ] Fix categorization of "Total non-current assets" and "Total non-current liabilities" may require custom embedding
+- [ ] Fix bolding of deferred revenue
+- [ ] Fix Time Period classification
+- [ ] Fix Period Ending classification
+- [ ] Organize the list of Documents by the Time Period with most recent showing on top
+- [ ] Failing to find the Non-GAAP Reconciliation should just be a warning instead of an error
+
+## Backlog and Notes of Bigger Outstanding Issues
+- [ ] BIDU case - screwed up numbers in PDF and Validation failed: unsupported operand type(s) for +: 'int' and 'NoneType'
+- [ ] INTU case - edge case balance sheet
+- [ ] TGT case - edge case balance sheet
+
 
 ## Architecture Overview
 
