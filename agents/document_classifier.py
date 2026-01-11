@@ -58,9 +58,10 @@ document_type classification rules:
 - "other": Any document that doesn't fit the above categories
 
 When in doubt between "earnings_announcement" and "press_release", choose "earnings_announcement" if the document primarily focuses on financial results, earnings, revenue, or quarterly/annual performance metrics.
+Period_end_date cannot be the same date as the announcement or document date. Period_end_date is likely 15 to 60 days before the announcement date.
 
 Document text (first few pages):
-{text[:5000]}  # Limit to first 5000 characters
+{text[:10000]}  # Limit to first 5000 characters
 
 Return only valid JSON, no additional text."""
 
