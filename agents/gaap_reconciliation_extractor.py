@@ -47,38 +47,33 @@ def extract_gaap_reconciliation(
             "validation_errors": list of error messages
         }
     """
-    # Try chunks 0, 1, 2 in sequence to find a complete reconciliation table
+    # Try top 5 dense chunks in sequence to find a complete reconciliation table
     text = None
     chunk_index = None
 
-    for rank in [0, 1, 2]:
-        rank_text = f" (rank {rank + 1})" if rank > 0 else ""
-        checking_msg = (
-            f"Checking chunk{rank_text} for complete GAAP to non-GAAP reconciliation table"
-        )
-        print(checking_msg)
-        add_log(document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, checking_msg)
+    # Get top numeric chunks
+    from app.utils.document_section_finder import find_top_numeric_chunks, get_chunk_with_context
 
-        # Find the chunk
-        chunk_text, chunk_start_page, chunk_log_info = find_gaap_ebitda_reconciliation_section(
-            document_id=document_id,
-            file_path=file_path,
-            time_period=time_period,
-            document_type=document_type,
-            chunk_rank=rank,
-            enable_logging=True,
+    candidate_chunks = find_top_numeric_chunks(document_id, file_path, top_k=5)
+
+    if not candidate_chunks:
+        print("No chunks found with numbers, falling back to legacy search")  # Optional fallback
+
+    for attempt_idx, idx in enumerate(candidate_chunks):
+        chunk_msg = f"Checking chunk {idx} (attempt {attempt_idx + 1}) for complete GAAP to non-GAAP reconciliation table"
+        print(chunk_msg)
+        add_log(document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, chunk_msg)
+
+        # Get chunk text with context
+        chunk_text, start_page, log_info = get_chunk_with_context(
+            document_id, file_path, idx, pages_before=1, pages_after=1
         )
 
-        if not chunk_text:
-            not_found_msg = f"Chunk{rank_text} not found"
-            print(not_found_msg)
-            add_log(
-                document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, not_found_msg
-            )
-            continue
+        pages_msg = f"Extracted section (pages {log_info['start_extract_page']}-{log_info['end_extract_page']})"
+        print(pages_msg)
 
         # Check if this chunk has a complete reconciliation table
-        completeness_msg = f"Checking if chunk{rank_text} contains complete reconciliation table"
+        completeness_msg = f"Checking if chunk {idx} contains complete reconciliation table"
         print(completeness_msg)
         add_log(
             document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, completeness_msg
@@ -89,17 +84,17 @@ def extract_gaap_reconciliation(
         )
 
         if is_complete:
-            complete_msg = f"Found complete reconciliation table in chunk{rank_text}: {explanation}"
+            complete_msg = f"Found complete reconciliation table in chunk {idx}: {explanation}"
             print(complete_msg)
             add_log(
                 document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, complete_msg
             )
             text = chunk_text
-            chunk_index = chunk_log_info.get("best_chunk_index") if chunk_log_info else None
+            chunk_index = idx
             break
         else:
             incomplete_msg = (
-                f"Chunk{rank_text} does not contain complete reconciliation table: {explanation}"
+                f"Chunk {idx} does not contain complete reconciliation table: {explanation}"
             )
             print(incomplete_msg)
             add_log(
@@ -107,9 +102,7 @@ def extract_gaap_reconciliation(
             )
 
     if not text:
-        error_msg = (
-            "No complete GAAP to non-GAAP reconciliation table found after checking 3 chunks"
-        )
+        error_msg = "No complete GAAP to non-GAAP reconciliation table found after checking top dense chunks"
         print(error_msg)
         add_log(document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, error_msg)
         return {
@@ -346,6 +339,7 @@ def find_gaap_ebitda_reconciliation_section(
             ignore_front_fraction=ignore_front_fraction,
             ignore_back_fraction=ignore_back_fraction,
             chunk_rank=chunk_rank,
+            min_numbers=10,
         )
         # Handle both old (2-tuple) and new (3-tuple) return formats for backward compatibility
         if len(result) == 2:

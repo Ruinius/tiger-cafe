@@ -19,7 +19,7 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 # JWT Settings
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-prod")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+ACCESS_TOKEN_EXPIRE_MINUTES = 1440
 
 # Database
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./tiger_cafe.db")

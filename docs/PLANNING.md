@@ -29,12 +29,16 @@ The system currently supports:
 *See `docs/COMPLETED_TASKS.md` for detailed history.*
 
 ### Phase 13: Financial Model enhancements
-- [ ] CAPM for WACC in a separate column
-- [ ] expected market return and global assumption
-- [ ] beta for company (Yahoo Finance?)
-- [ ] New Assumption Fields in the Other column
-    - Diluted Shares Outstanding
-    - Base Revenue
+- [ ] Create another column in the Assumptions section between Marginal Capital Turnover and Other
+    - Call this column WACC Calculations
+    - Create a field called beta (see if you can pull beta from Yahoo Finance)
+    - Create a field called WACC (Calculated), which is not editable. Add a tooltip that shows the calculation using 5.0% market risk premium and 4.2% risk free rate
+    - Move the WACC field below the WACC (Calculated) and default it to the WACC (Calculated) value. But this continues to be the one that is used in the model
+- [ ] Add additional items to the Other column
+    - Diluted Shares Outstanding (in the financial model below, the Diluted Shares Outstanding will use this number). Copy the default logic.
+    - Base Revenue (in the financial model below, the Revenue line item in Base year will use this number). Copy the default logic.
+- [ ] Minor edits
+    - Change the Marginal Capital Turnover assumption to have two decimals instead of just one
 
 ### Phase 14: App-wide Analysis and Dashboard
 - [ ] Improve the Company list
@@ -58,10 +62,20 @@ The system currently supports:
 - [ ] Extract details on other assets and other liabilities
 
 ## Ongoing List of UI Improvements and Bugs
-- [ ] Failing to find the Non-GAAP Reconciliation should just be a warning instead of an error
-- [ ] For financial statement extraction, the chunks need to have a critical mass of numbers (at least 15 for balance sheet and income statement. At least 10 for Non-GAAP Reconciliation) to be included in the list of chunks considered
-- [ ] For finding the balance sheet, if the best rank chunk is the first or last chunk, push its rank down by two (given three tries, it will still be tried but last)
-
+- [ ] Failing to find the Non-GAAP Reconciliation (or any items under additional items) should just be a warning instead of an error
+- [x] For financial statement extraction, the chunks need to have a critical mass of numbers (at least 15 for balance sheet and income statement. At least 10 for Non-GAAP Reconciliation) to be included in the list of chunks considered
+- [x] For finding the balance sheet, if the best rank chunk is the first or last chunk, push its rank down by two (given there are three tries, it will still be tried but last)
+- [ ] Enable editing extracted values in Document Extraction View
+- [ ] Improve the order in which content is loaded in Document Extraction View for better UX
+- [ ] Improve the order in which content is loaded in Company Analysis View for better UX
+- [ ] In the Document View, add where the Balance Sheet, Income Statement, and Non-GAAP Reconciliation were extracted from
+- [ ] Add additional log for Stage 2 Validation for all extractions (e.g., what's the LLM's response on time period alignment)
+- [x] Improve find_document_section
+    - Keep the old function as _legacy with comment to not delete it (in case we need to revert)
+    - Rank each chunk by number density and have the app run through the five most number dense chunks plus their previous and next one page
+    - So balance sheet will run through up to five chunks until LLM validation finds the complete balance sheet
+    - Income statement will run through up to five chunks until LLM validation finds the complete income statement
+    - Non-GAAP validation will run through up to five chunks until LLM validation finds the relevant table
 
 ## Backlog and Notes of Bigger Outstanding Issues - DO NOT CODE
 - [ ] BIDU case - screwed up numbers in PDF and Validation failed: unsupported operand type(s) for +: 'int' and 'NoneType'
@@ -72,11 +86,13 @@ The system currently supports:
 - [ ] Create a custom tiny transformer to rename line items and manage classification
 - [ ] Explore using small specialized embedding / encoder models to replace the AUTHORITATIVE_LOOKUP and the classify using LLM
 - [ ] Use the results from the tiny transformer to handle bolding logic (current logic is not great)
-- [ ] **UI Interactivity**: Implementation capability to change "Category" and "Type" directly in the UI.
-- [ ] Enable editing extracted values in Document Extraction View
 - [ ] Tool tips for key formulas and assumptions
-- [ ] Improve page loading speed and/or content order
 - [ ] Fix UI for Uploading flow
+    - Milestones in the Progress Tracker are not updating as they should with SSE
+    - The UI is not updating as documents flow through the pipeline as they should
+    - Allow for continuing to add document and adding them into the pipeline (so the Add document button will never turn into check uploads button)
+    - Add a Cell above all the companies that says "Documents Processing" which loads the Check Uploads page
+    - Add the Extraction milestones to the Check Uploads page
 - [ ] Fix Time Period identification. LLM is not following the format restriction
 - [ ] Consolidate batch upload tests
 

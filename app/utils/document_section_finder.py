@@ -55,6 +55,20 @@ def _numeric_density(text: str) -> float:
     return digit_count / max(1, digit_count + alpha_count)
 
 
+def _count_numbers(text: str) -> int:
+    """Count occurrences of numerical values in text."""
+    if not text:
+        return 0
+    import re
+
+    # Match numbers like 1,234.56, (123), -456.0, etc.
+    # Specifically looking for digit sequences, possibly with commas/decimals
+    # and possibly wrapped in parentheses for negative numbers.
+    number_pattern = r"\(?\b\d+(?:,\d+)*(?:\.\d+)?\)?\b"
+    matches = re.findall(number_pattern, text)
+    return len(matches)
+
+
 def _chunk_search_range(
     num_chunks: int, ignore_front_fraction: float = 0.0, ignore_back_fraction: float = 0.0
 ) -> range:
@@ -68,7 +82,27 @@ def _chunk_search_range(
     return range(start_index, end_index)
 
 
-def find_document_section(
+def _penalize_edge_chunks(chunks: list[dict], search_range: range) -> list[dict]:
+    """
+    If the top-ranked chunk is at the boundaries of the search range,
+    demote it by 2 positions. This helps avoid edge-case false positives.
+    """
+    if not chunks or len(chunks) < 2:
+        return chunks
+
+    first_chunk_index = search_range.start
+    last_chunk_index = search_range.stop - 1
+
+    top_chunk = chunks[0]
+    if top_chunk["chunk_index"] in (first_chunk_index, last_chunk_index):
+        target_index = min(2, len(chunks) - 1)
+        if target_index > 0:
+            removed = chunks.pop(0)
+            chunks.insert(target_index, removed)
+    return chunks
+
+
+def _find_document_section_legacy(
     document_id: str,
     file_path: str,
     query_texts: list[str],
@@ -81,6 +115,9 @@ def find_document_section(
     ignore_front_fraction: float = 0.0,
     ignore_back_fraction: float = 0.0,
     chunk_rank: int = 0,
+    min_numbers: int = 0,
+    penalize_edges: bool = False,
+    exclude_chunks: set[int] | None = None,
 ) -> tuple[str | None, int | None, dict | None]:
     """
     Use document embeddings to locate relevant sections for the provided queries.
@@ -131,11 +168,25 @@ def find_document_section(
 
         # Search through all chunks to find the best match
         for chunk_index in search_range:
+            chunk_text, _, _ = get_chunk_text(file_path, chunk_index, resolved_chunk_size)
+            if not chunk_text:
+                continue
+
+            # Skip excluded chunks
+            if exclude_chunks and chunk_index in exclude_chunks:
+                continue
+
+            # Apply "critical mass of numbers" filter if specified
+            if min_numbers > 0:
+                num_numbers = _count_numbers(chunk_text)
+                if num_numbers < min_numbers:
+                    # Skip chunks with insufficient numbers (likely not a financial statement)
+                    continue
+
             chunk_embedding = load_chunk_embedding(document_id, chunk_index)
 
             if not chunk_embedding:
                 print(f"Chunk {chunk_index} embedding not found, generating...")
-                chunk_text, _, _ = get_chunk_text(file_path, chunk_index, resolved_chunk_size)
                 chunk_embedding = generate_embedding_safe(
                     chunk_text[:20000], max_chars=20000, task_type="retrieval_document"
                 )
@@ -200,6 +251,8 @@ def find_document_section(
 
                 # Sort by rerank similarity
                 reranked.sort(key=lambda item: item["rerank_similarity"], reverse=True)
+                if penalize_edges:
+                    reranked = _penalize_edge_chunks(reranked, search_range)
                 rerank_details = reranked
 
                 # Select the Nth best chunk based on chunk_rank
@@ -215,6 +268,8 @@ def find_document_section(
                         best_score = selected_reranked["rerank_similarity"]
             else:
                 # No rerank queries provided, use initial similarity
+                if penalize_edges:
+                    top_chunks = _penalize_edge_chunks(top_chunks, search_range)
                 rerank_details = [
                     {
                         "chunk_index": chunk_info["chunk_index"],
@@ -237,6 +292,8 @@ def find_document_section(
         else:
             # No reranking, use initial similarity scores
             sorted_chunks = sorted(chunk_scores, key=lambda item: item["similarity"], reverse=True)
+            if penalize_edges:
+                sorted_chunks = _penalize_edge_chunks(sorted_chunks, search_range)
 
             # Select the Nth best chunk based on chunk_rank
             if chunk_rank < len(sorted_chunks):
@@ -335,3 +392,95 @@ def collect_top_chunk_texts(
 
     combined_text = "\n\n".join(texts) if texts else None
     return combined_text, best_chunk_index, log_details
+
+
+def find_document_section(*args, **kwargs):
+    """
+    Legacy wrapper for _find_document_section_legacy.
+    This ensures backward compatibility for code that still uses semantic search.
+    """
+    return _find_document_section_legacy(*args, **kwargs)
+
+
+def find_top_numeric_chunks(
+    document_id: str,
+    file_path: str,
+    top_k: int = 5,
+    chunk_size: int | None = None,
+) -> list[int]:
+    """
+    Find the chunks with the highest density of numbers.
+    Returns a list of chunk indices sorted by number count descending.
+    """
+    chunk_metadata = get_chunk_metadata(document_id)
+    if not chunk_metadata:
+        print(f"No chunk metadata found for document {document_id}")
+        return []
+
+    resolved_chunk_size = chunk_size or chunk_metadata.get("chunk_size", 2)
+    num_chunks = chunk_metadata.get("num_chunks", 0)
+
+    if num_chunks == 0:
+        return []
+
+    chunk_counts = []
+
+    # Iterate all chunks
+    for chunk_index in range(num_chunks):
+        chunk_text, _, _ = get_chunk_text(file_path, chunk_index, resolved_chunk_size)
+        if not chunk_text:
+            continue
+
+        count = _count_numbers(chunk_text)
+        chunk_counts.append({"chunk_index": chunk_index, "count": count})
+
+    # Sort by count descending
+    chunk_counts.sort(key=lambda x: x["count"], reverse=True)
+
+    # Return top K indices
+    return [item["chunk_index"] for item in chunk_counts[:top_k]]
+
+
+def get_chunk_with_context(
+    document_id: str,
+    file_path: str,
+    chunk_index: int,
+    pages_before: int = 1,
+    pages_after: int = 1,
+    chunk_size: int | None = None,
+) -> tuple[str, int, dict]:
+    """
+    Get text for a specific chunk including context pages.
+    Returns (extracted_text, start_page, log_info)
+    """
+    chunk_metadata = get_chunk_metadata(document_id)
+    if not chunk_metadata:
+        return "", 0, {}
+
+    resolved_chunk_size = chunk_size or chunk_metadata.get("chunk_size", 2)
+
+    # Calculate pages
+    chunk_start_page = chunk_index * resolved_chunk_size
+    chunk_end_page = (
+        chunk_start_page + resolved_chunk_size
+    )  # Exclusive for calculation but we want inclusive for display usually?
+    # Logic in find_document_section:
+    # chunk_end_page = min(chunk_start_page + resolved_chunk_size, total_pages)
+    # end_extract_page (exclusive) = ...
+
+    start_extract_page = max(0, chunk_start_page - pages_before)
+    # We don't know total matches here without opening PDF, but _extract_page_range_text handles clamping
+    # We'll just pass a large number if needed or just calculate based on logic
+    end_extract_page = chunk_end_page + pages_after
+
+    extracted_text = _extract_page_range_text(file_path, start_extract_page, end_extract_page)
+
+    log_info = {
+        "best_chunk_index": chunk_index,
+        "chunk_start_page": chunk_start_page,
+        "chunk_end_page": chunk_end_page - 1,
+        "start_extract_page": start_extract_page,
+        "end_extract_page": end_extract_page - 1,
+    }
+
+    return extracted_text, start_extract_page, log_info

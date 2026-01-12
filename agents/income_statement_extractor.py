@@ -72,81 +72,67 @@ def extract_income_statement(
     Returns:
         Dictionary with income statement data and validation status
     """
-    # Stage 1: Find correct section (retry with different chunk positions relative to balance sheet)
+    # Stage 1: Find correct section (iterate through top dense chunks)
     income_statement_text = None
     start_page = None
     log_info = None
     extracted_data = None
-    successful_chunk_index = None  # Track successful chunk index for persistence
+    successful_chunk_index = None
 
-    for section_attempt in range(max_retries):  # 4 tries: same, before, after, full search
+    # Get top numeric chunks
+    from app.utils.document_section_finder import find_top_numeric_chunks, get_chunk_with_context
+
+    candidate_chunks = find_top_numeric_chunks(document_id, file_path, top_k=5)
+
+    if not candidate_chunks:
+        print("No chunks found with numbers, falling back to legacy search")
+
+    for attempt_idx, chunk_index in enumerate(candidate_chunks):
         try:
-            attempt_labels = ["same as", "before", "after", "full search"]
-            section_msg = f"Stage 1: Finding income statement section (attempt {section_attempt + 1}: {attempt_labels[section_attempt]} balance sheet)"
+            section_msg = f"Stage 1: Finding income statement section (attempt {attempt_idx + 1}, chunk {chunk_index})"
             print(section_msg)
             add_log(document_id, FinancialStatementMilestone.INCOME_STATEMENT, section_msg)
 
-            # Find income statement section near balance sheet
-            income_statement_text, start_page, log_info = find_income_statement_near_balance_sheet(
-                document_id,
-                file_path,
-                time_period,
-                document_type,
-                attempt=section_attempt,
-                balance_sheet_chunk_index=balance_sheet_chunk_index,
+            # Get text for this chunk with padding
+            # Default padding of 1 page before/after
+            income_statement_text, start_page, log_info = get_chunk_with_context(
+                document_id, file_path, chunk_index, pages_before=1, pages_after=1
             )
 
-            if income_statement_text:
-                # Log chunk/page information if available
-                if log_info:
-                    direction_text = log_info.get("direction", "near")
-                    chunk_index = log_info.get("income_statement_chunk_index", "unknown")
-                    chunk_start = log_info.get("chunk_start_page", "unknown")
-                    chunk_end = log_info.get("chunk_end_page", "unknown")
-                    chunk_msg = f"Income statement found {direction_text} balance sheet: chunk {chunk_index} (pages {chunk_start}-{chunk_end})"
-                    print(chunk_msg)
-                    add_log(
-                        document_id,
-                        FinancialStatementMilestone.INCOME_STATEMENT,
-                        chunk_msg,
-                    )
-                    pages_msg = f"Found income statement section (pages {log_info['start_extract_page']}-{log_info['end_extract_page']})"
-                    print(pages_msg)
-                    add_log(
-                        document_id,
-                        FinancialStatementMilestone.INCOME_STATEMENT,
-                        pages_msg,
-                    )
-                found_msg = f"Found income statement section starting at page {start_page}, extracted {len(income_statement_text)} characters"
-                print(found_msg)
-                add_log(document_id, FinancialStatementMilestone.INCOME_STATEMENT, found_msg)
+            chunk_msg = f"Checking chunk {chunk_index} (pages {log_info['chunk_start_page']}-{log_info['chunk_end_page']})"
+            print(chunk_msg)
+            add_log(document_id, FinancialStatementMilestone.INCOME_STATEMENT, chunk_msg)
 
-                # Stage 1 validation: Check completeness of chunk text using LLM (before extraction)
-                completeness_check_msg = (
-                    "Stage 1: Checking if chunk contains complete income statement using LLM"
-                )
-                print(completeness_check_msg)
+            # Stage 1 validation: Check completeness of chunk text using LLM (before extraction)
+            completeness_check_msg = (
+                "Stage 1: Checking if chunk contains complete income statement using LLM"
+            )
+            print(completeness_check_msg)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.INCOME_STATEMENT,
+                completeness_check_msg,
+            )
+
+            is_complete, reason = check_income_statement_completeness_llm(
+                income_statement_text, time_period, period_end_date
+            )
+
+            if not is_complete:
+                section_failed_msg = f"Stage 1 validation failed: {reason}"
+                print(section_failed_msg)
                 add_log(
                     document_id,
                     FinancialStatementMilestone.INCOME_STATEMENT,
-                    completeness_check_msg,
+                    section_failed_msg,
                 )
-
-                is_complete, reason = check_income_statement_completeness_llm(
-                    income_statement_text, time_period, period_end_date
-                )
-
-                if not is_complete:
-                    section_failed_msg = f"Stage 1 validation failed: {reason}"
-                    print(section_failed_msg)
-                    add_log(
-                        document_id,
-                        FinancialStatementMilestone.INCOME_STATEMENT,
-                        section_failed_msg,
-                    )
-                    # Try next chunk position
-                    continue
-
+                if attempt_idx < len(candidate_chunks) - 1:
+                    continue  # Try next candidate
+                else:
+                    # All attempts failed
+                    # We will raise Exception at end of loop if not found
+                    pass
+            else:
                 # Extract income statement using LLM (only if chunk is complete)
                 extraction_msg = "Extracting income statement from complete chunk"
                 print(extraction_msg)
@@ -163,7 +149,7 @@ def extract_income_statement(
                     period_end_date=period_end_date,
                 )
 
-                # Classify line items immediately (Step 4: Resolve redundancy by using specialized classifier early)
+                # Classify line items immediately
                 extracted_data["line_items"] = classify_line_items_llm(extracted_data["line_items"])
 
                 extracted_count_msg = (
@@ -184,45 +170,19 @@ def extract_income_statement(
                     section_valid_msg,
                 )
                 # Store successful chunk index
-                if log_info:
-                    successful_chunk_index = log_info.get("income_statement_chunk_index")
+                successful_chunk_index = chunk_index
+                extracted_data["chunk_index"] = chunk_index
                 break  # Section found and validated, proceed to Stage 2
-            else:
-                # Section finder returned None
-                not_found_msg = f"Attempt {section_attempt + 1} did not find a valid section"
-                print(not_found_msg)
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.INCOME_STATEMENT,
-                    not_found_msg,
-                )
-                # Continue to next attempt
-                continue
 
         except Exception as e:
-            error_str = str(e).lower()
-            is_api_error = any(
-                keyword in error_str
-                for keyword in [
-                    "rate limit",
-                    "quota",
-                    "429",
-                    "503",
-                    "resource exhausted",
-                    "service unavailable",
-                    "too many requests",
-                ]
-            )
-            if is_api_error:
-                print(f"API error on section attempt {section_attempt + 1}: {str(e)}")
-                raise
-            print(f"Error on section attempt {section_attempt + 1}: {str(e)}")
-            if section_attempt == max_retries - 1:
-                # If all section attempts failed, raise the last exception
-                raise
+            str(e).lower()
+            print(f"Error on section attempt {attempt_idx + 1}: {str(e)}")
+            if attempt_idx == len(candidate_chunks) - 1:
+                # Last attempt failed
+                pass
 
-    # If loop finished without success, raise exception
-    if not income_statement_text or extracted_data is None:
+    # If loop finished without success (extracted_data is None), raise exception
+    if not extracted_data:
         raise Exception("Failed to find or extract income statement after all attempts")
 
     # Stage 2: Post-process and validate extraction
@@ -459,7 +419,14 @@ def find_income_statement_near_balance_sheet(
             # Income statement specific queries
             query_texts = ["net income", "revenue", "sales", "interest", "tax", "cost", "expenses"]
 
-            # Search full document (no ignore fractions)
+            # Exclude chunks already tried
+            exclude_chunks = {
+                balance_chunk_index,  # attempt 0
+                balance_chunk_index - 1,  # attempt 1
+                balance_chunk_index + 1,  # attempt 2
+            }
+
+            # Search full document (no ignore fractions), excluding already-tried chunks
             income_text, income_start_page, income_log_info = find_document_section(
                 document_id=document_id,
                 file_path=file_path,
@@ -472,28 +439,18 @@ def find_income_statement_near_balance_sheet(
                 ignore_front_fraction=0.0,
                 ignore_back_fraction=0.0,
                 chunk_rank=0,  # Get best match
+                min_numbers=15,
+                exclude_chunks=exclude_chunks,
             )
 
             if not income_log_info or "best_chunk_index" not in income_log_info:
-                print("Full document search failed to find income statement")
+                msg = "Full document search failed to find income statement (excluding already-tried chunks)"
+                print(msg)
+                add_log(document_id, FinancialStatementMilestone.INCOME_STATEMENT, msg)
                 return None, None, None
 
             target_chunk_index = income_log_info["best_chunk_index"]
-
-            # Check if this chunk was already tried in attempts 0, 1, or 2
-            tried_chunks = {
-                balance_chunk_index,  # attempt 0
-                balance_chunk_index - 1,  # attempt 1
-                balance_chunk_index + 1,  # attempt 2
-            }
-
-            if target_chunk_index in tried_chunks:
-                print(
-                    f"Full document search returned chunk {target_chunk_index} which was already tried"
-                )
-                return None, None, None
-
-            direction = f"full search (chunk {target_chunk_index})"
+            direction = f"full search (chunk {target_chunk_index}, excluding chunks {sorted(exclude_chunks)})"
 
             # Use the text from find_document_section directly
             log_info = {
@@ -526,6 +483,15 @@ def find_income_statement_near_balance_sheet(
         chunk_text, chunk_start_page, chunk_end_page = get_chunk_text(
             file_path, target_chunk_index, chunk_size
         )
+
+        # Apply "critical mass of numbers" filter
+        from app.utils.document_section_finder import _count_numbers
+
+        if chunk_text and _count_numbers(chunk_text) < 15:
+            print(
+                f"Attempt {attempt} (chunk {target_chunk_index}) has insufficient numbers, skipping"
+            )
+            return None, None, None
 
         # Extract with pages_before=1 and pages_after=1 (similar to find_document_section)
         with pdfplumber.open(file_path) as pdf:

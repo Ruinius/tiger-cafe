@@ -87,7 +87,17 @@ export function useStatusStream() {
             eventSource.addEventListener('status_update', (event) => {
                 try {
                     const data = JSON.parse(event.data)
-                    setActiveDocuments(data)
+                    // Only update state if data actually changed
+                    setActiveDocuments(prevData => {
+                        const prevStr = JSON.stringify(prevData)
+                        const newStr = JSON.stringify(data)
+                        if (prevStr === newStr) {
+                            console.log('[SSE] Received identical data, skipping update')
+                            return prevData // Return previous state to avoid re-render
+                        }
+                        console.log('[SSE] Data changed, updating state')
+                        return data
+                    })
                 } catch (err) {
                     console.error('[SSE] Error parsing status update:', err)
                 }

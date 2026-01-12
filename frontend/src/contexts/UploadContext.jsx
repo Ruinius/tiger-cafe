@@ -48,10 +48,20 @@ export const UploadProvider = ({ children }) => {
         }
     }, [isAuthenticated, token, showUploadProgress])
 
+    // Track previous SSE data to avoid unnecessary updates
+    const previousActiveDocumentsRef = React.useRef(null)
+
     // Update uploadingDocuments from SSE stream
     useEffect(() => {
         if (isConnected && activeDocuments) {
-            setUploadingDocuments(activeDocuments)
+            // Only update if data actually changed (deep equality check)
+            const currentData = JSON.stringify(activeDocuments)
+            const previousData = previousActiveDocumentsRef.current
+
+            if (currentData !== previousData) {
+                previousActiveDocumentsRef.current = currentData
+                setUploadingDocuments(activeDocuments)
+            }
 
             // Auto-hide progress modal when all uploads complete
             const allFinished = activeDocuments.length === 0 ||

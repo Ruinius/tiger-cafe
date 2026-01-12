@@ -78,12 +78,19 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
         }
     }
 
-    // Load model initially once assumptions are loaded?
+    // Load model initially once assumptions are loaded
+    const hasLoadedInitialModel = React.useRef(false)
     useEffect(() => {
-        if (assumptions && !modelData) {
+        if (selectedCompany && assumptions && !hasLoadedInitialModel.current) {
             loadModel()
+            hasLoadedInitialModel.current = true
         }
-    }, [assumptions, selectedCompany])
+    }, [selectedCompany, assumptions])
+
+    // Reset the ref when company changes
+    useEffect(() => {
+        hasLoadedInitialModel.current = false
+    }, [selectedCompany])
 
 
     const [valuations, setValuations] = useState([])

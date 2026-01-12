@@ -44,35 +44,38 @@ def extract_balance_sheet(
     Returns:
         Dictionary with balance sheet data and validation status
     """
-    # Stage 1: Find correct section (retry with different chunk ranks)
+    # Stage 1: Find correct section (iterate through top dense chunks)
     balance_sheet_text = None
     start_page = None
     log_info = None
-    successful_chunk_index = None  # Track successful chunk index for income statement extraction
+    successful_chunk_index = None
 
-    for section_attempt in range(max_retries):  # 3 tries: rank 0, 1, 2
+    # Get top numeric chunks
+    from app.utils.document_section_finder import find_top_numeric_chunks, get_chunk_with_context
+
+    candidate_chunks = find_top_numeric_chunks(document_id, file_path, top_k=5)
+
+    if not candidate_chunks:
+        # Fallback to legacy if no chunks found (rare)
+        print("No chunks found with numbers, falling back to legacy search")
+        # Legacy fallback logic could go here or just raise error
+
+    for attempt_idx, chunk_index in enumerate(candidate_chunks):
         try:
-            section_msg = f"Stage 1: Finding balance sheet section (rank {section_attempt + 1})"
+            section_msg = f"Stage 1: Finding balance sheet section (attempt {attempt_idx + 1}, chunk {chunk_index})"
             print(section_msg)
             add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, section_msg)
 
-            # Find balance sheet section using embeddings
-            balance_sheet_text, start_page, log_info = find_balance_sheet_section(
-                document_id, file_path, time_period, document_type, chunk_rank=section_attempt
+            # Get text for this chunk with padding
+            # Default padding of 1 page before/after seems standard for tables
+            balance_sheet_text, start_page, log_info = get_chunk_with_context(
+                document_id, file_path, chunk_index, pages_before=1, pages_after=1
             )
 
-            # Log chunk/page information if available
-            if log_info:
-                rank_text = f" (rank {section_attempt + 1})" if section_attempt > 0 else ""
-                chunk_msg = f"Best match{rank_text}: chunk {log_info['best_chunk_index']} (pages {log_info['chunk_start_page']}-{log_info['chunk_end_page']})"
-                print(chunk_msg)
-                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, chunk_msg)
-                pages_msg = f"Found balance sheet section (pages {log_info['start_extract_page']}-{log_info['end_extract_page']})"
-                print(pages_msg)
-                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, pages_msg)
-            found_msg = f"Found balance sheet section starting at page {start_page}, extracted {len(balance_sheet_text)} characters"
-            print(found_msg)
-            add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, found_msg)
+            chunk_msg = f"Checking chunk {chunk_index} (pages {log_info['chunk_start_page']}-{log_info['chunk_end_page']})"
+            print(chunk_msg)
+            pages_msg = f"Extracted section (pages {log_info['start_extract_page']}-{log_info['end_extract_page']})"
+            print(pages_msg)
 
             # Stage 1 validation: Check completeness of chunk text using LLM (before extraction)
             completeness_check_msg = (
@@ -97,16 +100,18 @@ def extract_balance_sheet(
                     FinancialStatementMilestone.BALANCE_SHEET,
                     section_failed_msg,
                 )
-                if section_attempt < max_retries - 1:
-                    continue  # Try next chunk rank
+                if attempt_idx < len(candidate_chunks) - 1:
+                    continue  # Try next candidate
                 else:
-                    # All section attempts failed, need to create empty extracted_data for error handling
+                    # All attempts failed
                     extracted_data = {
                         "line_items": [],
                         "currency": None,
                         "unit": None,
                         "is_valid": False,
-                        "validation_errors": ["Balance sheet completeness check failed"],
+                        "validation_errors": [
+                            "Balance sheet completeness check failed on all candidates"
+                        ],
                         "time_period": time_period,
                     }
                     return extracted_data
@@ -153,32 +158,15 @@ def extract_balance_sheet(
                 section_valid_msg,
             )
             # Store successful chunk index for income statement extraction
-            successful_chunk_index = log_info.get("best_chunk_index") if log_info else None
+            successful_chunk_index = chunk_index
             break  # Section found and validated, proceed to Stage 2
 
         except Exception as e:
-            error_str = str(e).lower()
-            is_api_error = any(
-                keyword in error_str
-                for keyword in [
-                    "rate limit",
-                    "quota",
-                    "429",
-                    "503",
-                    "resource exhausted",
-                    "service unavailable",
-                    "too many requests",
-                ]
-            )
-            if is_api_error:
-                print(f"API error on section attempt {section_attempt + 1}: {str(e)}")
+            str(e).lower()
+            # Basic error handling
+            print(f"Error on section attempt {attempt_idx + 1}: {str(e)}")
+            if attempt_idx == len(candidate_chunks) - 1:
                 raise
-            print(f"Error on section attempt {section_attempt + 1}: {str(e)}")
-            if section_attempt == max_retries - 1:
-                raise
-
-    if not balance_sheet_text:
-        raise Exception("Failed to find balance sheet section after all attempts")
 
     # Stage 2: Validate extraction calculations (retry extraction with LLM feedback)
     # extracted_data was already set in Stage 1 and validated for completeness
@@ -438,6 +426,8 @@ def find_balance_sheet_section(
             ignore_front_fraction=ignore_front_fraction,
             ignore_back_fraction=ignore_back_fraction,
             chunk_rank=chunk_rank,
+            min_numbers=15,
+            penalize_edges=True,
         )
 
     except Exception as e:
