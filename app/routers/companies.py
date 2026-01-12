@@ -29,8 +29,8 @@ from app.schemas.financial_assumption import FinancialAssumptionCreate
 from app.schemas.valuation import Valuation as ValuationSchema
 from app.schemas.valuation import ValuationCreate
 from app.utils.financial_modeling import calculate_dcf
-from app.utils.historical_calculations import get_revenue
-from app.utils.market_data import get_latest_share_price
+from app.utils.historical_calculations import get_interest_expense, get_revenue
+from app.utils.market_data import get_beta, get_latest_share_price, get_market_cap
 
 router = APIRouter()
 
@@ -209,6 +209,9 @@ async def get_company_historical_calculations(
             "basic_shares_outstanding": document.income_statement.basic_shares_outstanding
             if document.income_statement
             else None,
+            "interest_expense": get_interest_expense(document.income_statement)
+            if document.income_statement
+            else None,
         }
 
         if calc.currency:
@@ -287,51 +290,125 @@ async def get_financial_assumptions(
     assumption = (
         db.query(FinancialAssumption).filter(FinancialAssumption.company_id == company_id).first()
     )
+
+    # We always need to calculate dynamic fields (WACC components)
+    historical_data = await get_company_historical_calculations(company_id, db, current_user)
+    historical_entries = historical_data.get("entries", [])
+
+    # 1. Beta: Fetch from Yahoo Finance
+    company = db.query(Company).filter(Company.id == company_id).first()
+    beta = 1.0
+    if company and company.ticker:
+        beta = float(get_beta(company.ticker))
+
+    # 2. WACC Components
+    market_cap = float(get_market_cap(company.ticker)) if company and company.ticker else 0.0
+
+    # We need bridge items for Debt
+    non_op_classifications = (
+        db.query(NonOperatingClassification)
+        .join(Document)
+        .filter(Document.company_id == company_id)
+        .options(selectinload(NonOperatingClassification.document))
+        .all()
+    )
+
+    non_op_classification = None
+    if non_op_classifications:
+        non_op_classifications.sort(
+            key=lambda x: time_period_sort_key(x.document.time_period) if x.document else (0, 0, "")
+        )
+        non_op_classification = non_op_classifications[-1]
+
+    debt = 0.0
+    if non_op_classification:
+        items = (
+            db.query(NonOperatingClassificationItem)
+            .filter(NonOperatingClassificationItem.classification_id == non_op_classification.id)
+            .all()
+        )
+        for item in items:
+            if item.category == "debt":
+                debt += float(item.line_value or 0)
+
+    # Weight of Equity
+    # Market Cap is in absolute dollars (e.g., 135,000,000,000)
+    # Debt is in millions (e.g., 31,000 means 31,000,000,000)
+    debt_dollars = debt * 1_000_000
+
+    weight_of_equity = 1.0
+    if (market_cap + debt_dollars) > 0:
+        weight_of_equity = market_cap / (market_cap + debt_dollars)
+
+    # Cost of Debt
+    interest_expense_annualized = 0.0
+    if historical_entries:
+        latest = historical_entries[-1]
+        ie = latest.get("interest_expense")
+        if ie is not None:
+            interest_expense_annualized = abs(float(ie)) * 4.0
+
+    cost_of_debt = 0.05
+    if debt > 0:
+        calculated_cod = interest_expense_annualized / debt
+        cost_of_debt = max(calculated_cod, 0.05)  # Minimum 5%
+
+    # Cost of Equity
+    risk_free_rate = 0.042
+    market_risk_premium = 0.05
+    cost_of_equity = risk_free_rate + (beta * market_risk_premium)
+
+    # Calculated WACC
+    marginal_tax_rate = 0.25
+    calculated_wacc = (cost_of_equity * weight_of_equity) + (
+        cost_of_debt * (1 - marginal_tax_rate) * (1 - weight_of_equity)
+    )
+
     if not assumption:
         # Calculate defaults from L4Q historical data
-        historical_data = await get_company_historical_calculations(company_id, db, current_user)
-        quarterly_entries = [
-            e for e in historical_data.get("entries", []) if "Q" in e.get("time_period", "")
-        ]
-        l4q = quarterly_entries[-4:] if len(quarterly_entries) >= 4 else quarterly_entries
+        quarterly_entries = [e for e in historical_entries if "Q" in e.get("time_period", "")]
+        l4q_list = quarterly_entries[-4:] if len(quarterly_entries) >= 4 else quarterly_entries
 
-        # Helper to calculate L4Q average
         def l4q_avg(field):
-            values = [e.get(field) for e in l4q if e.get(field) is not None]
-            if values:
-                return sum(values) / len(values)
-            return None
+            vals = [e.get(field) for e in l4q_list if e.get(field) is not None]
+            return sum(vals) / len(vals) if vals else None
 
         # 1. Stage 1 Revenue Growth: L4Q Average Organic Growth
         organic_growth = l4q_avg("organic_revenue_growth")
-        # Convert from percentage (5.0) to decimal (0.05)
         stage1_growth = float(organic_growth) / 100 if organic_growth else 0.05
-
-        # 2. Terminal Growth: 3%
         terminal_growth = 0.03
-
-        # 3. Stage 2 Revenue Growth: midpoint between Stage 1 and Terminal
         stage2_growth = (stage1_growth + terminal_growth) / 2
 
-        # 4. EBITA Margin: L4Q Average
+        # 2. EBITA Margin
         ebita_margin_avg = l4q_avg("ebita_margin")
         ebita_margin = float(ebita_margin_avg) if ebita_margin_avg else 0.20
 
-        # 5. Marginal Capital Turnover: L4Q Capital Turnover with bounds
+        # 3. Capital Turnover
         capital_turnover_avg = l4q_avg("capital_turnover")
-        if capital_turnover_avg and capital_turnover_avg > 0 and capital_turnover_avg < 100:
+        if capital_turnover_avg and 0 < capital_turnover_avg < 100:
             mct = float(capital_turnover_avg)
         else:
-            mct = 100.0  # Cap at 100 if negative or very high
+            mct = 100.0
 
-        # 6. Operating Tax Rate: L4Q Average Adjusted Tax Rate
+        # 4. Tax Rate
         tax_rate_avg = l4q_avg("adjusted_tax_rate")
         tax_rate = float(tax_rate_avg) if tax_rate_avg else 0.25
 
-        # 7. WACC: 8%
-        wacc = 0.08
+        # 5. Shares
+        diluted_shares = None
+        if historical_entries:
+            latest = historical_entries[-1]
+            diluted_shares = latest.get("diluted_shares_outstanding") or latest.get(
+                "basic_shares_outstanding"
+            )
 
-        # Create default assumption with calculated values
+        # 6. Base Revenue
+        base_revenue = None
+        if l4q_list:
+            revenue_values = [e.get("revenue") for e in l4q_list if e.get("revenue") is not None]
+            if revenue_values:
+                base_revenue = (sum(revenue_values) / len(revenue_values)) * 4
+
         assumption = FinancialAssumption(
             company_id=company_id,
             revenue_growth_stage1=stage1_growth,
@@ -343,12 +420,23 @@ async def get_financial_assumptions(
             marginal_capital_turnover_stage1=mct,
             marginal_capital_turnover_stage2=mct,
             marginal_capital_turnover_terminal=mct,
+            beta=beta,
             adjusted_tax_rate=tax_rate,
-            wacc=wacc,
+            wacc=calculated_wacc,
+            diluted_shares_outstanding=diluted_shares,
+            base_revenue=base_revenue,
         )
         db.add(assumption)
         db.commit()
         db.refresh(assumption)
+
+    # Attach dynamic fields for display
+    assumption.weight_of_equity = weight_of_equity
+    assumption.cost_of_debt = cost_of_debt
+    assumption.calculated_wacc = calculated_wacc
+    assumption.market_cap = market_cap
+    assumption.beta = beta
+
     return assumption
 
 
@@ -426,6 +514,7 @@ async def get_financial_model(
             "marginal_capital_turnover_terminal": assumption.marginal_capital_turnover_terminal,
             "adjusted_tax_rate": assumption.adjusted_tax_rate,
             "wacc": assumption.wacc,
+            "base_revenue": assumption.base_revenue,
         }
 
     # 3. Calculate Model
@@ -498,9 +587,11 @@ async def get_financial_model(
         - bridge_items["minority_interest"]
     )
 
-    # Get Diluted Shares Outstanding from latest historical entry
+    # Get Diluted Shares Outstanding from assumptions first, then fall back to historical entry
     diluted_shares = 0.0
-    if historical_entries:
+    if assumption and assumption.diluted_shares_outstanding:
+        diluted_shares = float(assumption.diluted_shares_outstanding)
+    elif historical_entries:
         latest = historical_entries[-1]
         diluted_shares = float(latest.get("diluted_shares_outstanding") or 0)
 

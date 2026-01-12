@@ -29,16 +29,27 @@ The system currently supports:
 *See `docs/COMPLETED_TASKS.md` for detailed history.*
 
 ### Phase 13: Financial Model enhancements
-- [ ] Create another column in the Assumptions section between Marginal Capital Turnover and Other
-    - Call this column WACC Calculations
-    - Create a field called beta (see if you can pull beta from Yahoo Finance)
-    - Create a field called WACC (Calculated), which is not editable. Add a tooltip that shows the calculation using 5.0% market risk premium and 4.2% risk free rate
-    - Move the WACC field below the WACC (Calculated) and default it to the WACC (Calculated) value. But this continues to be the one that is used in the model
-- [ ] Add additional items to the Other column
+- [x] Create one section with two columns (three fields each) in the Assumptions section between Marginal Capital Turnover and Other
+    - The two column section will be called WACC (right now they two sections called Cost of Equity and WACC)
+    - One column will have the fields:
+        - Beta, pulled, not editable
+        - Cost of Equity, calculated, not editable. Use 4.2% for risk free rate. Use 5% for market risk premium.
+        - Weight of Equity: pull market cap from Yahoo Finance and divide by that market cap + debt (use the same number as in the Financial model below), calculated, not editable
+    - One column will have the fields:
+        - Cost of Debt: pull interest expense from the most recent quarter, annualize it, and divide it by debt (use the same number as in the Financial model below). If error, default to using 5%. The number can also not be lower than 5%.
+        - Calculated WACC (slight rename), using cost of equity, weight of equity, cost of debt, and 25% Marginal Tax Rate. This is not editable
+        - WACC Assumption, default to calculated WACC, but this is the editable field that is used in the rest of the financial model
+- [x] Add additional items to the Other column
     - Diluted Shares Outstanding (in the financial model below, the Diluted Shares Outstanding will use this number). Copy the default logic.
     - Base Revenue (in the financial model below, the Revenue line item in Base year will use this number). Copy the default logic.
-- [ ] Minor edits
+- [x] Minor edits
     - Change the Marginal Capital Turnover assumption to have two decimals instead of just one
+    - Format the Diluted Shares Outstanding field (to be same as in the financial model below)
+    - Format the Base Revenue field (to be same as in the financial model below)
+- [ ] Add tooltips (little "i" icons I can hover over) for the following fields
+    - Cost of Equity
+    - Cost of Debt
+    - Calculated WACC
 
 ### Phase 14: App-wide Analysis and Dashboard
 - [ ] Improve the Company list
@@ -70,6 +81,7 @@ The system currently supports:
 - [ ] Improve the order in which content is loaded in Company Analysis View for better UX
 - [ ] In the Document View, add where the Balance Sheet, Income Statement, and Non-GAAP Reconciliation were extracted from
 - [ ] Add additional log for Stage 2 Validation for all extractions (e.g., what's the LLM's response on time period alignment)
+- [x] When uploading document, I get this error - Could not get FontBBox from font descriptor because None cannot be parsed as 4 floats at the beginning, especially during indexing
 - [x] Improve find_document_section
     - Keep the old function as _legacy with comment to not delete it (in case we need to revert)
     - Rank each chunk by number density and have the app run through the five most number dense chunks plus their previous and next one page
@@ -117,4 +129,3 @@ The system currently supports:
     - Historical metrics (ROIC, EBITA, etc.) computed from extracted data.
 4. **Modeling**:
     - DCF valuation with customizable assumptions and terminal value calculation.
-

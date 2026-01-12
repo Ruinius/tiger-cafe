@@ -136,6 +136,10 @@ def _extract_page_range_text(file_path: str, start_page: int, end_page: int) -> 
     Returns:
         Extracted text from the page range
     """
+    import logging
+
+    logging.getLogger("pdfminer").setLevel(logging.ERROR)
+
     text_parts = []
     with pdfplumber.open(file_path) as pdf:
         total_pages = len(pdf.pages)
@@ -143,9 +147,13 @@ def _extract_page_range_text(file_path: str, start_page: int, end_page: int) -> 
         clamped_end = max(clamped_start, min(end_page, total_pages))
 
         for page_index in range(clamped_start, clamped_end):
-            page_text = pdf.pages[page_index].extract_text()
-            if page_text:
-                text_parts.append(page_text)
+            try:
+                page_text = pdf.pages[page_index].extract_text()
+                if page_text:
+                    text_parts.append(page_text)
+            except Exception as e:
+                print(f"Warning: Failed to extract text from page {page_index} in {file_path}: {e}")
+                continue
     return "\n\n".join(text_parts)
 
 
@@ -170,45 +178,89 @@ def index_document_chunks(
             "chunk_size": pages per chunk
         }
     """
+    import logging
+
+    # Suppress noisy pdfminer logs
+    logging.getLogger("pdfminer").setLevel(logging.ERROR)
+
     try:
-        # Get total pages
+        failed_pages = []  # Track which pages failed
+
+        # Open PDF once for the entire operation
         with pdfplumber.open(file_path) as pdf:
             total_pages = len(pdf.pages)
 
-        # Calculate number of chunks
-        num_chunks = (total_pages + chunk_size - 1) // chunk_size  # Ceiling division
+            # Calculate number of chunks
+            num_chunks = (total_pages + chunk_size - 1) // chunk_size  # Ceiling division
 
-        print(
-            f"Indexing document {document_id}: {total_pages} pages, {num_chunks} chunks of {chunk_size} pages each"
-        )
-
-        # Generate embeddings for each chunk
-        for chunk_index in range(num_chunks):
-            start_page = chunk_index * chunk_size
-            end_page = min(start_page + chunk_size, total_pages)
-
-            # Check if chunk embedding already exists
-            existing_embedding = load_chunk_embedding(document_id, chunk_index, storage_dir)
-            if existing_embedding:
-                print(f"Chunk {chunk_index} embedding already exists, skipping")
-                continue
-
-            # Extract text for this chunk directly from the page range
-            chunk_text = _extract_page_range_text(file_path, start_page, end_page)
-
-            # Generate embedding for chunk (limit to 20k chars)
-            chunk_embedding = generate_embedding_safe(
-                chunk_text[:20000], max_chars=20000, task_type="retrieval_document"
+            print(
+                f"Indexing document {document_id}: {total_pages} pages, {num_chunks} chunks of {chunk_size} pages each"
             )
 
-            # Save chunk embedding
-            save_chunk_embedding(chunk_embedding, document_id, chunk_index, storage_dir)
+            # Generate embeddings for each chunk
+            for chunk_index in range(num_chunks):
+                start_page = chunk_index * chunk_size
+                end_page = min(start_page + chunk_size, total_pages)
+
+                # Check if chunk embedding already exists
+                existing_embedding = load_chunk_embedding(document_id, chunk_index, storage_dir)
+                if existing_embedding:
+                    # print(f"Chunk {chunk_index} embedding already exists, skipping")
+                    continue
+
+                # Extract text for this chunk directly from the pages we already have open
+                text_parts = []
+                for page_idx in range(start_page, end_page):
+                    try:
+                        page_text = pdf.pages[page_idx].extract_text()
+                        if page_text:
+                            text_parts.append(page_text)
+                    except Exception as e:
+                        failed_pages.append(page_idx + 1)  # 1-indexed for user display
+                        print(
+                            f"ERROR: Failed to extract text from page {page_idx + 1} of {document_id}: {e}"
+                        )
+                        # Continue to next page rather than failing the whole process
+                        continue
+
+                chunk_text = "\n\n".join(text_parts)
+
+                # Generate embedding for chunk (limit to 20k chars)
+                chunk_embedding = generate_embedding_safe(
+                    chunk_text[:20000], max_chars=20000, task_type="retrieval_document"
+                )
+
+                # Save chunk embedding
+                save_chunk_embedding(chunk_embedding, document_id, chunk_index, storage_dir)
+                # print(
+                #     f"Generated and saved embedding for chunk {chunk_index} (pages {start_page}-{end_page - 1})"
+                # )
+
+        # Check if too many pages failed
+        failure_rate = len(failed_pages) / total_pages if total_pages > 0 else 0
+
+        if failed_pages:
             print(
-                f"Generated and saved embedding for chunk {chunk_index} (pages {start_page}-{end_page - 1})"
+                f"WARNING: {len(failed_pages)} of {total_pages} pages failed extraction ({failure_rate:.1%})"
+            )
+            print(f"Failed pages: {failed_pages}")
+
+        # If more than 20% of pages failed, raise an error
+        if failure_rate > 0.20:
+            raise Exception(
+                f"Document indexing failed: {len(failed_pages)} of {total_pages} pages "
+                f"({failure_rate:.1%}) could not be extracted. Failed pages: {failed_pages}. "
+                f"This document may have corrupted fonts or encoding issues."
             )
 
         # Save metadata
-        metadata = {"num_chunks": num_chunks, "total_pages": total_pages, "chunk_size": chunk_size}
+        metadata = {
+            "num_chunks": num_chunks,
+            "total_pages": total_pages,
+            "chunk_size": chunk_size,
+            "failed_pages": failed_pages,
+            "failure_rate": failure_rate,
+        }
         save_chunk_metadata(metadata, document_id, storage_dir)
 
         return metadata

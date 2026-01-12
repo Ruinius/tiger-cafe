@@ -32,7 +32,12 @@ def cosine_similarity(a: Iterable[float], b: Iterable[float]) -> float:
 
 
 def _extract_page_range_text(file_path: str, start_page: int, end_page: int) -> str:
+    import logging
+
     import pdfplumber
+
+    # Suppress noisy pdfminer warnings
+    logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
     text_parts = []
     with pdfplumber.open(file_path) as pdf:

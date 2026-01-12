@@ -267,6 +267,34 @@ def get_revenue(income_statement: IncomeStatement) -> Decimal | None:
     return revenue_item.line_value if revenue_item else None
 
 
+def get_interest_expense(income_statement: IncomeStatement) -> Decimal | None:
+    """
+    Extract interest expense from the income statement.
+    Standardized name is "Interest Expense" or similar.
+    """
+    if not income_statement or not income_statement.line_items:
+        return None
+
+    # First, try to find standardized "Interest Expense" name
+    for item in income_statement.line_items:
+        if "Interest Expense (" in item.line_name:
+            return item.line_value
+
+    # Fallback to loose matching
+    for item in income_statement.line_items:
+        name_lower = item.line_name.lower()
+        if any(
+            term in name_lower
+            for term in ["interest expense", "interest and other expense", "interest expense net"]
+        ):
+            # Interest expense is usually a positive number in financial tables but an expense.
+            # However, in our system, we store values AS EXTRACTED.
+            # If it's labeled as expense, we return the value.
+            return item.line_value
+
+    return None
+
+
 def get_non_operating_line_items(
     income_statement: IncomeStatement,
 ) -> list[IncomeStatementLineItem]:
@@ -831,6 +859,8 @@ def calculate_all_historical_metrics(
         elif effective_tax_rate < Decimal("0.10"):
             notes.append(f"Effective tax rate ({effective_tax_rate * 100:.1f}%) appears low (<10%)")
 
+    interest_expense = get_interest_expense(income_statement)
+
     return {
         "net_working_capital": net_working_capital,
         "net_working_capital_breakdown": net_working_capital_result,
@@ -846,5 +876,6 @@ def calculate_all_historical_metrics(
         "adjusted_tax_rate_breakdown": adjusted_tax_rate_result,
         "nopat": nopat,
         "roic": roic,
+        "interest_expense": interest_expense,
         "calculation_notes": notes,
     }

@@ -17,8 +17,15 @@ class FinancialAssumptionBase(BaseModel):
     marginal_capital_turnover_stage1: Decimal | None = None
     marginal_capital_turnover_stage2: Decimal | None = None
     marginal_capital_turnover_terminal: Decimal | None = None
+    beta: Decimal | None = None
     adjusted_tax_rate: Decimal | None = None
     wacc: Decimal | None = None
+    diluted_shares_outstanding: Decimal | None = None
+    base_revenue: Decimal | None = None
+    weight_of_equity: Decimal | None = None
+    cost_of_debt: Decimal | None = None
+    calculated_wacc: Decimal | None = None
+    market_cap: Decimal | None = None
 
 
 class FinancialAssumptionCreate(FinancialAssumptionBase):

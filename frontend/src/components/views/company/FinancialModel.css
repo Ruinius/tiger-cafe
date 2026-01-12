@@ -128,3 +128,60 @@
     width: 16px;
     height: 16px;
 }
+
+/* WACC Section Styling */
+.wacc-section {
+    background-color: var(--bg-secondary);
+    padding: 1.5rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+}
+
+.wacc-section h5 {
+    margin: 0 0 1rem 0;
+    font-size: 1rem;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.wacc-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+}
+
+.wacc-column label {
+    display: block;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+.wacc-column label:last-child {
+    margin-bottom: 0;
+}
+
+.wacc-column input {
+    width: 100%;
+    margin-top: 0.25rem;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    text-align: right;
+    font-size: 0.875rem;
+}
+
+.wacc-column input:disabled {
+    background-color: var(--bg-base);
+    cursor: not-allowed;
+    opacity: 0.8;
+}
+
+@media (max-width: 768px) {
+    .wacc-columns {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+}

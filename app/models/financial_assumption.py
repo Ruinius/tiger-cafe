@@ -31,9 +31,14 @@ class FinancialAssumption(Base):
     marginal_capital_turnover_stage2 = Column(Numeric(10, 4), nullable=True)
     marginal_capital_turnover_terminal = Column(Numeric(10, 4), nullable=True)
 
+    # WACC Calculations
+    beta = Column(Numeric(10, 4), nullable=True)  # Beta from Yahoo Finance
+
     # Other
     adjusted_tax_rate = Column(Numeric(10, 4), nullable=True)
     wacc = Column(Numeric(10, 4), nullable=True)
+    diluted_shares_outstanding = Column(Numeric(20, 2), nullable=True)  # Shares in actual units
+    base_revenue = Column(Numeric(20, 2), nullable=True)  # Revenue in actual units
 
     # Relationship
     company = relationship("Company", back_populates="financial_assumptions")

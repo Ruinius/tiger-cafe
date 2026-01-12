@@ -58,27 +58,32 @@ def calculate_dcf(historical_entries: list, assumptions: dict) -> dict:
     time_period = latest_entry.get("time_period", "")
     is_quarterly = "Q" in time_period and "FY" not in time_period
 
-    # Filter for quarterly data first (to satisfy L4Q logic)
-    quarterly_entries = [e for e in historical_entries if "Q" in e.get("time_period", "")]
+    # Check if base_revenue is provided in assumptions
+    base_revenue_assumption = assumptions.get("base_revenue")
+    if base_revenue_assumption is not None:
+        start_revenue = Decimal(str(base_revenue_assumption))
+    else:
+        # Filter for quarterly data first (to satisfy L4Q logic)
+        quarterly_entries = [e for e in historical_entries if "Q" in e.get("time_period", "")]
 
-    if quarterly_entries:
-        # Use last 4 quarters (or fewer if not available)
-        l4q = quarterly_entries[-4:]
-        revenues = [e.get("revenue") for e in l4q if e.get("revenue") is not None]
+        if quarterly_entries:
+            # Use last 4 quarters (or fewer if not available)
+            l4q = quarterly_entries[-4:]
+            revenues = [e.get("revenue") for e in l4q if e.get("revenue") is not None]
 
-        if revenues:
-            avg_revenue = sum(revenues) / len(revenues)
-            start_revenue = avg_revenue * 4
+            if revenues:
+                avg_revenue = sum(revenues) / len(revenues)
+                start_revenue = avg_revenue * 4
+            else:
+                # Fallback if specific revenue fields are missing
+                start_revenue = latest_entry.get("revenue") or Decimal("0")
+                if is_quarterly:
+                    start_revenue *= 4
         else:
-            # Fallback if specific revenue fields are missing
+            # Fallback to original logic if no quarterly data found
             start_revenue = latest_entry.get("revenue") or Decimal("0")
             if is_quarterly:
                 start_revenue *= 4
-    else:
-        # Fallback to original logic if no quarterly data found
-        start_revenue = latest_entry.get("revenue") or Decimal("0")
-        if is_quarterly:
-            start_revenue *= 4
 
     # Calculate average capital turnover from recent 4 values if available
     recent_entries = historical_entries[-4:]

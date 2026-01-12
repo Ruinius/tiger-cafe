@@ -1054,6 +1054,7 @@ def get_income_statement_llm_insights(
     "gross_profit_line": "exact line name for gross profit (must match a name from the list above, or null if not found)",
     "operating_expenses_line": "exact line name for total operating expenses (must match a name from the list above, or null if not found)",
     "operating_income_line": "exact line name for operating income (must match a name from the list above, or null if not found)",
+    "interest_expense_line": "exact line name for interest expense (must match a name from the list above, or null if not found)",
     "pretax_income_line": "exact line name for income before taxes (must match a name from the list above, or null if not found)",
     "tax_expense_line": "exact line name for tax expense (must match a name from the list above, or null if not found)",
     "net_income_line": "exact line name for net income (must match a name from the list above, or null if not found)"
@@ -1063,6 +1064,7 @@ def get_income_statement_llm_insights(
 - Gross profit: Gross Profit, Gross Margin, Gross Income
 - Operating expenses: Total operating expenses, Operating expenses
 - Operating income: Operating Income, Income from Operations, Operating Profit, Operating Earnings
+- Interest expense: Interest Expense, Interest Expense Net, Interest and other expense
 - Pretax income: Income Before Tax, Earnings Before Income Tax, Profit Before Tax, Income Before Income Tax Expense
 - Tax expense: Income Tax Expense, Provision for Income Taxes, Income Taxes, Taxes
 - Net income: Net Income, Net Earnings, Profit After Tax, After Tax Profit

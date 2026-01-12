@@ -34,8 +34,15 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                     marginal_capital_turnover_stage1: data.marginal_capital_turnover_stage1 ?? 1.0,
                     marginal_capital_turnover_stage2: data.marginal_capital_turnover_stage2 ?? 1.0,
                     marginal_capital_turnover_terminal: data.marginal_capital_turnover_terminal ?? 1.0,
+                    beta: data.beta ?? 1.0,
                     adjusted_tax_rate: data.adjusted_tax_rate ?? 0.25,
-                    wacc: data.wacc ?? 0.08
+                    wacc: data.wacc ?? 0.08,
+                    diluted_shares_outstanding: data.diluted_shares_outstanding ?? null,
+                    base_revenue: data.base_revenue ?? null,
+                    weight_of_equity: data.weight_of_equity ?? 1.0,
+                    cost_of_debt: data.cost_of_debt ?? 0.05,
+                    calculated_wacc: data.calculated_wacc ?? 0.08,
+                    market_cap: data.market_cap ?? 0
                 })
             } catch (err) {
                 console.error("Failed to load assumptions", err)
@@ -50,8 +57,15 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                     marginal_capital_turnover_stage1: 1.0,
                     marginal_capital_turnover_stage2: 1.0,
                     marginal_capital_turnover_terminal: 1.0,
+                    beta: 1.0,
                     adjusted_tax_rate: 0.25,
-                    wacc: 0.08
+                    wacc: 0.08,
+                    diluted_shares_outstanding: null,
+                    base_revenue: null,
+                    weight_of_equity: 1.0,
+                    cost_of_debt: 0.05,
+                    calculated_wacc: 0.08,
+                    market_cap: 0
                 })
             }
         }
@@ -165,7 +179,7 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
 
 
     // New component for formatted input handling
-    const FormattedInput = ({ value, onChange, isPercentage }) => {
+    const FormattedInput = ({ value, onChange, isPercentage, decimalPlaces = 1, useSeparators = false }) => {
         const [localValue, setLocalValue] = useState('')
         const [isEditing, setIsEditing] = useState(false)
 
@@ -174,16 +188,25 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                 if (value === null || value === undefined) {
                     setLocalValue('')
                 } else {
-                    setLocalValue(isPercentage ? `${(value * 100).toFixed(1)}%` : Number(value).toFixed(1))
+                    if (isPercentage) {
+                        setLocalValue(`${(value * 100).toFixed(decimalPlaces)}%`)
+                    } else if (useSeparators) {
+                        setLocalValue(new Intl.NumberFormat('en-US', {
+                            minimumFractionDigits: decimalPlaces,
+                            maximumFractionDigits: decimalPlaces
+                        }).format(value))
+                    } else {
+                        setLocalValue(Number(value).toFixed(decimalPlaces))
+                    }
                 }
             }
-        }, [value, isPercentage, isEditing])
+        }, [value, isPercentage, isEditing, decimalPlaces, useSeparators])
 
         const handleFocus = () => {
             setIsEditing(true)
-            // On focus, show raw value (percentage as whole number for easier editing, e.g. 5 for 5%)
+            // On focus, show raw value (no separators for easier editing)
             if (value !== null && value !== undefined) {
-                setLocalValue(isPercentage ? (value * 100).toFixed(1) : Number(value).toFixed(1))
+                setLocalValue(isPercentage ? (value * 100).toFixed(decimalPlaces) : Number(value).toFixed(decimalPlaces))
             }
         }
 
@@ -193,11 +216,22 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
 
         const handleBlur = () => {
             setIsEditing(false)
-            let numericVal = parseFloat(localValue)
+            // Remove commas if present
+            const cleanValue = localValue.toString().replace(/,/g, '')
+            let numericVal = parseFloat(cleanValue)
             if (isNaN(numericVal)) {
                 // Reset to original
                 if (value !== null && value !== undefined) {
-                    setLocalValue(isPercentage ? `${(value * 100).toFixed(1)}%` : Number(value).toFixed(1))
+                    if (isPercentage) {
+                        setLocalValue(`${(value * 100).toFixed(decimalPlaces)}%`)
+                    } else if (useSeparators) {
+                        setLocalValue(new Intl.NumberFormat('en-US', {
+                            minimumFractionDigits: decimalPlaces,
+                            maximumFractionDigits: decimalPlaces
+                        }).format(value))
+                    } else {
+                        setLocalValue(Number(value).toFixed(decimalPlaces))
+                    }
                 } else {
                     setLocalValue('')
                 }
@@ -382,8 +416,15 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                 marginal_capital_turnover_stage1: response.data.marginal_capital_turnover_stage1 ?? 1.0,
                 marginal_capital_turnover_stage2: response.data.marginal_capital_turnover_stage2 ?? 1.0,
                 marginal_capital_turnover_terminal: response.data.marginal_capital_turnover_terminal ?? 1.0,
+                beta: response.data.beta ?? 1.0,
                 adjusted_tax_rate: response.data.adjusted_tax_rate ?? 0.25,
-                wacc: response.data.wacc ?? 0.08
+                wacc: response.data.wacc ?? 0.08,
+                diluted_shares_outstanding: response.data.diluted_shares_outstanding ?? null,
+                base_revenue: response.data.base_revenue ?? null,
+                weight_of_equity: response.data.weight_of_equity ?? 1.0,
+                cost_of_debt: response.data.cost_of_debt ?? 0.05,
+                calculated_wacc: response.data.calculated_wacc ?? 0.08,
+                market_cap: response.data.market_cap ?? 0
             })
             // Reload model with new defaults
             loadModel()
@@ -499,6 +540,7 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                                 value={assumptions.marginal_capital_turnover_stage1}
                                 onChange={(val) => handleAssumptionChange('marginal_capital_turnover_stage1', val)}
                                 isPercentage={false}
+                                decimalPlaces={2}
                             />
                         </label>
                         <label>
@@ -507,6 +549,7 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                                 value={assumptions.marginal_capital_turnover_stage2}
                                 onChange={(val) => handleAssumptionChange('marginal_capital_turnover_stage2', val)}
                                 isPercentage={false}
+                                decimalPlaces={2}
                             />
                         </label>
                         <label>
@@ -515,6 +558,77 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                                 value={assumptions.marginal_capital_turnover_terminal}
                                 onChange={(val) => handleAssumptionChange('marginal_capital_turnover_terminal', val)}
                                 isPercentage={false}
+                                decimalPlaces={2}
+                            />
+                        </label>
+                    </div>
+
+                    <div className="assumption-divider"></div>
+
+                    {/* WACC - Column 1 */}
+                    <div className="assumption-group">
+                        <h5>WACC</h5>
+                        <label>
+                            Beta:
+                            <input
+                                type="text"
+                                value={typeof assumptions.beta === 'number' ? assumptions.beta.toFixed(2) : (Number(assumptions.beta) || 1.0).toFixed(2)}
+                                disabled
+                                style={{ backgroundColor: 'var(--bg-base)', cursor: 'not-allowed' }}
+                                title="Beta pulled from Yahoo Finance"
+                            />
+                        </label>
+                        <label>
+                            Cost of Equity:
+                            <input
+                                type="text"
+                                value={formatPercent(0.042 + (Number(assumptions.beta) || 1.0) * 0.05)}
+                                disabled
+                                style={{ backgroundColor: 'var(--bg-base)', cursor: 'not-allowed' }}
+                                title="Calculated using CAPM: 4.2% risk-free rate + Beta × 5.0% market risk premium"
+                            />
+                        </label>
+                        <label>
+                            Weight of Equity:
+                            <input
+                                type="text"
+                                value={formatPercent(assumptions.weight_of_equity)}
+                                disabled
+                                style={{ backgroundColor: 'var(--bg-base)', cursor: 'not-allowed' }}
+                                title={`Market Cap / (Market Cap + Debt). Market Cap: ${formatNumber(assumptions.market_cap)}`}
+                            />
+                        </label>
+                    </div>
+
+                    {/* WACC - Column 2 */}
+                    <div className="assumption-group">
+                        <h5>&nbsp;</h5>
+                        <label>
+                            Cost of Debt:
+                            <input
+                                type="text"
+                                value={formatPercent(assumptions.cost_of_debt)}
+                                disabled
+                                style={{ backgroundColor: 'var(--bg-base)', cursor: 'not-allowed' }}
+                                title="Annualized interest expense / total debt. Minimum 5.0%."
+                            />
+                        </label>
+                        <label>
+                            Calculated WACC:
+                            <input
+                                type="text"
+                                value={formatPercent(assumptions.calculated_wacc)}
+                                disabled
+                                style={{ backgroundColor: 'var(--bg-base)', cursor: 'not-allowed' }}
+                                title="(Cost of Equity × Weight of Equity) + (Cost of Debt × (1 - 25% Tax) × (1 - Weight of Equity))"
+                            />
+                        </label>
+                        <label>
+                            WACC:
+                            <FormattedInput
+                                value={assumptions.wacc}
+                                onChange={(val) => handleAssumptionChange('wacc', val)}
+                                isPercentage={true}
                             />
                         </label>
                     </div>
@@ -533,11 +647,23 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                             />
                         </label>
                         <label>
-                            WACC:
+                            Diluted Shares Outstanding:
                             <FormattedInput
-                                value={assumptions.wacc}
-                                onChange={(val) => handleAssumptionChange('wacc', val)}
-                                isPercentage={true}
+                                value={assumptions.diluted_shares_outstanding}
+                                onChange={(val) => handleAssumptionChange('diluted_shares_outstanding', val)}
+                                isPercentage={false}
+                                decimalPlaces={0}
+                                useSeparators={true}
+                            />
+                        </label>
+                        <label>
+                            Base Revenue:
+                            <FormattedInput
+                                value={assumptions.base_revenue}
+                                onChange={(val) => handleAssumptionChange('base_revenue', val)}
+                                isPercentage={false}
+                                decimalPlaces={0}
+                                useSeparators={true}
                             />
                         </label>
                     </div>
