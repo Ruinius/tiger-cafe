@@ -549,7 +549,7 @@ async def save_valuation(
     # Enrich response with user email and name
     result = valuation.__dict__
     result["user_email"] = current_user.email
-    result["user_name"] = current_user.name
+    result["user_name"] = f"{current_user.first_name} {current_user.last_name}".strip()
     return result
 
 
@@ -573,7 +573,7 @@ async def list_valuations(
         res = v.__dict__
         if v.user:
             res["user_email"] = v.user.email
-            res["user_name"] = v.user.name
+            res["user_name"] = f"{v.user.first_name} {v.user.last_name}".strip()
         results.append(res)
     return results
 

@@ -13,92 +13,65 @@ export function AuthProvider({ children }) {
   })
   const isInitialLoad = React.useRef(true)
 
-  const verifyToken = async (idToken) => {
+  // Helper to process successful auth response
+  const handleAuthSuccess = async (accessToken) => {
     try {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${idToken}`
+      // Set token
+      setToken(accessToken)
+      localStorage.setItem('tiger-cafe-token', accessToken)
+      axios.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
+
+      // Fetch User Profile
       const response = await axios.get(`${API_BASE_URL}/auth/me`)
       setUser(response.data)
       setIsAuthenticated(true)
-      setToken(idToken)
-      localStorage.setItem('tiger-cafe-token', idToken)
+      return true
     } catch (error) {
-      // Token invalid, clear it
-      localStorage.removeItem('tiger-cafe-token')
-      delete axios.defaults.headers.common['Authorization']
-      setIsAuthenticated(false)
-      setUser(null)
-      setToken(null)
+      console.error("Failed to initialize session:", error)
+      logout()
+      return false
+    }
+  }
+
+  const verifyToken = async (existingToken) => {
+    try {
+      await handleAuthSuccess(existingToken)
+    } catch (error) {
+      logout()
     } finally {
       setLoading(false)
     }
   }
 
-  // Set up axios response interceptor to handle authentication failures
-  useEffect(() => {
-    const interceptor = axios.interceptors.response.use(
-      (response) => response,
-      (error) => {
-        // If we get a 401 Unauthorized, the token has expired
-        if (error.response && error.response.status === 401) {
-          // Skip if this is from the auth/me endpoint (initial verification)
-          // or if we're still in the initial load phase
-          const isAuthEndpoint = error.config?.url?.includes('/auth/me')
+  // --- Auth Actions ---
 
-          if (!isAuthEndpoint && !isInitialLoad.current) {
-            // Only log out if we were previously authenticated (avoid loops)
-            const currentToken = localStorage.getItem('tiger-cafe-token')
-            if (currentToken && isAuthenticated) {
-              console.log('Authentication expired. Logging out...')
-              // Clear token and state
-              localStorage.removeItem('tiger-cafe-token')
-              delete axios.defaults.headers.common['Authorization']
-              setIsAuthenticated(false)
-              setUser(null)
-              setToken(null)
-              // Use window.location to ensure full redirect (prevents stale state)
-              setTimeout(() => {
-                window.location.href = '/login'
-              }, 100)
-            }
-          }
-        }
-        return Promise.reject(error)
-      }
-    )
-
-    // Cleanup interceptor on unmount
-    return () => {
-      axios.interceptors.response.eject(interceptor)
-    }
-  }, [isAuthenticated])
-
-  useEffect(() => {
-    // Check if user is authenticated on mount
-    if (token) {
-      verifyToken(token).catch((error) => {
-        // Error already handled in verifyToken, but ensure loading is set
-        console.error('Token verification error:', error)
-      })
-    } else {
-      setLoading(false)
-    }
-
-    // Mark initial load as complete after a short delay
-    const timer = setTimeout(() => {
-      isInitialLoad.current = false
-    }, 3000) // Allow 3 seconds for initial token verification
-
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const login = async (idToken) => {
+  const loginLocal = async (email, password) => {
     try {
-      await verifyToken(idToken)
-      return true
+      const response = await axios.post(`${API_BASE_URL}/auth/login`, { email, password })
+      return await handleAuthSuccess(response.data.access_token)
     } catch (error) {
-      console.error('Login error:', error)
-      return false
+      console.error('Local login error:', error)
+      throw error
+    }
+  }
+
+  const signup = async (userData) => {
+    try {
+      const response = await axios.post(`${API_BASE_URL}/auth/signup`, userData)
+      return await handleAuthSuccess(response.data.access_token)
+    } catch (error) {
+      console.error('Signup error:', error)
+      throw error
+    }
+  }
+
+  const loginGoogle = async (googleToken) => {
+    try {
+      const response = await axios.post(`${API_BASE_URL}/auth/google-exchange`, { token: googleToken })
+      return await handleAuthSuccess(response.data.access_token)
+    } catch (error) {
+      console.error('Google exchange error:', error)
+      throw error
     }
   }
 
@@ -110,14 +83,56 @@ export function AuthProvider({ children }) {
     setToken(null)
   }
 
+  // --- Effects ---
+
+  // Interceptor for 401s
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response && error.response.status === 401) {
+          const isAuthEndpoint = error.config?.url?.includes('/auth/') && !error.config?.url?.includes('/auth/me')
+
+          if (!isAuthEndpoint && !isInitialLoad.current) {
+            const currentToken = localStorage.getItem('tiger-cafe-token')
+            if (currentToken && isAuthenticated) {
+              console.log('Session expired. Logging out...')
+              logout()
+              setTimeout(() => window.location.href = '/login', 100)
+            }
+          }
+        }
+        return Promise.reject(error)
+      }
+    )
+    return () => axios.interceptors.response.eject(interceptor)
+  }, [isAuthenticated])
+
+  // Initial Load
+  useEffect(() => {
+    if (token) {
+      verifyToken(token)
+    } else {
+      setLoading(false)
+    }
+
+    const timer = setTimeout(() => {
+      isInitialLoad.current = false
+    }, 2000)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   return (
     <AuthContext.Provider value={{
       isAuthenticated,
       user,
       loading,
-      login,
-      logout,
-      token
+      token,
+      loginLocal,
+      signup,
+      loginGoogle,
+      logout
     }}>
       {children}
     </AuthContext.Provider>
@@ -131,5 +146,3 @@ export function useAuth() {
   }
   return context
 }
-
-

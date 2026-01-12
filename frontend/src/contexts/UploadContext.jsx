@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import axios from 'axios'
 import { useAuth } from './AuthContext'
+import { useStatusStream } from '../hooks/useStatusStream'
 import { API_BASE_URL } from '../config'
 
 export const UploadContext = createContext()
@@ -17,8 +18,11 @@ export const UploadProvider = ({ children }) => {
     const { isAuthenticated, token } = useAuth()
     const [uploadingDocuments, setUploadingDocuments] = useState([])
     const [showUploadProgress, setShowUploadProgress] = useState(false)
-    const progressIntervalRef = useRef(null)
 
+    // Use SSE for real-time status updates instead of polling
+    const { activeDocuments, isConnected, error: sseError } = useStatusStream()
+
+    // Fallback: Load upload progress manually (used for initial load or when SSE fails)
     const loadUploadProgress = useCallback(async () => {
         if (!isAuthenticated || !token) return
 
@@ -44,37 +48,33 @@ export const UploadProvider = ({ children }) => {
         }
     }, [isAuthenticated, token, showUploadProgress])
 
-    // Poll for upload progress only when there are active uploads or when showing progress
+    // Update uploadingDocuments from SSE stream
     useEffect(() => {
-        // Clear any existing interval
-        if (progressIntervalRef.current) {
-            clearInterval(progressIntervalRef.current)
-            progressIntervalRef.current = null
-        }
+        if (isConnected && activeDocuments) {
+            setUploadingDocuments(activeDocuments)
 
-        // Only start polling if there are active uploads or we're showing the progress view
-        const hasActiveUploads = uploadingDocuments.some(doc => {
-            const status = doc.indexing_status?.toLowerCase()
-            return status !== 'indexed' && status !== 'error'
-        })
-        const shouldPoll = hasActiveUploads || showUploadProgress
+            // Auto-hide progress modal when all uploads complete
+            const allFinished = activeDocuments.length === 0 ||
+                activeDocuments.every(doc => {
+                    const status = doc.status?.toLowerCase() || doc.indexing_status?.toLowerCase()
+                    return status === 'indexed' || status === 'processing_complete' || status === 'classified' || status === 'error'
+                })
 
-        if (shouldPoll) {
-            // Poll every 3 seconds
-            progressIntervalRef.current = setInterval(() => {
-                loadUploadProgress()
-            }, 3000)
-        }
-
-        return () => {
-            if (progressIntervalRef.current) {
-                clearInterval(progressIntervalRef.current)
-                progressIntervalRef.current = null
+            if (allFinished && showUploadProgress) {
+                setShowUploadProgress(false)
             }
         }
-    }, [uploadingDocuments.length, showUploadProgress, loadUploadProgress])
+    }, [activeDocuments, isConnected, showUploadProgress])
 
-    // Initial load
+    // Fallback to manual load if SSE fails
+    useEffect(() => {
+        if (sseError && isAuthenticated) {
+            console.warn('[UploadContext] SSE error, falling back to manual load:', sseError)
+            loadUploadProgress()
+        }
+    }, [sseError, isAuthenticated, loadUploadProgress])
+
+    // Initial load on mount
     useEffect(() => {
         loadUploadProgress()
     }, []) // Only on mount
@@ -83,7 +83,9 @@ export const UploadProvider = ({ children }) => {
         uploadingDocuments,
         showUploadProgress,
         setShowUploadProgress,
-        loadUploadProgress
+        loadUploadProgress,
+        isConnected, // Expose SSE connection status
+        sseError // Expose SSE errors
     }
 
     return (

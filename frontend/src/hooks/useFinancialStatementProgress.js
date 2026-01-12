@@ -1,12 +1,15 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import axios from 'axios'
 import { useAuth } from '../contexts/AuthContext'
+import { useStatusStream } from './useStatusStream'
 import { API_BASE_URL } from '../config'
 
 export function useFinancialStatementProgress(selectedDocument, isEligibleForFinancialStatements) {
     const { isAuthenticated, token } = useAuth()
     const [financialStatementProgress, setFinancialStatementProgress] = useState(null)
-    const progressPollingIntervalRef = useRef(null)
+
+    // Use SSE to detect status changes instead of polling
+    const { activeDocuments } = useStatusStream()
 
     const areAllMilestonesTerminal = useCallback(() => {
         if (!financialStatementProgress) return false
@@ -35,40 +38,25 @@ export function useFinancialStatementProgress(selectedDocument, isEligibleForFin
         }
     }, [selectedDocument?.id, isEligibleForFinancialStatements, isAuthenticated, token])
 
-    // Polling Logic
+    // SSE-triggered updates: Load progress ONLY when document is actively being processed
     useEffect(() => {
         if (!selectedDocument?.id || !isEligibleForFinancialStatements) return
 
-        const hasActiveMilestones = financialStatementProgress &&
-            financialStatementProgress.milestones &&
-            Object.values(financialStatementProgress.milestones).some((milestone) =>
-                milestone.status === 'in_progress' || milestone.status === 'pending'
-            )
+        // Find this document in the SSE stream
+        const currentDoc = activeDocuments.find(doc => doc.document_id === selectedDocument.id)
 
-        if (hasActiveMilestones) {
-            const interval = setInterval(() => {
-                loadFinancialStatementProgress()
-            }, 3000)
-            progressPollingIntervalRef.current = interval
-            return () => {
-                clearInterval(interval)
-                progressPollingIntervalRef.current = null
-            }
-        } else {
-            if (progressPollingIntervalRef.current) {
-                clearInterval(progressPollingIntervalRef.current)
-                progressPollingIntervalRef.current = null
-            }
+        // Only fetch if document is in the active stream (being processed)
+        if (currentDoc) {
+            console.log(`[FinancialProgress] Document ${selectedDocument.id} is active, fetching progress`)
+            loadFinancialStatementProgress()
         }
-    }, [financialStatementProgress, selectedDocument?.id, isEligibleForFinancialStatements, loadFinancialStatementProgress])
+        // If document is NOT in stream, don't fetch - it's either:
+        // - Not started yet (initial load will handle it)
+        // - Already completed (initial load got final state)
+    }, [activeDocuments, selectedDocument?.id, isEligibleForFinancialStatements, loadFinancialStatementProgress])
 
-    // Initial Load
+    // Initial Load when document changes
     useEffect(() => {
-        if (progressPollingIntervalRef.current) {
-            clearInterval(progressPollingIntervalRef.current)
-            progressPollingIntervalRef.current = null
-        }
-
         if (selectedDocument?.id && isEligibleForFinancialStatements) {
             loadFinancialStatementProgress()
         }

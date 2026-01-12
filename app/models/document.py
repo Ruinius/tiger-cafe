@@ -3,6 +3,7 @@ Document model
 """
 
 import enum
+import uuid
 
 from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
@@ -12,7 +13,7 @@ from app.database import Base
 from app.models.document_status import DocumentStatus
 
 
-class DocumentType(enum.Enum):
+class DocumentType(str, enum.Enum):
     EARNINGS_ANNOUNCEMENT = "earnings_announcement"
     QUARTERLY_FILING = "quarterly_filing"
     ANNUAL_FILING = "annual_filing"
@@ -23,7 +24,7 @@ class DocumentType(enum.Enum):
     OTHER = "other"
 
 
-class ProcessingStatus(enum.Enum):
+class ProcessingStatus(str, enum.Enum):
     PENDING = "pending"
     UPLOADING = "uploading"
     CLASSIFYING = "classifying"
@@ -38,7 +39,7 @@ class ProcessingStatus(enum.Enum):
 class Document(Base):
     __tablename__ = "documents"
 
-    id = Column(String, primary_key=True, index=True)
+    id = Column(String, primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     company_id = Column(String, ForeignKey("companies.id"), nullable=False, index=True)
 

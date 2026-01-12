@@ -21,7 +21,7 @@ Tiger-Cafe is a full-stack application that combines:
        │                        ├── Embeddings cache (data/cache)
        │                        └── Background queues (classification/indexing)
        │
-       └── OAuth flow (Google)
+       └── Auth flow (Email/Password + JWT)
 ```
 
 ## Document Type Processing Strategy
@@ -61,11 +61,13 @@ This approach optimizes processing costs and focuses detailed extraction on docu
 
 - **Entry point:** `run.py` (runs `app.main:app`)
 - **Routers:** `app/routers/`
-  - `auth.py`: Google OAuth login flow
-  - `documents.py`: upload, indexing, status, and extraction triggers
+  - `auth.py`: JWT login flow, session management, and user seeding
+  - `status_stream.py`: Real-time document status updates via SSE
+  - `documents.py`: upload, indexing, and extraction triggers
   - `historical_calculations.py`: computes financial metrics
   - Additional routers: `balance_sheet.py`, `income_statement.py`, `organic_growth.py`, `amortization.py`, etc.
 - **Models:** `app/models/` (SQLAlchemy)
+- **Core:** `app/core/security.py` (JWT and Password utilities)
 - **Schemas:** `app/schemas/` (Pydantic)
 - **Utilities:** `app/utils/` (LLM and extraction helpers)
 
@@ -99,6 +101,7 @@ This approach optimizes processing costs and focuses detailed extraction on docu
    - **Quarterly Filings & Annual Filings**: Currently classification only → Status: `CLASSIFIED` (indexing and financial statement extraction not yet implemented)
    - **Other Document Types** (press releases, analyst reports, news articles, transcripts, etc.): Classification only → Status: `CLASSIFIED` (no indexing or financial statement extraction)
 6. For eligible document types, embeddings are generated and persisted for reuse.
+7. **Real-time Updates**: Document status is pushed to the frontend via Server-Sent Events (SSE) instead of polling.
 
 ### 2) Financial Statement Extraction
 
@@ -182,6 +185,11 @@ Triggered automatically after extraction milestones:
   - `data/cache`: cached embeddings
   - `data/storage`: persisted artifacts
   - `logs/`: log output
+
+- **Automatic Seeding**: 
+  In development mode (`ENVIRONMENT=development`), the application automatically seeds the database on startup (via `app/db/init_db.py`). This includes:
+  - Default developer user (`dev@example.com`)
+  - A comprehensive "Fake Railroad Company" demo dataset with historical financials and a processed DCF model for immediate testing and demonstration.
 
 ## Extension Points
 

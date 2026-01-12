@@ -4,31 +4,81 @@ SSE Endpoint for real-time document status updates.
 
 import asyncio
 import json
+import os
 from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.security import HTTPBearer
+from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
-from app.database import get_db
-from app.models.document import Document, DocumentStatus, ProcessingStatus
+from app.database import SessionLocal, get_db
+from app.models.document import Document, DocumentStatus
+from app.models.user import User
+from config.config import ALGORITHM, SECRET_KEY
 
 router = APIRouter()
+security = HTTPBearer(auto_error=False)
 
 # Config
 POLL_INTERVAL = 2  # Seconds
 
 
+async def verify_token_from_query(token: str | None, db: Session) -> User | None:
+    """Verify token from query parameter and return user."""
+    if not token:
+        return None
+
+    # Check for mock environment or dev token
+    if (
+        os.environ.get("MOCK_LLM_RESPONSES") == "true" and token == "fake-token"
+    ) or token == "dev-token":
+        email = "dev@example.com"
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            # Create dev user if missing (fallback, though seeder should handle this)
+            user = User(
+                id=email, email=email, first_name="Dev", last_name="User", auth_provider="local"
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        return user
+
+    try:
+        # Verify App Token
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            return None
+
+        user = db.query(User).filter(User.email == email).first()
+        return user
+    except JWTError as e:
+        print(f"[SSE] Token verification failed: {e}")
+        return None
+
+
 @router.get("/status-stream")
 async def status_stream(
     request: Request,
+    token: str
+    | None = None,  # Token passed as query param since EventSource doesn't support headers
     db: Session = Depends(get_db),
-    # current_user: User = Depends(get_current_user), # Optional: Enforce auth if needed
 ):
     """
     Server-Sent Events (SSE) endpoint to stream document status updates.
     Client should connect to this endpoint and listen for 'status_update' events.
+
+    Authentication is optional but recommended. Pass token as query parameter.
     """
+
+    # Verify token and get user
+    current_user = await verify_token_from_query(token, db)
+
+    # Extract user ID early to avoid dependency on the outer session
+    current_user_id = current_user.id if current_user else None
 
     async def event_generator() -> AsyncGenerator[dict, None]:
         """
@@ -40,73 +90,57 @@ async def status_stream(
                 if await request.is_disconnected():
                     break
 
-                # Query active documents (not fully processed or error)
-                # We define "Active" as anything not processed and not error.
-                # OR we can just stream ALL recent documents?
-                # Better: Stream documents that are "in progress".
+                # Use a fresh session for each poll to ensure data is fresh and session is healthy
+                with SessionLocal() as stream_db:
+                    # Query active documents (not in terminal states)
+                    terminal_statuses = [
+                        DocumentStatus.PROCESSING_COMPLETE,
+                        DocumentStatus.CLASSIFIED,
+                        DocumentStatus.EXTRACTION_FAILED,
+                        DocumentStatus.CLASSIFICATION_FAILED,
+                        DocumentStatus.INDEXING_FAILED,
+                        DocumentStatus.UPLOAD_FAILED,
+                    ]
 
-                # We need a new session per iteration or be careful with session lifecycle in async gen
-                # Ideally, we refrain from long-running DB sessions.
-                # We'll use a fresh query each time.
-
-                # Note: 'db' dependency is request-scoped. It might close if we await too long?
-                # Actually, in FastAPI, the dependency stays alive until response finishes.
-                # But for SSE, response is indefinite.
-                # Safe to use `db` here? Yes, but refreshing objects is needed.
-
-                # Active statuses
-                active_statuses = [
-                    ProcessingStatus.UPLOADING,
-                    ProcessingStatus.PENDING,
-                    ProcessingStatus.CLASSIFYING,
-                    ProcessingStatus.INDEXING,
-                    ProcessingStatus.PROCESSING,
-                ]
-
-                # Query DB
-                # We might want to filter by user if we enforce auth
-                documents = (
-                    db.query(Document)
-                    .filter(
-                        Document.analysis_status.in_(active_statuses)
-                        | Document.indexing_status.in_(active_statuses)
-                        | (Document.status != DocumentStatus.PROCESSING_COMPLETE)
-                        & (Document.status != DocumentStatus.EXTRACTION_FAILED)
-                        & (Document.status != DocumentStatus.CLASSIFICATION_FAILED)
-                        & (Document.status != DocumentStatus.UPLOAD_FAILED)
+                    query = stream_db.query(Document).filter(
+                        ~Document.status.in_(terminal_statuses)
                     )
-                    .all()
-                )
 
-                if documents:
-                    data = []
-                    for doc in documents:
-                        data.append(
-                            {
-                                "document_id": doc.id,
-                                "filename": doc.filename,
-                                "status": doc.status,  # The new unified status
-                                "indexing_status": doc.indexing_status,
-                                "analysis_status": doc.analysis_status,
-                                "updated_at": str(doc.processed_at or doc.uploaded_at),
-                            }
-                        )
+                    # Filter by user if authenticated
+                    if current_user_id:
+                        query = query.filter(Document.user_id == current_user_id)
 
-                    # Yield event
-                    yield {"event": "status_update", "data": json.dumps(data)}
-                else:
-                    # Send keep-alive or empty list?
-                    # Empty list helps frontend know nothing is happening.
-                    yield {"event": "status_update", "data": json.dumps([])}
+                    documents = query.all()
+
+                    if documents:
+                        data = []
+                        for doc in documents:
+                            data.append(
+                                {
+                                    "id": doc.id,
+                                    "filename": doc.filename,
+                                    "status": doc.status,
+                                    "current_step": doc.current_step,
+                                    "indexing_status": doc.indexing_status,
+                                    "analysis_status": doc.analysis_status,
+                                    "duplicate_detected": doc.duplicate_detected,
+                                    "existing_document_id": doc.existing_document_id,
+                                    "updated_at": str(doc.processed_at or doc.uploaded_at),
+                                }
+                            )
+
+                        # Yield event
+                        yield {"event": "status_update", "data": json.dumps(data)}
+                    else:
+                        # Send empty list to indicate no active documents
+                        yield {"event": "status_update", "data": json.dumps([])}
 
                 await asyncio.sleep(POLL_INTERVAL)
 
-                # Refresh db session to see new updates?
-                # Actually, `db.query` checks the current state, but SQLAlchemy identity map might cache.
-                # We should expire_all to force reload from DB.
-                db.expire_all()
-
         except asyncio.CancelledError:
             pass
+        except Exception as e:
+            print(f"[SSE] Error in event generator: {e}")
+            yield {"event": "error", "data": json.dumps({"error": str(e)})}
 
     return EventSourceResponse(event_generator())

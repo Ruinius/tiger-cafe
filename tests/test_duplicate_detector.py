@@ -25,7 +25,7 @@ def seed_company_and_user(session, company_id="company-1", user_id="user-1"):
     session.add_all(
         [
             Company(id=company_id, name="Test Company", ticker="TCO"),
-            User(id=user_id, email="user@example.com", name="Test User"),
+            User(id=user_id, email="user@example.com", first_name="Test", last_name="User"),
         ]
     )
     session.commit()
@@ -127,7 +127,7 @@ def test_duplicate_by_unique_id_for_other_types(db_session):
 def test_no_duplicate_returns_none(db_session):
     seed_company_and_user(db_session, company_id="company-1", user_id="user-1")
     other_company = Company(id="company-2", name="Other Company", ticker="OTC")
-    other_user = User(id="user-2", email="other@example.com", name="Other User")
+    other_user = User(id="user-2", email="other@example.com", first_name="Other", last_name="User")
     db_session.add_all([other_company, other_user])
     db_session.add(
         Document(

@@ -126,9 +126,9 @@ The application uses React Context for global state management:
 
 #### UploadContext
 - Manages upload state tracking
-- Polls backend every 3 seconds for upload progress
+- Listens to Server-Sent Events (SSE) via `useStatusStream.js` for real-time updates
 - Provides `uploadingDocuments` array and `showUploadProgress` flag
-- Automatically stops polling when all uploads complete
+- Automatically handles reconnection and session expiration
 
 ### Component Hierarchy
 
@@ -184,14 +184,14 @@ The following is a comprehensive list of all frontend files and their roles. Fil
 - **`index.css`**: Global CSS variables, resets, and base styles
 
 #### Pages
-- **`pages/LoginPage.jsx`**: Google OAuth login page (pre-authentication)
+- **`pages/LoginPage.jsx`**: Email/Password login page with secondary Google OAuth support
 - **`pages/LoginPage.css`**: Login page styles
 - **`pages/Dashboard.jsx`**: Central orchestrator for the three-state user journey
 
 #### Contexts (Global State)
 - **`contexts/AuthContext.jsx`**: Authentication state, token management, 401 interceptor
 - **`contexts/ThemeContext.jsx`**: Light/dark theme state and persistence
-- **`contexts/UploadContext.jsx`**: Upload progress polling (3-second intervals)
+- **`contexts/UploadContext.jsx`**: Real-time upload status management via SSE
 
 #### Layout Components
 - **`components/layout/Header.jsx`**: Persistent header with user profile, theme toggle, logout
@@ -282,25 +282,18 @@ The login page is the landing page during development and is the gateway to the 
 ### User Flow
 
 1. User arrives on login page
-2. User clicks **Sign in with Google**
-3. OAuth consent screen opens
-4. User authorizes access
-5. User is redirected back to Tiger-Cafe
-6. User lands in the Global Dashboard (two-panel layout)
+2. User enters Email and Password OR clicks **Sign in with Google**
+3. Backend verifies credentials and returns a JWT (App Token)
+4. Application stores token in LocalStorage
+5. User lands in the Global Dashboard (two-panel layout)
 
 ### UI Requirements
 
-#### Login Card
-- Centered card containing a single Google login button
-- Minimal distractions (no extra content)
-
-#### Google OAuth Button
-- Use Google branding guidelines
-- Minimum size: **240px × 40px**
-- Blue primary color: **#4285F4**
-- Google logo left of text
-- Hover: subtle elevation/shadow
-- Active: slight press animation
+#### Login Forms
+- Email and Password inputs with validation
+- Primary **Login** button
+- Secondary **Sign in with Google** button
+- "Sign Up" toggle for new account creation
 
 #### Error Handling
 - Toast or banner with user-friendly language

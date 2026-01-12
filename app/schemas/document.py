@@ -41,8 +41,8 @@ class Document(DocumentBase):
     user_id: str
     company_id: str
     file_path: str
-    indexing_status: ProcessingStatus
-    analysis_status: ProcessingStatus
+    indexing_status: ProcessingStatus | None = None
+    analysis_status: ProcessingStatus | None = None
     page_count: int | None = None
     character_count: int | None = None
     uploaded_at: datetime

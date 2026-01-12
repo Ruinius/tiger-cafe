@@ -16,6 +16,7 @@ from app.routers import (
     income_statement,
     status_stream,
 )
+from app.utils.cleanup_scheduler import get_cleanup_scheduler
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -36,6 +37,8 @@ app.add_middleware(
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
 app.include_router(companies.router, prefix="/api/companies", tags=["companies"])
+# Specific routers must effectively precede generic /{document_id} routes
+app.include_router(status_stream.router, prefix="/api/documents", tags=["status-stream"])
 app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
 app.include_router(balance_sheet.router, prefix="/api/documents", tags=["balance-sheet"])
 app.include_router(income_statement.router, prefix="/api/documents", tags=["income-statement"])
@@ -43,7 +46,6 @@ app.include_router(additional_items.router, prefix="/api/documents", tags=["addi
 app.include_router(
     historical_calculations.router, prefix="/api/documents", tags=["historical-calculations"]
 )
-app.include_router(status_stream.router, prefix="/api/documents", tags=["status-stream"])
 
 
 @app.get("/")
@@ -56,12 +58,44 @@ async def health_check():
     return {"status": "healthy"}
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on application startup."""
+    # Start cleanup scheduler
+    get_cleanup_scheduler()
+    print("[Startup] Cleanup scheduler initialized")
+
+    # Seed Dev User & Data
+    from app.database import SessionLocal
+    from app.db.init_db import init_db
+
+    db = SessionLocal()
+    try:
+        init_db(db)
+        print("[Startup] Database initialization complete")
+    except Exception as e:
+        print(f"[Startup] Error initializing database: {e}")
+    finally:
+        db.close()
+
+
 @app.on_event("shutdown")
 def shutdown_event():
-    # Gracefully shut down queue worker only if it was initialized
+    """Gracefully shut down services."""
     import sys
 
+    # Shut down queue worker if initialized
     if "app.services.queue_service" in sys.modules:
         from app.services.queue_service import queue_service
 
         queue_service.shutdown()
+
+    # Shut down cleanup scheduler
+    from app.utils.cleanup_scheduler import cleanup_scheduler
+
+    if cleanup_scheduler:
+        try:
+            cleanup_scheduler.shutdown()
+            print("[Shutdown] Cleanup scheduler stopped")
+        except Exception as e:
+            print(f"[Shutdown] Scheduler shutdown skipped: {e}")

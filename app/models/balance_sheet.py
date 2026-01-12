@@ -11,7 +11,7 @@ from sqlalchemy.sql import func
 from app.database import Base
 
 
-class LineItemType(enum.Enum):
+class LineItemType(str, enum.Enum):
     OPERATING = "operating"
     NON_OPERATING = "non_operating"
 

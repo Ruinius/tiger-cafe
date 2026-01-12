@@ -117,13 +117,11 @@ This document serves as an archive of completed tasks from the Project Planning.
 - [x] Extracted `DocumentList` component
 - [x] Extracted `UploadProgress` component
 - [x] Refactored LeftPanel to compose smaller components
-- [x] Reduced LeftPanel from 1429 to ~1270 lines (-11%)
 
 ### 8.4 Component Split - Right Panel (Phase 4)
 - [x] Extracted `CompanyAnalysisView` component
 - [x] Extracted `DocumentExtractionView` component
 - [x] Refactored RightPanel to use extracted components
-- [x] Reduced RightPanel from 1844 to ~1620 lines (-12%)
 
 ### 8.5 Final Organization (Phase 5)
 - [x] Created `WelcomeView` component for dashboard home
@@ -131,128 +129,32 @@ This document serves as an archive of completed tasks from the Project Planning.
 - [x] Created `common/` directory for shared table components
 - [x] Moved `LineItemTable`, `OrganicGrowthTable`, `StandardizedBreakdownTable`, `SharesOutstandingTable` to `common/`
 - [x] Updated all import paths
-- [x] Achieved target directory structure
 
-### 8.6 Results
-- [x] Eliminated infinite polling bug
-- [x] Created 10 new modular components
-- [x] Improved code organization with clear component hierarchy
-- [x] Enhanced testability (components can be unit tested independently)
-- [x] Better maintainability (single responsibility per component)
-- [x] All tests passing (35/35)
+## Phase 9: Financial Modeling (DCF Valuation)
+- [x] 9.1: Historical Data Enhancements (Yields, Averages, medians, MCT)
+- [x] 9.2: DCF Assumptions Framework (Organic Growth, Margins, WACC)
+- [x] 9.3: DCF Calculations (FCF, Terminal Value, Intrinsic Value)
+- [x] 9.4: UI Implementation (Input panel, 10-year projection table, Intrinsic Value bridge)
+- [x] 9.5: Backend Enhancements (Calculations, persistence, valuation snapshots)
 
-## Phase 9: Financial Modeling (DCF Valuation) - In Progress
-### 9.1 Historical Data Enhancements
-- [x] Added missing fields to company-level historical table
-- [x] Implemented averages and medians for all metrics
-- [x] Added YOY Marginal Capital Turnover calculation
-
-### 9.2 DCF Assumptions Framework
-- [x] Organic Revenue Growth (3-stage: Years 1-5, 6-10, Terminal)
-- [x] EBITA Margin (3-stage with defaults from historical averages)
-- [x] Marginal Capital Turnover (3-stage with defaults from historical data)
-- [x] Operating Tax Rate (single value, defaulting to historical average)
-- [x] WACC (single value, default 8%)
-
-### 9.3 DCF Calculations
-- [x] Revenue projections based on growth assumptions
-- [x] EBITA and NOPAT calculations
-- [x] Invested Capital using marginal capital turnover
-- [x] Free Cash Flow (FCF) calculations
-- [x] Terminal Value using Value Driver Formula (reinvestment rate approach)
-- [x] Discount factors with mid-year convention
-- [x] Present Value calculations
-- [x] Intrinsic Value estimation
-
-### 9.4 UI Implementation
-- [x] Assumptions input panel with formatted number inputs
-- [x] Discounted Cash Flow Model table with 10-year projections
-- [x] Terminal column with proper calculations
-- [x] Base Year (Year 0) column
-- [x] Intrinsic Value display
-- [x] Custom ROIC formatting (negative / >100%)
-- [x] Re-run Valuation button (removed auto-recalculation)
-- [x] Proper spacing and styling per UI/UX design system
-
-### 9.5 Backend Enhancements
-- [x] Created `financial_assumptions` table
-- [x] Implemented `calculate_dcf` function in `financial_modeling.py`
-- [x] Added company historical calculations endpoint
-- [x] Corrected Invested Capital formula (Delta IC = Delta Revenue / MCT)
-- [x] Implemented Value Driver Formula for terminal value
-- [x] Applied mid-year convention to terminal discount factor
-
-## Database & Migration Consolidation
-- [x] Consolidated 8 migration files into baseline schema
-- [x] Archived all incremental migrations to `migrations_archive/`
-- [x] Updated `migrate_baseline_schema.py` with comprehensive documentation
-- [x] Created `migrations_archive/README.md` documenting all archived migrations
-- [x] Cleaned root directory (only baseline migration remains)
-
-## Phase 13: View-Based Frontend Architecture Refactor (Refactor Plan 2.0)
+## Phase 10: View-Based Frontend Architecture Refactor
 - [x] **Structural Reorganization**: Moved all components to `views/`, `layout/`, `modals/`, `shared/` structure.
 - [x] **Monolith Elimination**: Deleted `LeftPanel.jsx` and `RightPanel.jsx`.
-- [x] **Logic Extraction**: Created custom hooks (`useDashboardData`, `useDocumentData`, `usePdfViewer`, etc.) for all business logic.
+- [x] **Logic Extraction**: Created custom hooks (`useDashboardData`, `useDocumentData`, `usePdfViewer`, etc.) for business logic.
 - [x] **Dashboard Orchestration**: Rewrite `Dashboard.jsx` to be the single source of truth for View State (`GLOBAL`, `COMPANY`, `DOCUMENT`).
 - [x] **View Implementation**: Refactored `WelcomeView`, `CompanyList`, `DocumentList`, `CompanyAnalysisView`, `PdfViewer`, `DocumentExtractionView` to be standalone.
-- **Cleanup**: Deleted legacy components (`LeftPanel`, `RightPanel`) and deprecated directories.
-- **Testing**: All 35 backend tests and 8 frontend test suites passing.
+- [x] **UI Bug Fixes**: Restored document count badges, fixed PDF viewer height, and refined "Historical Calculations" table.
 
-### UI Bug Fixes & Refinements (Post-Refactor)
-- **Company List**: Restored document count badge.
-- **Company Analysis**: Fixed column spacing, added title divider.
-- **Financial Model**: Fixed Marginal Capital Turnover assumption formatting (1 decimal place).
-- **PDF Viewer**: Fixed vertical height constraints `calc(100vh - 300px)`.
-- **Document Extraction**:
-  - Restored proper "Historical Calculations" table.
-  - Renamed "Processing Progress" to "Processing Tracker".
-  - Added message logs to the processing tracker.
-- **General**: Verified button states and behaviors against UI rules.
-- [x] **Testing**: All 35 backend tests and 8 frontend test suites passing.
+## Phase 11: User Authentication & Security
+- [x] **JWT Implementation**: Stateless authentication using JWT App Tokens.
+- [x] **Password Hashing**: Secure storage using BCrypt.
+- [x] **Login Flow**: Refactored frontend to support Email/Password login.
+- [x] **Auth Context**: Persistent sessions via LocalStorage.
+- [x] **Developer Experience**: Automated user seeding (`dev@example.com`).
 
-## Phase 9: Financial Modeling (DCF Valuation) - Completed
-### 9.1 Historical Data Enhancements
-- [x] Added missing fields to company-level historical table
-- [x] Implemented averages and medians for all metrics
-- [x] Added YOY Marginal Capital Turnover calculation
-
-### 9.2 DCF Assumptions Framework
-- [x] Organic Revenue Growth (3-stage: Years 1-5, 6-10, Terminal)
-- [x] EBITA Margin (3-stage with defaults from historical averages)
-- [x] Marginal Capital Turnover (3-stage with defaults from historical data)
-- [x] Operating Tax Rate (single value, defaulting to historical average)
-- [x] WACC (single value, default 8%)
-
-### 9.3 DCF Calculations
-- [x] Revenue projections based on growth assumptions
-- [x] EBITA and NOPAT calculations
-- [x] Invested Capital using marginal capital turnover
-- [x] Free Cash Flow (FCF) calculations
-- [x] Terminal Value using Value Driver Formula (reinvestment rate approach)
-- [x] Discount factors with mid-year convention
-- [x] Present Value calculations
-- [x] Intrinsic Value estimation
-
-### 9.4 UI Implementation
-- [x] Assumptions input panel with formatted number inputs
-- [x] Discounted Cash Flow Model table with 10-year projections
-- [x] Terminal column with proper calculations
-- [x] Base Year (Year 0) column
-- [x] Intrinsic Value display
-- [x] Custom ROIC formatting (negative / >100%)
-- [x] Re-run Valuation button (removed auto-recalculation)
-- [x] Proper spacing and styling per UI/UX design system
-- [x] Intrinsic Value table updates (Bridge items, Equity Value, Fair Value)
-- [x] Past Valuations table (Save, List, Delete)
-- [x] Save Valuation button
-- [x] UI Refinements (Alignment, Styling)
-
-### 9.5 Backend Enhancements
-- [x] Created `financial_assumptions` table
-- [x] Implemented `calculate_dcf` function in `financial_modeling.py`
-- [x] Added company historical calculations endpoint
-- [x] Corrected Invested Capital formula (Delta IC = Delta Revenue / MCT)
-- [x] Implemented Value Driver Formula for terminal value
-- [x] Applied mid-year convention to terminal discount factor
-- [x] Added Valuation model and endpoints (Save, List, Delete)
-- [x] Updated NonOperatingClassification sorting (use time_period)
+## Phase 12: Stream & Stability Improvements
+- [x] **SSE Integration**: Replaced polling with Server-Sent Events for document status.
+- [x] **Serialization Fixes**: Resolved JSON errors for Enums in long-running streams.
+- [x] **E2E Reliability**: Created `scripts/seed_e2e_data.py` for consistent testing.
+- [x] **Playwright Updates**: Updated E2E tests for new Auth and status patterns.
+- [x] **React Reliability**: Fixed "unique key prop" warnings and field naming consistency.

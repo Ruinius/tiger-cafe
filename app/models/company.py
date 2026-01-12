@@ -2,6 +2,8 @@
 Company model
 """
 
+import uuid
+
 from sqlalchemy import Column, DateTime, String
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -12,7 +14,7 @@ from app.database import Base
 class Company(Base):
     __tablename__ = "companies"
 
-    id = Column(String, primary_key=True, index=True)
+    id = Column(String, primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, nullable=False, index=True)
     ticker = Column(String, nullable=True, index=True, unique=True)  # Stock ticker symbol
     created_at = Column(DateTime(timezone=True), server_default=func.now())

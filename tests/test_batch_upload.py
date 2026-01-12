@@ -32,7 +32,9 @@ def db_session():
     session = TestingSessionLocal()
 
     # Create test user
-    test_user = User(id="test-user-id", email="test@example.com", name="Test User")
+    test_user = User(
+        id="test-user-id", email="test@example.com", first_name="Test", last_name="User"
+    )
     session.add(test_user)
 
     # Create test company (required for FK in upload_document_internal)

@@ -14,16 +14,6 @@ Build AI agents that can analyze equity investments using principles from Tim Ko
 - **Database**: SQLite (SQLAlchemy)
 - **Auth**: Google OAuth
 
-## Future Enhancements - DO NOT CODE
-- [ ] **Tagging System**: Replace "Type", "Category", and "Status" columns with a unified **Tagging System**.
-  - Single "Tag" column supporting multiple simultaneous tags (e.g., "Operating", "Recurring", "Non-Cash").
-  - Status fields becomes a tag (e.g., "Indexed", "Balance Sheet").
-- [ ] **UI Interactivity**: Implementation capability to change "Category" and "Type" directly in the UI.
-- [ ] Explore using small specialized embedding / encoder models to replace the AUTHORITATIVE_LOOKUP and the classify using LLM
-
-## Current Status (Phases 1-10 Complete)
-*See `docs/COMPLETED_TASKS.md` for detailed history.*
-
 The system currently supports:
 - **Document Management**: Upload, classification, indexing (chunk-based), duplication detection.
 - **Financial Extraction**: Balance Sheets, Income Statements, Organic Growth, Amortization, Other Assets/Liabilities, Shares Outstanding.
@@ -35,63 +25,60 @@ The system currently supports:
 
 ## Active Roadmap
 
-### Phase 10: View-Based Frontend Architecture (COMPLETE)
-See `docs/COMPLETED_TASKS.md` for details.
-- [x] Structural Reorganization (`views/`, `layout/`, `modals/`)
-- [x] Logic Extraction (Custom Hooks)
-- [x] Dashboard Orchestration
-- [x] Removal of Monoliths (`LeftPanel`, `RightPanel`)
+## Phases 1-12 Complete
+*See `docs/COMPLETED_TASKS.md` for detailed history.*
 
-### Phase 11: Financial Model enhancements
+### Phase 13: Financial Model enhancements
 - [ ] CAPM for WACC in a separate column
-    - risk-free rate and global assumption
-    - expected market return and global assumption
-    - beta for company (Yahoo Finance?)
+- [ ] expected market return and global assumption
+- [ ] beta for company (Yahoo Finance?)
 - [ ] New Assumption Fields in the Other column
     - Diluted Shares Outstanding
     - Base Revenue
 
-### Phase 12: App-wide Analysis and Dashboard
+### Phase 14: App-wide Analysis and Dashboard
 - [ ] Improve the Company list
-    - Remove the # of documents badge
     - Add the date of last valuation with color
 - [ ] Analysis Dashboard (Home Page)
 
-### Phase 13: Company View feature enhancements
+### Phase 15: Company View feature enhancements
 - [ ] Improve the Document list
 - [ ] Revenue Growth and Margin Sensitivity
 
-### Phase 14: Company-Centric Data Model Refactor
+### Phase 16: Company-Centric Data Model Refactor
 - [ ] Refactor app to focus on company → time period → documents
 - [ ] Enable incorporating multiple document types per period
 - [ ] Historical trend analysis across periods
 
-### Phase 15: Transcripts, news, and analyst repots
+### Phase 17: Transcripts, news, and analyst reports
 - [ ] Growth, margin, and capital efficiency assumptions
 
-### Phase 16: 10-K and 10-Q
+### Phase 18: 10-K and 10-Q
 - [ ] Improved organic growth analysis
 - [ ] Extract details on other assets and other liabilities
 
 ## Ongoing List of UI Improvements and Bugs
-- [ ] Improve page loading speed and/or content order
-- [ ] Tool tips for key formulas and assumptions
-- [ ] Enable editing extracted values in Document Extraction View
-- [ ] Fix UI and frontend for Uploading flow
-- [ ] Fix Time Period identification. LLM is not following the format restriction
 - [ ] Failing to find the Non-GAAP Reconciliation should just be a warning instead of an error
 - [ ] For financial statement extraction, the chunks need to have a critical mass of numbers (at least 15 for balance sheet and income statement. At least 10 for Non-GAAP Reconciliation) to be included in the list of chunks considered
 - [ ] For finding the balance sheet, if the best rank chunk is the first or last chunk, push its rank down by two (given three tries, it will still be tried but last)
 
 
-## Backlog and Notes of Bigger Outstanding Issues
+## Backlog and Notes of Bigger Outstanding Issues - DO NOT CODE
 - [ ] BIDU case - screwed up numbers in PDF and Validation failed: unsupported operand type(s) for +: 'int' and 'NoneType'
 - [ ] INTU case - edge case balance sheet
 - [ ] TGT case - edge case balance sheet
 - [ ] EL case - interest income and interest expense lines are both positive!
-- [ ] Create an extraction field for document date, which will have many uses. First use is to organize the list of documents (current logic is not great)
+- [ ] Create a field for document date, which will have many uses. First use is to organize the list of documents (current logic is not great)
 - [ ] Create a custom tiny transformer to rename line items and manage classification
+- [ ] Explore using small specialized embedding / encoder models to replace the AUTHORITATIVE_LOOKUP and the classify using LLM
 - [ ] Use the results from the tiny transformer to handle bolding logic (current logic is not great)
+- [ ] **UI Interactivity**: Implementation capability to change "Category" and "Type" directly in the UI.
+- [ ] Enable editing extracted values in Document Extraction View
+- [ ] Tool tips for key formulas and assumptions
+- [ ] Improve page loading speed and/or content order
+- [ ] Fix UI for Uploading flow
+- [ ] Fix Time Period identification. LLM is not following the format restriction
+- [ ] Consolidate batch upload tests
 
 
 ## Architecture Overview

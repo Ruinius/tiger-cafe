@@ -67,7 +67,8 @@ def add_uploader_name_to_document(db: Session, document: Document) -> dict:
     if document.user_id:
         user = db.query(User).filter(User.id == document.user_id).first()
         if user:
-            doc_dict["uploader_name"] = user.name or user.email
+            name = f"{user.first_name} {user.last_name}".strip()
+            doc_dict["uploader_name"] = name or user.email
 
     # Check for financial statements (assumes eager loading or lazy loading)
     if document.balance_sheet:
@@ -105,7 +106,9 @@ async def check_duplicates_batch(
         existing_info = None
         if potential_dupe:
             uploader = db.query(User).filter(User.id == potential_dupe.user_id).first()
-            uploader_name = uploader.name if uploader else "Unknown"
+            uploader_name = (
+                f"{uploader.first_name} {uploader.last_name}".strip() if uploader else "Unknown"
+            )
 
             existing_info = ExistingDocumentInfo(
                 id=potential_dupe.id,
@@ -332,6 +335,7 @@ async def upload_document_internal(file: UploadFile, db: Session, current_user: 
         filename=file.filename,
         file_path=file_path,
         indexing_status=ProcessingStatus.PENDING,
+        analysis_status=ProcessingStatus.PENDING,
         # Unified status
         status=DocumentStatus.PENDING,
         uploaded_at=datetime.utcnow(),

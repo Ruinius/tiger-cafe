@@ -44,7 +44,7 @@ def db_session():
 
 @pytest.fixture()
 def test_user(db_session):
-    user = User(id="test-user", email="test@example.com", name="Test User")
+    user = User(id="test-user", email="test@example.com", first_name="Test", last_name="User")
     db_session.add(user)
     db_session.commit()
     db_session.refresh(user)

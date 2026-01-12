@@ -20,10 +20,11 @@ If you need to update the schema, change the model definitions first, then regen
 ## Tables
 
 ### `users`
-Stores user information from Google OAuth authentication.
+Stores user information for authentication.
 
-- `id` (String, Primary Key): Google user ID (sub claim from JWT)
+- `id` (String, Primary Key): Unique user ID
 - `email` (String, Unique, Indexed): User email address
+- `hashed_password` (String, Nullable): BCrypt hashed password
 - `name` (String, Nullable): Display name
 - `picture` (String, Nullable): Profile image URL
 - `created_at` (DateTime): Account creation timestamp

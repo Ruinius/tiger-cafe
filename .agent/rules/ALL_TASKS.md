@@ -2,8 +2,11 @@
 trigger: always_on
 ---
 
-Scalability: Ask yourself if the fix is general and robust
-UI Compliance: All UI changes must strictly follow UI_UX_DESIGN.md
-Fix Logic, Not Config: Fix failures via code, prompts, or regex. Never suggest changing model parameters
+Ask yourself if the fix is general and robust
+All UI changes must strictly follow UI_UX_DESIGN.md
+Fix Logic, Not Config: Fix failures via code, prompts, or regex
 Do not create random fallback logic or values
+Before creating new scripts, check /scripts
+Create new scripts in /scripts instead of root
 IMPORTANT: do not change LLM prompts unless asked explicitly
+IMPORTANT: do not run code that will clear the database
