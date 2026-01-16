@@ -10,13 +10,23 @@ Usage:
 import os
 import sys
 
-from sqlalchemy import text
+# Add project root to sys.path to allow imports from app
+# Add project root to sys.path to allow imports from app
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-from app.database import SessionLocal, engine
-from app.models.company import Company
-from app.models.document import Document
-from app.models.user import User
-from config.config import DATA_STORAGE_DIR, UPLOAD_DIR
+# Ensure we run from the project root so that relative paths (database, uploads) work correctly
+os.chdir(project_root)
+
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
+from sqlalchemy import text  # noqa: E402
+
+from app.database import SessionLocal, engine  # noqa: E402
+from app.models.company import Company  # noqa: E402
+from app.models.document import Document  # noqa: E402
+from app.models.user import User  # noqa: E402
+from config.config import DATA_STORAGE_DIR, UPLOAD_DIR  # noqa: E402
 
 # Initialize all model variables to None
 AnalysisResult = None

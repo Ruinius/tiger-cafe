@@ -25,10 +25,12 @@ The system currently supports:
 
 ## Active Roadmap
 
-## Phases 1-12 Complete
+## Phases 1-13 Complete
 *See `docs/COMPLETED_TASKS.md` for detailed history.*
 
-### Phase 13: Financial Model enhancements
+### Phase 13.7: Tiger-Transformer frontend fixes
+
+### Phase 14: Financial Model enhancements
 - [x] Create one section with two columns (three fields each) in the Assumptions section between Marginal Capital Turnover and Other
     - The two column section will be called WACC (right now they two sections called Cost of Equity and WACC)
     - One column will have the fields:
@@ -51,24 +53,24 @@ The system currently supports:
     - Cost of Debt
     - Calculated WACC
 
-### Phase 14: App-wide Analysis and Dashboard
+### Phase 15: App-wide Analysis and Dashboard
 - [ ] Improve the Company list
     - Add the date of last valuation with color
 - [ ] Analysis Dashboard (Home Page)
 
-### Phase 15: Company View feature enhancements
+### Phase 16: Company View feature enhancements
 - [ ] Improve the Document list
 - [ ] Revenue Growth and Margin Sensitivity
 
-### Phase 16: Company-Centric Data Model Refactor
+### Phase 17: Company-Centric Data Model Refactor
 - [ ] Refactor app to focus on company → time period → documents
 - [ ] Enable incorporating multiple document types per period
 - [ ] Historical trend analysis across periods
 
-### Phase 17: Transcripts, news, and analyst reports
+### Phase 18: Transcripts, news, and analyst reports
 - [ ] Growth, margin, and capital efficiency assumptions
 
-### Phase 18: 10-K and 10-Q
+### Phase 19: 10-K and 10-Q
 - [ ] Improved organic growth analysis
 - [ ] Extract details on other assets and other liabilities
 

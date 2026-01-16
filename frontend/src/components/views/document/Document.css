@@ -451,19 +451,24 @@ hr.calc-section-divider {
 
 
 /* Document Extraction Specific Table Column Widths */
+/* Document Extraction Specific Table Column Widths */
 .document-extraction-view .col-type {
-    width: 15%;
+    width: 12%;
 }
 
 .document-extraction-view .col-value {
-    width: 15%;
+    width: 12%;
 }
 
-.document-extraction-view .col-category {
-    width: 15%;
+.document-extraction-view .col-calculated {
+    width: 10%;
 }
 
-/* .col-name automatically takes remaining space (~50%) */
+.document-extraction-view .col-standardized {
+    width: 25%;
+}
+
+/* .col-name automatically takes remaining space (~40%) */
 
 /* Consistent spacing for all sections in Document Extraction View */
 .document-extraction-view>div[style*="marginBottom"] {

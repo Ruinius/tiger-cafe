@@ -103,7 +103,9 @@ Stores individual line items from balance sheets.
 - `balance_sheet_id` (String, Foreign Key → `balance_sheets.id`, Indexed): Parent balance sheet
 - `line_name` (String): Line item name (e.g., "Cash and Cash Equivalents")
 - `line_value` (Numeric 20,2): Monetary value
-- `line_category` (String, Nullable): Category (e.g., "Current Assets", "Total Assets")
+- `line_category` (String, Nullable): Section token (e.g., "current_assets", "stockholders_equity")
+- `standardized_name` (String, Nullable): Standardized name from transformer (e.g., "cash_and_equivalents")
+- `is_calculated` (Boolean, Nullable): Is this a total/subtotal?
 - `is_operating` (Boolean, Nullable): Operating vs non-operating classification
 - `line_order` (Integer): Display order
 
@@ -143,7 +145,10 @@ Stores individual line items from income statements.
 - `income_statement_id` (String, Foreign Key → `income_statements.id`, Indexed): Parent income statement
 - `line_name` (String): Line item name (e.g., "Revenue", "Cost of Goods Sold")
 - `line_value` (Numeric 20,2): Monetary value
-- `line_category` (String, Nullable): Category (e.g., "Revenue", "Costs", "Expenses")
+- `line_category` (String, Nullable): Section token (e.g., "income_statement")
+- `standardized_name` (String, Nullable): Standardized name from transformer
+- `is_calculated` (Boolean, Nullable): Is this a total/subtotal?
+- `is_expense` (Boolean, Nullable): Is this an expense item?
 - `is_operating` (Boolean, Nullable): Operating vs non-operating classification
 - `line_order` (Integer): Display order
 

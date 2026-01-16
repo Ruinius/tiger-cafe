@@ -211,6 +211,8 @@ def process_balance_sheet_async(document_id: str, db: Session):
                     line_name=item["line_name"],
                     line_value=item["line_value"],
                     line_category=item.get("line_category"),
+                    standardized_name=item.get("standardized_name"),
+                    is_calculated=item.get("is_calculated"),
                     is_operating=item.get("is_operating"),
                     line_order=idx,
                 )

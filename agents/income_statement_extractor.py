@@ -8,15 +8,12 @@ from agents.extractor_utils import (
     call_llm_and_parse_json,
     call_llm_with_retry,
     check_section_completeness_llm,
-    get_llm_insights_generic,
 )
+from app.services.tiger_transformer_client import TigerTransformerClient
 from app.utils.financial_statement_progress import (
     FinancialStatementMilestone,
     add_log,
 )
-from app.utils.line_item_utils import extract_original_name_from_standardized as get_orig_name
-from app.utils.line_item_utils import normalize_line_name
-from app.services.tiger_transformer_client import TigerTransformerClient
 
 
 def _normalize_value(value: object) -> float | None:
@@ -150,9 +147,7 @@ def extract_income_statement(
                     period_end_date=period_end_date,
                 )
 
-
                 # Classification is now handled by TigerTransformerClient in post_process_income_statement_line_items
-
 
                 extracted_count_msg = (
                     f"Extracted {len(extracted_data.get('line_items', []))} line items"
@@ -258,9 +253,7 @@ def extract_income_statement(
                 period_end_date=period_end_date,
             )
 
-
             # Classification is now handled by TigerTransformerClient in post_process_income_statement_line_items
-
 
             # Post-process final attempt
             processed_line_items, normalization_errors = post_process_income_statement_line_items(
@@ -613,7 +606,7 @@ Return a JSON object with the following structure:
     "revenue_prior_year_unit": unit for revenue_prior_year - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (usually same as "unit", null if revenue_prior_year is null),
     "line_items": [
         {{
-            "line_name": "exact name as it appears in the document but do not include long notes in parentheses",
+            "line_name": "exact name as it appears in the document but shortened. Do not include long notes. Do not include texts after net of...",
             "line_value": numeric value (as number, not string) - MUST match exactly what is shown in the document,
             "line_category": "income_statement"
         }},
@@ -712,7 +705,7 @@ Return a JSON object with the following structure:
     "revenue_prior_year_unit": unit for revenue_prior_year - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (usually same as "unit", null if revenue_prior_year is null),
     "line_items": [
         {{
-            "line_name": "exact name as it appears in the document but do not include long notes in parentheses",
+            "line_name": "exact name as it appears in the document but shortened. Do not include long notes. Do not include texts after net of...",
             "line_value": numeric value (as number, not string),
             "line_category": "income_statement"
         }},
@@ -813,35 +806,35 @@ def post_process_income_statement_line_items(
             if item.get("is_calculated") is False and filter_func(item)
         )
 
-    # Validate Revenue - Costs = Gross Profit
-    if "total_net_revenue" in totals and "gross_profit" in totals:
-        revenue = totals["total_net_revenue"]
-        gross_profit = totals["gross_profit"]
+    # Validate Total Revenue - Costs = Income before taxes
+    if "total_revenue" in totals and "income_before_taxes" in totals:
+        revenue = totals["total_revenue"]
+        income_before_taxes = totals["income_before_taxes"]
 
-        # Sum costs between revenue and gross profit
+        # Sum costs between revenue and income before taxes
         costs_sum = sum_items_with_filter(
             lambda item: item.get("standardized_name")
-            not in ["total_net_revenue", "gross_profit"]
+            not in ["total_revenue", "income_before_taxes"]
             and processed_items.index(item)
             > next(
                 i
                 for i, x in enumerate(processed_items)
-                if x.get("standardized_name") == "total_net_revenue"
+                if x.get("standardized_name") == "total_revenue"
             )
             and processed_items.index(item)
             < next(
                 i
                 for i, x in enumerate(processed_items)
-                if x.get("standardized_name") == "gross_profit"
+                if x.get("standardized_name") == "income_before_taxes"
             )
         )
 
         calculated_gp = revenue + costs_sum  # costs are negative
-        diff = abs(calculated_gp - gross_profit)
+        diff = abs(calculated_gp - income_before_taxes)
 
         if diff > 0.01:
             # Try residual solver for ambiguous items
-            residual = calculated_gp - gross_profit
+            residual = calculated_gp - income_before_taxes
             ambiguous_items = [
                 item
                 for item in processed_items
@@ -859,262 +852,62 @@ def post_process_income_statement_line_items(
 
             if not solved:
                 validation_errors.append(
-                    f"Gross profit mismatch: revenue + costs = {calculated_gp:.2f}, but gross_profit = {gross_profit:.2f}"
+                    f"Income before taxes mismatch: revenue + costs = {calculated_gp:.2f}, but income before taxes = {income_before_taxes:.2f}"
                 )
 
-    # Validate Gross Profit - Operating Expenses = Operating Income
-    if "gross_profit" in totals and "operating_income" in totals:
-        gross_profit = totals["gross_profit"]
-        operating_income = totals["operating_income"]
+    # Validate Revenue (NOT TOTAL) - Costs = Income before taxes
+    if "revenue" in totals and "income_before_taxes" in totals:
+        revenue = totals["revenue"]
+        income_before_taxes = totals["income_before_taxes"]
 
-        # Sum operating expenses
-        opex_sum = sum_items_with_filter(
-            lambda item: item.get("standardized_name")
-            not in ["gross_profit", "operating_income"]
-            and item.get("is_operating") is True
+        # Sum costs between revenue and income before taxes
+        costs_sum = sum_items_with_filter(
+            lambda item: item.get("standardized_name") not in ["revenue", "income_before_taxes"]
             and processed_items.index(item)
             > next(
-                i
-                for i, x in enumerate(processed_items)
-                if x.get("standardized_name") == "gross_profit"
+                i for i, x in enumerate(processed_items) if x.get("standardized_name") == "revenue"
             )
             and processed_items.index(item)
             < next(
                 i
                 for i, x in enumerate(processed_items)
-                if x.get("standardized_name") == "operating_income"
+                if x.get("standardized_name") == "income_before_taxes"
             )
         )
 
-        calculated_oi = gross_profit + opex_sum  # expenses are negative
-        diff = abs(calculated_oi - operating_income)
+        calculated_gp = revenue + costs_sum  # costs are negative
+        diff = abs(calculated_gp - income_before_taxes)
 
         if diff > 0.01:
-            validation_errors.append(
-                f"Operating income mismatch: gross_profit + opex = {calculated_oi:.2f}, but operating_income = {operating_income:.2f}"
-            )
+            # Try residual solver for ambiguous items
+            residual = calculated_gp - income_before_taxes
+            ambiguous_items = [
+                item
+                for item in processed_items
+                if item.get("is_expense") is None and item.get("is_calculated") is False
+            ]
+
+            # Check if flipping one or two ambiguous items resolves the residual
+            solved = False
+            for item in ambiguous_items:
+                if abs(abs(item["line_value"]) * 2 - abs(residual)) < 0.01:
+                    # Flipping this item resolves the residual
+                    item["line_value"] = -item["line_value"]
+                    solved = True
+                    break
+
+            if not solved:
+                validation_errors.append(
+                    f"Income before taxes mismatch: revenue + costs = {calculated_gp:.2f}, but income before taxes = {income_before_taxes:.2f}"
+                )
 
     # Check if we have at least one key total
-    if not any(
-        key in totals
-        for key in ["total_net_revenue", "gross_profit", "operating_income", "net_income"]
-    ):
+    if not any(key in totals for key in ["total_revenue", "revenue", "income_before_taxes"]):
         validation_errors.append(
-            "Income statement is missing key totals (total_net_revenue, gross_profit, operating_income, or net_income)"
+            "Income statement is missing key totals (total_revenue, revenue, or income_before_taxes)"
         )
 
     return processed_items, validation_errors
-
-
-def get_income_statement_llm_insights(
-    line_items: list[dict],
-) -> tuple[dict, list[str]]:
-    """
-    Use LLM to identify key line items in an income statement.
-    This function is used during post-processing to identify and standardize line item names.
-    """
-    json_structure = """{
-    "total_net_revenue_line": "exact line name for total net revenue (must match a name from the list above, or null if not found)",
-    "cost_of_revenue_line": "exact line name for cost of revenue or cost of goods sold (must match a name from the list above, or null if not found)",
-    "gross_profit_line": "exact line name for gross profit (must match a name from the list above, or null if not found)",
-    "operating_expenses_line": "exact line name for total operating expenses (must match a name from the list above, or null if not found)",
-    "operating_income_line": "exact line name for operating income (must match a name from the list above, or null if not found)",
-    "interest_expense_line": "exact line name for interest expense (must match a name from the list above, or null if not found)",
-    "pretax_income_line": "exact line name for income before taxes (must match a name from the list above, or null if not found)",
-    "tax_expense_line": "exact line name for tax expense (must match a name from the list above, or null if not found)",
-    "net_income_line": "exact line name for net income (must match a name from the list above, or null if not found)"
-}"""
-    guidance = """- Total net revenue: Revenue, Total Revenue, Net Sales, Net Revenue, Total Net Revenue
-- Cost of revenue: Cost of revenue, Cost of goods sold, COGS, Cost of sales
-- Gross profit: Gross Profit, Gross Margin, Gross Income
-- Operating expenses: Total operating expenses, Operating expenses
-- Operating income: Operating Income, Income from Operations, Operating Profit, Operating Earnings
-- Interest expense: Interest Expense, Interest Expense Net, Interest and other expense
-- Pretax income: Income Before Tax, Earnings Before Income Tax, Profit Before Tax, Income Before Income Tax Expense
-- Tax expense: Income Tax Expense, Provision for Income Taxes, Income Taxes, Taxes
-- Net income: Net Income, Net Earnings, Profit After Tax, After Tax Profit
-CANNOT have the word Other in any of the names!
-"""
-
-    return get_llm_insights_generic(line_items, "an income statement", json_structure, guidance)
-
-
-def _match_line_item(line_items: list[dict], target_name: str | None) -> dict | None:
-    """Find matching line item by name."""
-    from difflib import SequenceMatcher
-
-    if not target_name:
-        return None
-
-    normalized_target = normalize_line_name(target_name)
-    best_item = None
-    best_ratio = 0.0
-
-    for item in line_items:
-        normalized_item = normalize_line_name(item.get("line_name", ""))
-        if normalized_item == normalized_target:
-            return item
-
-        ratio = SequenceMatcher(None, normalized_item, normalized_target).ratio()
-        if ratio > best_ratio:
-            best_ratio = ratio
-            best_item = item
-
-    if best_ratio >= 0.75:
-        return best_item
-
-    return None
-
-
-def classify_line_items_llm(line_items: list[dict], max_retries: int = 3) -> list[dict]:
-    """
-    Use LLM to categorize each income statement line item as operating or non-operating.
-    Includes retry logic for transient API errors.
-
-    Args:
-        line_items: List of income statement line items
-        max_retries: Maximum number of retry attempts (default: 3)
-
-    Returns:
-        List of line items with is_operating classification added
-    """
-    AUTHORITATIVE_LOOKUP = {
-        "Total Net Revenue": "Operating",
-        "Revenue": "Operating",
-        "Cost of Revenue": "Operating",
-        "Cost of Goods Sold": "Operating",
-        "Gross Profit": "Operating",
-        "Operating Expenses": "Operating",
-        "Research and Development": "Operating",
-        "Sales and Marketing": "Operating",
-        "Sales": "Operating",
-        "Marketing": "Operating",
-        "General and Administrative": "Operating",
-        "Depreciation": "Operating",
-        "Amortization of Intangible Assets": "Non-Operating",
-        "Operating Income": "Operating",
-        "Interest Expense": "Non-Operating",
-        "Interest Income": "Non-Operating",
-        "Other Income (Expense)": "Non-Operating",
-        "Foreign Exchange Gain (Loss)": "Non-Operating",
-        "Gain (Loss) on Investments": "Non-Operating",
-        "Gain (Loss) on Sale of Assets": "Non-Operating",
-        "Restructuring Charges": "Non-Operating",
-        "Impairment Charges": "Non-Operating",
-        "Write-offs": "Non-Operating",
-        "Legal Settlements": "Non-Operating",
-        "Income Tax Expense": "Operating",
-        "Sales Tax": "Operating",
-        "Property Tax": "Operating",
-    }
-
-    # Create normalized lookup map
-    normalized_lookup = {normalize_line_name(k): v for k, v in AUTHORITATIVE_LOOKUP.items()}
-
-    # Prepare lookup context for prompt
-    lookup_context = "\n".join([f'  "{k}": "{v}"' for k, v in AUTHORITATIVE_LOOKUP.items()])
-
-    # Prepare context for LLM
-    items_text = "\n".join([f"- {item['line_name']}" for item in line_items])
-
-    prompt = f"""Classify each income statement line item as operating or non-operating, and as recurring, one-time, or total.
-
-HIGHEST PRIORITY: Use the AUTHORITATIVE_LOOKUP below as a binding decision table.
-- If a provided line item matches a key in AUTHORITATIVE_LOOKUP after normalization, you MUST use that value.
-- Normalization: trim, case-insensitive, collapse repeated whitespace, remove leading/trailing punctuation.
-- If no match: use the definitions below.
-
-AUTHORITATIVE_LOOKUP:
-{{
-{lookup_context}
-}}
-
-Recurring items are normal business operations that occur regularly:
-- Revenue, Cost of Revenue, Operating Expenses, Depreciation, Interest Expense, Taxes
-- Regular business operations that happen every period
-
-One-time items are unusual or infrequent events:
-- Restructuring Charges, Impairment Charges, Gain/Loss on Sale of Assets
-- Legal Settlements, Acquisition Costs, Discontinued Operations
-- Other unusual gains or losses that are not expected to recur
-
-Total items are summary/total line items:
-- "Total Net Revenue", "Total Revenue", "Total Expenses", "Total Operating Expenses", "Total Costs", etc.
-- IMPORTANT: For total items, set is_operating to null (do not provide true or false), EXCEPT for "Total Net Revenue" which should be is_operating: true
-
-Line items:
-{items_text}
-
-Return a JSON object with the following structure:
-{{
-    "classifications": [
-        {{
-            "line_name": "exact line name as provided",
-            "is_operating": true, false, or null (null for totals except "Total Net Revenue"),
-            "line_category": "Recurring", "One-Time", or "Total"
-        }},
-        ...
-    ]
-}}
-
-Return only valid JSON, no additional text."""
-
-    def process_result(result):
-        classifications = {
-            item["line_name"]: {
-                "is_operating": item.get("is_operating"),
-                "line_category": item.get("line_category", "Recurring"),
-            }
-            for item in result.get("classifications", [])
-        }
-
-        classified_items = []
-        for item in line_items:
-            item_copy = item.copy()
-            line_name = item["line_name"]
-            classification = classifications.get(line_name, {})
-
-            # First try authoritative lookup for is_operating
-            normalized_name = normalize_line_name(line_name)
-
-            if normalized_name in normalized_lookup:
-                lookup_value = normalized_lookup[normalized_name]
-                # Map "Operating" -> True, "Non-Operating" -> False
-                is_operating_lookup = lookup_value == "Operating"
-                item_copy["is_operating"] = is_operating_lookup
-            else:
-                # Fallback to LLM
-                item_copy["is_operating"] = classification.get("is_operating", None)
-
-            # Handle Totals special case
-            line_name_lower = line_name.lower()
-            is_total = classification.get("line_category") == "Total" or "total" in line_name_lower
-
-            if is_total:
-                if "total net revenue" in line_name_lower or "total revenue" in line_name_lower:
-                    item_copy["is_operating"] = True
-                else:
-                    item_copy["is_operating"] = None
-
-            # If authoritative lookup said Operating/Non-Op, trust it unless it's a Total that should be null
-            # (The Total logic above overrides the lookup if it's a total)
-
-            if "line_category" not in item_copy or not item_copy.get("line_category"):
-                item_copy["line_category"] = classification.get("line_category", "Recurring")
-            classified_items.append(item_copy)
-
-        return classified_items
-
-    try:
-        # Use call_llm_with_retry but we need to handle the custom processing
-        # Since call_llm_with_retry returns the parsed JSON, we can just use that
-        result = call_llm_with_retry(prompt, max_retries=max_retries, temperature=0.0)
-        return process_result(result)
-
-    except Exception as e:
-        print(f"Error classifying income statement line items: {str(e)}")
-        # Return items without classification if classification fails
-        return line_items
 
 
 def check_line_item_time_periods_income_statement(

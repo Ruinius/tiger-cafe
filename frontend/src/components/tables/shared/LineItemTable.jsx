@@ -49,15 +49,20 @@ export default function LineItemTable({
                     <thead>
                         <tr>
                             <th className="col-name">Line Item</th>
-                            {showCategory && <th className="col-category">Category</th>}
+                            <th className="col-standardized">Standardized Name</th>
+                            {showCategory && <th className="col-calculated text-center">Calculated</th>}
                             <th className="text-right col-value">Amount</th>
                             <th className="text-right col-type">Type</th>
                         </tr>
                     </thead>
                     <tbody>
                         {data.line_items.map((item, index) => {
-                            const categoryValue = item.category || item.line_category
-                            const category = categoryFormatter ? categoryFormatter(categoryValue) : (categoryValue || 'N/A')
+                            // Category/Calculated Logic
+                            // Use is_calculated if available (boolean), otherwise fall back to category strings for legacy support?
+                            // User request: "Replace the column 'Category' with 'Calculated'"
+                            // So we strictly show calculated status here.
+
+                            const isCalculated = item.is_calculated === true;
 
                             let typeContent;
                             if (typeOverride) {
@@ -73,7 +78,7 @@ export default function LineItemTable({
                             }
 
                             const nameLower = (item.line_name || '').toLowerCase()
-                            const categoryLower = (categoryValue || '').toLowerCase()
+                            const categoryLower = (item.line_category || '').toLowerCase()
                             const isKey = nameLower.includes('total') ||
                                 nameLower.includes('subtotal') ||
                                 (nameLower.includes('revenue') && !nameLower.includes('cost of') && !nameLower.includes('deferred revenue')) ||
@@ -84,12 +89,22 @@ export default function LineItemTable({
                                 nameLower.includes('ebitda') ||
                                 nameLower.includes('invested capital') ||
                                 nameLower.includes('net working capital') ||
-                                categoryLower === 'total'
+                                categoryLower === 'total' ||
+                                isCalculated
 
                             return (
                                 <tr key={`${item.line_name}-${index}`} className={isKey ? 'key-total-row' : ''}>
                                     <td className="col-name">{item.line_name}</td>
-                                    {showCategory && <td className="col-category">{category}</td>}
+                                    <td className="col-standardized" style={{ color: 'var(--text-secondary)', fontSize: '0.9em' }}>
+                                        {item.standardized_name || '—'}
+                                    </td>
+                                    {showCategory && (
+                                        <td className="col-calculated text-center">
+                                            {isCalculated ? (
+                                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.9em' }}>✓</span>
+                                            ) : null}
+                                        </td>
+                                    )}
                                     <td className="text-right col-value">{formatNumber(item.line_value, item.unit)}</td>
                                     <td className="text-right col-type">{typeContent}</td>
                                 </tr>

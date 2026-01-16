@@ -10,3 +10,4 @@ Before creating new scripts, check /scripts
 Create new scripts in /scripts instead of root
 IMPORTANT: do not change LLM prompts unless asked explicitly
 IMPORTANT: do not run code that will clear the database
+IMPORTANT: do not delete the database!

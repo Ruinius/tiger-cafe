@@ -11,6 +11,7 @@ numpy>=1.24.0
 # AI/ML libraries
 # openai>=1.0.0
 # langchain>=0.1.0
+--extra-index-url https://download.pytorch.org/whl/cu124
 torch>=2.0.0
 transformers>=4.30.0
 

@@ -524,7 +524,38 @@ To support the new standardized outputs from the `tiger-transformer`, the follow
    - Update `tests/test_validation_logic.py` with IS specific cases (sign flipping, residual solving).
    - Run `tests/test_integration_api.py` and fix failures.
 
-### Phase 5: Cleanup & Tools
+### Phase 5: Cleanup & Tools (Completed)
 1. Remove usage of old `classify_line_items_llm` and `get_..._llm_insights`.
 2. Create `scripts/export_retraining_data.py`.
 3. Final full E2E test run.
+
+### Phase 6: Code Cleanup & Audit (Completed)
+This phase focuses on identifying and removing legacy code that is no longer used after the tiger-transformer integration.
+
+#### `agents/balance_sheet_extractor.py` audit:
+- [x] `extract_balance_sheet` (Main entry) - **Keep**
+- [x] `_is_balance_sheet_total_line_name` (Legacy helper) - **REMOVED**
+- [x] `_is_total_or_subtotal_item` (Legacy helper) - **REMOVED**
+- [x] `find_balance_sheet_section` (Stage 1) - **Keep**
+- [x] `check_balance_sheet_completeness_llm` (Stage 1 validation) - **Keep**
+- [x] `extract_balance_sheet_llm` (Stage 2) - **Keep**
+- [x] `extract_balance_sheet_llm_with_feedback` (Stage 2 retry) - **Keep**
+- [x] `post_process_balance_sheet_line_items` (Stage 3 - Rewritten) - **Keep**
+- [x] `get_balance_sheet_llm_insights` (Legacy post-processing) - **REMOVED**
+- [x] `validate_balance_sheet_calculations` (Stage 2 validation - Rewritten) - **Keep**
+- [x] `classify_line_items_llm` (Legacy classification) - **REMOVED**
+- [x] `check_line_item_time_periods_balance_sheet` (Stage 2 validation) - **Keep**
+
+#### `agents/income_statement_extractor.py` audit:
+- [x] `_normalize_value` (Helper) - **Keep**
+- [x] `extract_income_statement` (Main entry) - **Keep**
+- [x] `find_income_statement_near_balance_sheet` (Stage 1) - **Keep**
+- [x] `check_income_statement_completeness_llm` (Stage 1 validation) - **Keep**
+- [x] `extract_income_statement_llm` (Stage 2) - **Keep**
+- [x] `extract_income_statement_llm_with_feedback` (Stage 2 retry) - **Keep**
+- [x] `post_process_income_statement_line_items` (Stage 3 - Rewritten) - **Keep**
+- [x] `get_income_statement_llm_insights` (Legacy post-processing) - **REMOVED**
+- [x] `_match_line_item` (Legacy helper) - **REMOVED**
+- [x] `classify_line_items_llm` (Legacy classification) - **REMOVED**
+- [x] `check_line_item_time_periods_income_statement` (Stage 2 validation) - **Keep**
+

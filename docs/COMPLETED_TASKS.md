@@ -158,3 +158,47 @@ This document serves as an archive of completed tasks from the Project Planning.
 - [x] **E2E Reliability**: Created `scripts/seed_e2e_data.py` for consistent testing.
 - [x] **Playwright Updates**: Updated E2E tests for new Auth and status patterns.
 - [x] **React Reliability**: Fixed "unique key prop" warnings and field naming consistency.
+
+## Phase 13: Tiger-Transformer Integration & Pipeline Refactor
+(Implemented Phases 1-6 of the `docs/PIPELINE_REFACTOR.md` plan)
+
+### 13.1 Database & Schema Preparation
+- [x] Updated `app/models/balance_sheet.py` & `income_statement.py` (Added `standardized_name`, `is_calculated`, `is_expense`)
+- [x] Updated Pydantic schemas in `app/schemas/`
+- [x] Generated and applied Alembic migrations
+
+### 13.2 Core Service Implementation
+- [x] Created `app/services/tiger_transformer_client.py`
+  - Model loading with local path check
+  - Batch inference logic with context formatting
+  - Caching for performance
+- [x] Imported mapping files (`bs_calculated_operating_mapping.csv`, `is_calculated_operating_expense_mapping.csv`)
+
+### 13.3 Balance Sheet Integration
+- [x] **Extraction Prompt Update**: Enforced strict section tokens (`current_assets`, etc.)
+- [x] **Transformer Integration**:
+  - Rewrote `post_process_balance_sheet_line_items` to use `TigerTransformerClient`
+  - Implemented "Section Tag Fallback" pre-processing
+  - Automated `standardized_name`, `is_calculated`, `is_operating` population
+- [x] **Validation Logic Update**:
+  - Updated `validate_balance_sheet_calculations` to use standardized anchor names
+  - Removed legacy `get_balance_sheet_llm_insights` & `classify_line_items_llm`
+
+### 13.4 Income Statement Integration
+- [x] **Extraction Prompt Update**: Enforced single `income_statement` token
+- [x] **Transformer Integration**:
+  - Rewrote `post_process_income_statement_line_items` to use `TigerTransformerClient`
+  - Automated mapping population via `TigerTransformerClient`
+- [x] **Normalization & Validation**:
+  - Implemented expense sign enforcement (`is_expense=True` -> negative)
+  - Implemented "Residual Solver" for `is_expense=None` sign ambiguity resolution
+  - Removed legacy `get_income_statement_llm_insights` & `classify_line_items_llm`
+
+### 13.5 Logging & Debugging Tools
+- [x] Implemented exact input logging for transformer debugging (`balance_sheet_transformer_exact_inputs.csv`)
+- [x] Created `scripts/export_retraining_data.py` (Planned)
+
+### 13.6 Code Cleanup & Efficiency
+- [x] Removed unused legacy agents and helper functions
+- [x] Optimized pipeline by replacing multiple LLM calls with single transformer inference
+- [x] Updated `ARCHITECTURE.md` and `DATABASE_SCHEMA.md` to reflect new flow

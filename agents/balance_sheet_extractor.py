@@ -3,13 +3,11 @@ Balance sheet extraction agent using Gemini LLM and embeddings
 """
 
 import json
-import re
 
 from agents.extractor_utils import (
     call_llm_and_parse_json,
     call_llm_with_retry,
     check_section_completeness_llm,
-    get_llm_insights_generic,
 )
 from app.services.tiger_transformer_client import TigerTransformerClient
 from app.utils.document_section_finder import find_document_section
@@ -305,45 +303,6 @@ def extract_balance_sheet(
         return extracted_data
 
 
-def _is_balance_sheet_total_line_name(name_lower: str) -> bool:
-    """Check if line name represents a total (more precise matching)"""
-    total_phrases = [
-        "total current assets",
-        "total assets",
-        "total current liabilities",
-        "total liabilities",
-        "total equity",
-        "total liabilities and equity",
-        "total liabilities and shareholders",
-        "total stockholder",
-        "total shareholder",
-    ]
-    for phrase in total_phrases:
-        if name_lower.startswith(phrase) or name_lower.startswith(phrase + " "):
-            return True
-    if re.search(r"\btotal\b|\bsubtotal\b|\bsum\b", name_lower):
-        if (
-            name_lower.startswith("total ")
-            or "total current" in name_lower
-            or "total assets" in name_lower
-            or "total liabilities" in name_lower
-            or "total equity" in name_lower
-            or "subtotal" in name_lower
-            or "sum" in name_lower
-        ):
-            return True
-    return False
-
-
-def _is_total_or_subtotal_item(item: dict) -> bool:
-    """Check if an item is a total/subtotal line based on name and category."""
-    category = (item.get("line_category") or "").lower()
-    if "total" in category:
-        return True
-    line_name = (item.get("line_name") or "").lower()
-    return _is_balance_sheet_total_line_name(line_name)
-
-
 def find_balance_sheet_section(
     document_id: str,
     file_path: str,
@@ -499,7 +458,7 @@ Return a JSON object with the following structure:
     "period_end_date": "{period_end_date}" if known else null,
     "line_items": [
         {{
-            "line_name": "exact name as it appears in the document but do not include long notes in parentheses",
+            "line_name": "exact name as it appears in the document but shortened. Do not include long notes. Do not include texts after net of...",
             "line_value": numeric value (as number, not string) - MUST match exactly what is shown in the document,
             "line_category": one of [
                 "current_assets",
@@ -598,7 +557,7 @@ Return a JSON object with the following structure:
     "period_end_date": "{period_end_date}" if known else null,
     "line_items": [
         {{
-            "line_name": "exact name as it appears in the document but do not include long notes in parentheses",
+            "line_name": "exact name as it appears in the document but shortened. Do not include long notes. Do not include texts after net of...",
             "line_value": numeric value (as number, not string),
             "line_category": one of ["current_assets", "noncurrent_assets", "current_liabilities", "noncurrent_liabilities", "stockholders_equity"]
         }}
@@ -716,52 +675,6 @@ def post_process_balance_sheet_line_items(line_items: list[dict]) -> list[dict]:
     return processed_items
 
 
-def get_balance_sheet_llm_insights(
-    line_items: list[dict],
-) -> tuple[dict, list[str]]:
-    """
-    Use LLM to identify key line items in a balance sheet.
-    This function is used during post-processing to identify and standardize line item names.
-    """
-    json_structure = """{
-    "cash_and_equivalents_line": "exact line name for cash and cash equivalents (must match a name from the list above, or null if not found)",
-    "accounts_receivable_line": "exact line name for accounts receivable (must match a name from the list above, or null if not found)",
-    "inventory_line": "exact line name for inventory (must match a name from the list above, or null if not found)",
-    "other_current_assets_line": "exact line name for other current assets (must match a name from the list above, or null if not found)",
-    "total_current_assets_line": "exact line name for total current assets (must match a name from the list above, or null if not found)",
-    "ppe_line": "exact line name for property, plant and equipment (must match a name from the list above, or null if not found)",
-    "goodwill_intangible_line": "exact line name for goodwill and intangible assets (must match a name from the list above, or null if not found)",
-    "other_non_current_assets_line": "exact line name for other non-current assets (must match a name from the list above, or null if not found)",
-    "total_assets_line": "exact line name for total assets (must match a name from the list above, or null if not found)",
-    "accounts_payable_line": "exact line name for accounts payable (must match a name from the list above, or null if not found)",
-    "short_term_debt_line": "exact line name for short-term debt (must match a name from the list above, or null if not found)",
-    "other_current_liabilities_line": "exact line name for other current liabilities (must match a name from the list above, or null if not found)",
-    "total_current_liabilities_line": "exact line name for total current liabilities (must match a name from the list above, or null if not found)",
-    "long_term_debt_line": "exact line name for long-term debt (must match a name from the list above, or null if not found)",
-    "other_non_current_liabilities_line": "exact line name for other non-current liabilities (must match a name from the list above, or null if not found)",
-    "total_liabilities_line": "exact line name for total liabilities (must match a name from the list above, or null if not found)",
-    "common_equity_line": "exact line name for common equity or common stockholders' equity (must match a name from the list above, or null if not found)",
-    "retained_earnings_line": "exact line name for retained earnings (must match a name from the list above, or null if not found)",
-    "total_equity_line": "exact line name for total equity or total shareholders' equity (must match a name from the list above, or null if not found)",
-    "total_liabilities_equity_line": "exact line name for total liabilities and equity or total liabilities and shareholders' equity (must match a name from the list above, or null if not found)"
-}"""
-
-    guidance = """- Cash and equivalents: Cash and cash equivalents, Cash, Cash & Equivalents
-- Accounts receivable: Accounts receivable, Trade receivables
-- Inventory: Inventories, Inventory
-- Total current assets: Total current assets, Current assets
-- Total assets: Total assets
-- Accounts payable: Accounts payable, Trade payables
-- Total current liabilities: Total current liabilities, Current liabilities
-- Total liabilities: Total liabilities
-- Common equity: Common equity, Common stockholders' equity, Common stock, Shareholders' equity
-- Retained earnings: Retained earnings, Accumulated deficit
-- Total equity: Total equity, Total stockholders' equity, Total shareholders' equity
-- Total liabilities and equity: Total liabilities and equity, Total liabilities and shareholders' equity"""
-
-    return get_llm_insights_generic(line_items, "a balance sheet", json_structure, guidance)
-
-
 def validate_balance_sheet_calculations(line_items: list[dict]) -> tuple[bool, list[str]]:
     """
     Validate balance sheet calculations (Stage 2): Check that sums match reported totals.
@@ -868,148 +781,6 @@ def validate_balance_sheet_calculations(line_items: list[dict]) -> tuple[bool, l
         )
 
     return len(errors) == 0, errors
-
-
-def classify_line_items_llm(line_items: list[dict]) -> list[dict]:
-    """
-    Use LLM to categorize each balance sheet line item as operating or non-operating.
-
-    Args:
-        line_items: List of balance sheet line items
-
-    Returns:
-        List of line items with is_operating field added
-    """
-
-    def _is_total_or_subtotal(item: dict) -> bool:
-        category = (item.get("line_category") or "").lower()
-        if "total" in category:
-            return True
-        line_name = normalize_line_name(item.get("line_name", ""))
-        total_keywords = [
-            "total current assets",
-            "total assets",
-            "total current liabilities",
-            "total liabilities",
-            "total liabilities and equity",
-            "total liabilities and shareholders equity",
-            "total liabilities and stockholder equity",
-            "total liabilities and stockholders equity",
-            "total equity",
-            "total shareholders equity",
-            "total stockholders equity",
-        ]
-        return any(keyword in line_name for keyword in total_keywords)
-
-    # AUTHORITATIVE_LOOKUP - binding decision table
-    AUTHORITATIVE_LOOKUP = {
-        "Cash and cash equivalents": "Non-Operating",
-        "Marketable securities / Short-term investments": "Non-Operating",
-        "Restricted cash": "Non-Operating",
-        "Accounts receivable": "Operating",
-        "Notes receivable (trade-related)": "Operating",
-        "Inventories": "Operating",
-        "Prepaid expenses": "Operating",
-        "Other current assets": "Operating",
-        "Assets Held for Sale": "Non-Operating",
-        "Property, plant and equipment (PPE)": "Operating",
-        "Operating lease right-of-use assets": "Non-Operating",
-        "Goodwill": "Non-Operating",
-        "Intangible assets": "Non-Operating",
-        "Long-term investments / Equity method investments": "Non-Operating",
-        "Deferred tax assets": "Operating",
-        "Other non-current assets": "Operating",
-        "Accounts payable": "Operating",
-        "Accrued expenses / Accrued liabilities": "Operating",
-        "Unearned revenue / Deferred revenue": "Operating",
-        "Short-term debt": "Non-Operating",
-        "Current portion of long-term debt": "Non-Operating",
-        "Current lease liabilities": "Non-Operating",
-        "Liabilities Held for Sale": "Non-Operating",
-        "Other current liabilities": "Non-Operating",
-        "Long-term debt": "Non-Operating",
-        "Non-current lease liabilities": "Non-Operating",
-        "Deferred tax liabilities": "Operating",
-        "Pension liabilities / Postretirement obligations": "Operating",
-        "Other long-term liabilities": "Non-Operating",
-        "Common stock / Paid-in capital": "Non-Operating",
-        "Retained earnings": "Non-Operating",
-        "Treasury stock": "Non-Operating",
-        "Accumulated other comprehensive income (AOCI)": "Non-Operating",
-        "Noncontrolling interests": "Non-Operating",
-        "Deferred compensation / Stock-based compensation liability": "Operating",
-        "Customer deposits": "Operating",
-        "Contract liabilities": "Operating",
-        "Income taxes payable": "Operating",
-        "Accrued payroll / Accrued compensation": "Operating",
-        "Derivative assets/liabilities": "Non-Operating",
-    }
-
-    # Create normalized lookup map
-    normalized_lookup = {normalize_line_name(k): v for k, v in AUTHORITATIVE_LOOKUP.items()}
-
-    # Prepare lookup context for prompt
-    lookup_context = "\n".join([f'  "{k}": "{v}"' for k, v in AUTHORITATIVE_LOOKUP.items()])
-
-    prompt = f"""Classify each balance sheet line item as either "operating" or "non-operating" based on whether it relates to the company's core business operations.
-
-HIGHEST PRIORITY: Use the AUTHORITATIVE_LOOKUP below as a binding decision table.
-- If a provided line item matches a key in AUTHORITATIVE_LOOKUP after normalization, you MUST use that value.
-- Normalization: trim, case-insensitive, collapse repeated whitespace, remove leading/trailing punctuation.
-- If no match: use best judgement.
-
-AUTHORITATIVE_LOOKUP:
-{{
-{lookup_context}
-}}
-
-Balance sheet line items to classify:
-{json.dumps([{"line_name": item["line_name"], "line_category": item["line_category"]} for item in line_items], indent=2)}
-
-Return a JSON array with the same order as the input, where each item has:
-{{
-    "line_name": "exact name from input",
-    "is_operating": true or false
-}}
-
-Return only valid JSON array, no additional text."""
-
-    def _classify_with_lookup(name: str) -> bool:
-        """Helper to classify using the authoritative lookup."""
-        normalized = normalize_line_name(name)
-        if normalized in normalized_lookup:
-            return normalized_lookup[normalized] == "Operating"
-        return True  # Default for lookup failure (if LLM also fails)
-
-    try:
-        # Use temperature 0.0 for extraction to prevent hallucination
-        classifications = call_llm_and_parse_json(prompt, temperature=0.0)
-        classification_map = {item["line_name"]: item["is_operating"] for item in classifications}
-
-        for item in line_items:
-            line_name = item["line_name"]
-            normalized_name = normalize_line_name(line_name)
-
-            # Check authoritative lookup first
-            if normalized_name in normalized_lookup:
-                item["is_operating"] = normalized_lookup[normalized_name] == "Operating"
-            elif line_name in classification_map:
-                item["is_operating"] = classification_map[line_name]
-            else:
-                item["is_operating"] = True  # Default fallback
-
-        for item in line_items:
-            if _is_total_or_subtotal_item(item):
-                item["is_operating"] = None
-        return line_items
-
-    except Exception as e:
-        print(f"Error classifying line items: {str(e)}")
-        for item in line_items:
-            item["is_operating"] = _classify_with_lookup(item["line_name"])
-            if _is_total_or_subtotal_item(item):
-                item["is_operating"] = None
-        return line_items
 
 
 def check_line_item_time_periods_balance_sheet(

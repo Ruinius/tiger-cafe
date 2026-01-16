@@ -43,41 +43,78 @@ class TigerTransformerClient:
             self._load_mappings()
 
     def _load_model(self):
-        """Load the tiger-transformer model from local path or HuggingFace."""
-        # Check for local model first (relative to project root)
-        project_root = Path(__file__).parent.parent.parent
-        local_model_path = (
-            project_root.parent / "tiger-transformer" / "models" / "financial_transformer"
-        )
+        """Load the transformer model and tokenizer."""
+        # Define paths relative to this file
+        # tiger-cafe/app/services/tiger_transformer_client.py -> f:\AIML projects
+        workspace_root = Path(__file__).parent.parent.parent.parent
+        tiger_transformer_dir = workspace_root / "tiger-transformer"
+
+        # Valid locations
+        local_model_path = tiger_transformer_dir / "models" / "financial_transformer"
+        label_map_path = tiger_transformer_dir / "models" / "label_map.json"
 
         if local_model_path.exists():
-            logger.info(f"Loading tiger-transformer from local path: {local_model_path}")
+            print(f"TigerTransformer: Loading model from local path: {local_model_path}")
             model_path = str(local_model_path)
+
+            # Load tokenizer and model
+            try:
+                self._tokenizer = AutoTokenizer.from_pretrained(model_path)  # nosec B615
+                self._model = AutoModelForSequenceClassification.from_pretrained(model_path)  # nosec B615
+            except Exception as e:
+                print(f"TigerTransformer: Failed to load local model files: {e}")
+                # Fallback or re-raise? Given USER instruction "WE ARE NOT USING HUGGING FACE", raise.
+                raise
+
+            # Load label mapping if available
+            if label_map_path.exists():
+                import json
+
+                try:
+                    with open(label_map_path, encoding="utf-8") as f:
+                        label2id = json.load(f)
+
+                    # Create reverse mapping (id2label)
+                    id2label = {int(v): k for k, v in label2id.items()}
+
+                    # Update model config
+                    self._model.config.id2label = id2label
+                    self._model.config.label2id = label2id
+                    print(f"TigerTransformer: Loaded label mapping with {len(id2label)} labels")
+                except Exception as e:
+                    print(f"TigerTransformer: Failed to load label map: {e}")
+            else:
+                print(f"TigerTransformer: Warning - label_map.json not found at {label_map_path}")
+
         else:
-            logger.info("Local model not found, loading from HuggingFace...")
+            print(f"TigerTransformer: Local model not found at {local_model_path}")
+            # Fallback to HuggingFace if local is missing (though user said NOT using HF)
+            print("TigerTransformer: Loading from HuggingFace (Ruinius/tiger-transformer)...")
             model_path = "Ruinius/tiger-transformer"
+            self._tokenizer = AutoTokenizer.from_pretrained(model_path)  # nosec B615
+            self._model = AutoModelForSequenceClassification.from_pretrained(model_path)  # nosec B615
 
         try:
-            # Load tokenizer and model
-            self._tokenizer = AutoTokenizer.from_pretrained(model_path)
-            self._model = AutoModelForSequenceClassification.from_pretrained(model_path)
-
             # Move to GPU if available
             if torch.cuda.is_available():
                 self._model = self._model.cuda()
-                logger.info("Model loaded on GPU")
+                print("TigerTransformer: Model loaded on GPU")
             else:
-                logger.info("Model loaded on CPU")
+                print("TigerTransformer: Model loaded on CPU")
 
             self._model.eval()  # Set to evaluation mode
-            logger.info("Tiger-transformer model loaded successfully")
+            print("TigerTransformer: Model loaded successfully")
 
         except Exception as e:
-            logger.error(f"Failed to load tiger-transformer model: {e}")
+            print(f"TigerTransformer: Failed to initialize model: {e}")
             raise
 
     def _load_mappings(self):
         """Load the CSV mapping files for is_calculated, is_operating, is_expense."""
+        # Fix: mappings are in app/data/mappings
+        # __file__ = app/services/tiger_transformer_client.py
+        # parent = app/services
+        # parent.parent = app
         mappings_dir = Path(__file__).parent.parent / "data" / "mappings"
 
         # Load balance sheet mapping
@@ -109,8 +146,8 @@ class TigerTransformerClient:
                     else None,
                 }
 
-        logger.info(
-            f"Loaded mappings: {len(self._bs_mapping)} BS items, {len(self._is_mapping)} IS items"
+        print(
+            f"TigerTransformer: Loaded mappings from {mappings_dir}: {len(self._bs_mapping)} BS items, {len(self._is_mapping)} IS items"
         )
 
     def predict_balance_sheet(self, line_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -132,6 +169,8 @@ class TigerTransformerClient:
         if not line_items:
             return []
 
+        print(f"TigerTransformer: Predicting Balance Sheet for {len(line_items)} items")
+
         # Prepare inputs with context (2 previous + 2 next line items)
         inputs = []
         for i, item in enumerate(line_items):
@@ -149,6 +188,19 @@ class TigerTransformerClient:
             inputs.append(input_text)
 
         # Run inference
+        # Log exact formatted inputs
+        try:
+            import os
+
+            import pandas as pd
+
+            pd.DataFrame(inputs, columns=["formatted_input"]).to_csv(
+                os.path.join(os.getcwd(), "balance_sheet_transformer_exact_inputs.csv"), index=False
+            )
+            print("Logged exact balance sheet inputs to balance_sheet_transformer_exact_inputs.csv")
+        except Exception as e:
+            print(f"Failed to log exact inputs: {e}")
+
         standardized_names = self._batch_inference(inputs)
 
         # Enrich with mapping data
@@ -186,6 +238,8 @@ class TigerTransformerClient:
         if not line_items:
             return []
 
+        print(f"TigerTransformer: Predicting Income Statement for {len(line_items)} items")
+
         # Prepare inputs with context (2 previous + 2 next line items)
         inputs = []
         for i, item in enumerate(line_items):
@@ -203,6 +257,22 @@ class TigerTransformerClient:
             inputs.append(input_text)
 
         # Run inference
+        # Log exact formatted inputs
+        try:
+            import os
+
+            import pandas as pd
+
+            pd.DataFrame(inputs, columns=["formatted_input"]).to_csv(
+                os.path.join(os.getcwd(), "income_statement_transformer_exact_inputs.csv"),
+                index=False,
+            )
+            print(
+                "Logged exact income statement inputs to income_statement_transformer_exact_inputs.csv"
+            )
+        except Exception as e:
+            print(f"Failed to log exact inputs: {e}")
+
         standardized_names = self._batch_inference(inputs)
 
         # Enrich with mapping data
@@ -231,6 +301,8 @@ class TigerTransformerClient:
         Returns:
             List of standardized names (predicted labels)
         """
+        print(f"TigerTransformer: Running batch inference for {len(inputs)} inputs")
+
         # Tokenize inputs
         encoded = self._tokenizer(
             inputs, padding=True, truncation=True, max_length=512, return_tensors="pt"

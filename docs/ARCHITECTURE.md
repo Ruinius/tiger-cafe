@@ -66,6 +66,8 @@ This approach optimizes processing costs and focuses detailed extraction on docu
   - `documents.py`: upload, indexing, and extraction triggers
   - `historical_calculations.py`: computes financial metrics
   - Additional routers: `balance_sheet.py`, `income_statement.py`, `organic_growth.py`, `amortization.py`, etc.
+- **Services:** `app/services/`
+  - `tiger_transformer_client.py`: Load and run inference on the local Tiger-Transformer model.
 - **Models:** `app/models/` (SQLAlchemy)
 - **Core:** `app/core/security.py` (JWT and Password utilities)
 - **Schemas:** `app/schemas/` (Pydantic)
@@ -122,19 +124,19 @@ This approach optimizes processing costs and focuses detailed extraction on docu
    - Other assets and other liabilities use **LLM-based extraction** with detailed line item classification
 
 **Extraction Process:**
-1. Extract balance sheet + income statement from indexed content using chunk embeddings.
-2. Two-stage validation:
-   - Stage 1: Validate correct section found using full chunk text (retry with different chunks if needed)
-   - Stage 2: Validate extraction accuracy with LLM feedback loop for error correction
-   - Validation logic excludes "Total" category line items from sum calculations to avoid double counting
-3. Apply operating/non-operating classification and persist structured tables for downstream analysis.
-4. **Income Statement Line Item Categories:**
-   - **Recurring**: Normal business operations that occur regularly
-   - **One-Time**: Unusual or infrequent items
-   - **Total**: Summary/total line items (e.g., "Total Net Revenue", "Total Expenses")
-     - Totals do not have `is_operating` classification (set to `None`)
-     - Exception: "Total Net Revenue" has `is_operating = True`
-     - Totals are excluded from validation sum calculations to prevent double counting
+1. **Section Location**: Use chunk embeddings and numeric density analysis to locate the correct table sections (Balance Sheet / Income Statement).
+2. **Raw Extraction**: Extract line items exactly as they appear in the document (names and values) using LLM.
+3. **Standardization & Classification (Tiger-Transformer)**:
+   - Pass raw line items to a fine-tuned FINBERT model (`TigerTransformerClient`).
+   - Model outputs **Standardized Names** (e.g., `cash_and_equivalents`, `total_net_revenue`) based on item name and context (neighbors).
+   - Use lookup tables to map standardized names to properties:
+     - `is_calculated`: Is this a subtotal/total?
+     - `is_operating`: Is this an operating item?
+     - `is_expense`: Is this an expense (for Income Statement)?
+4. **Validation & Normalization**:
+   - **Normalization**: Enforce negative signs for expenses.
+   - **Validation**: Check if `Standardized Totals` match `Sum(Standardized Components)`.
+   - **Retry Logic**: If validation fails, use Residual Solvers (checking sign ambiguities) or LLM-based feedback loops.
 5. **Additional Items Extraction**:
    - Dedicated agents run after main financial statements:
      - `Organic Growth`: M&A impact analysis
