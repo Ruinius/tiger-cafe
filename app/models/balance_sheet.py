@@ -57,7 +57,13 @@ class BalanceSheetLineItem(Base):
     line_value = Column(Numeric(20, 2), nullable=False)  # Monetary value
     line_category = Column(
         String, nullable=True
-    )  # e.g., "Current Assets", "Total Assets", "Current Liabilities"
+    )  # Section token (e.g., "current_assets", "stockholders_equity") - input to transformer
+    standardized_name = Column(
+        String, nullable=True
+    )  # Standardized key from transformer (e.g., "cash_and_equivalents")
+    is_calculated = Column(
+        Boolean, nullable=True
+    )  # Flag indicating if value is a calculated total/subtotal
     is_operating = Column(Boolean, nullable=True)  # Operating vs non-operating classification
     line_order = Column(Integer, nullable=False)  # Order in which line appears in the balance sheet
 

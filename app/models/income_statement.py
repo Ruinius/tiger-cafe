@@ -71,7 +71,18 @@ class IncomeStatementLineItem(Base):
     # Line item details
     line_name = Column(String, nullable=False)  # e.g., "Revenue", "Cost of goods sold"
     line_value = Column(Numeric(20, 2), nullable=False)  # Monetary value
-    line_category = Column(String, nullable=True)  # e.g., "Revenue", "Costs", "Expenses", "Income"
+    line_category = Column(
+        String, nullable=True
+    )  # Section token (e.g., "income_statement") - input to transformer
+    standardized_name = Column(
+        String, nullable=True
+    )  # Standardized key from transformer (e.g., "total_net_revenue", "operating_income")
+    is_calculated = Column(
+        Boolean, nullable=True
+    )  # Flag indicating if value is a calculated total/subtotal
+    is_expense = Column(
+        Boolean, nullable=True
+    )  # Flag indicating if item is an expense (used for sign normalization)
     is_operating = Column(Boolean, nullable=True)  # Operating vs non-operating classification
     line_order = Column(
         Integer, nullable=False

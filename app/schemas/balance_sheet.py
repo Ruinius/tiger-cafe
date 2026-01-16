@@ -12,6 +12,8 @@ class BalanceSheetLineItemBase(BaseModel):
     line_name: str
     line_value: Decimal
     line_category: str | None = None
+    standardized_name: str | None = None
+    is_calculated: bool | None = None
     is_operating: bool | None = None
     line_order: int
 
