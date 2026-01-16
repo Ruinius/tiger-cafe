@@ -11,12 +11,12 @@ from agents.extractor_utils import (
     check_section_completeness_llm,
     get_llm_insights_generic,
 )
+from app.services.tiger_transformer_client import TigerTransformerClient
 from app.utils.document_section_finder import find_document_section
 from app.utils.financial_statement_progress import (
     FinancialStatementMilestone,
     add_log,
 )
-from app.utils.line_item_utils import extract_original_name_from_standardized as get_orig_name
 from app.utils.line_item_utils import normalize_line_name
 
 
@@ -279,9 +279,7 @@ def extract_balance_sheet(
         extracted_data["is_valid"] = calc_valid
         extracted_data["validation_errors"] = calc_errors
 
-        # Classify final items
-        classified_items = classify_line_items_llm(extracted_data["line_items"])
-        extracted_data["line_items"] = classified_items
+        # Classification is now handled by TigerTransformerClient in post_process_balance_sheet_line_items
 
         # Ensure chunk indices are included
         if successful_chunk_index is not None:
@@ -504,16 +502,11 @@ Return a JSON object with the following structure:
             "line_name": "exact name as it appears in the document but do not include long notes in parentheses",
             "line_value": numeric value (as number, not string) - MUST match exactly what is shown in the document,
             "line_category": one of [
-                "Current Assets",
-                "Total Current Assets",
-                "Non-Current Assets",
-                "Total Assets",
-                "Current Liabilities",
-                "Total Current Liabilities",
-                "Non-Current Liabilities",
-                "Total Liabilities",
-                "Equity",
-                "Total Liabilities and Equity",
+                "current_assets",
+                "noncurrent_assets",
+                "current_liabilities",
+                "noncurrent_liabilities",
+                "stockholders_equity"
             ]
         }},
         ...
@@ -607,7 +600,7 @@ Return a JSON object with the following structure:
         {{
             "line_name": "exact name as it appears in the document but do not include long notes in parentheses",
             "line_value": numeric value (as number, not string),
-            "line_category": one of ["Current Assets", "Non-Current Assets", "Total Assets", "Current Liabilities", "Non-Current Liabilities", "Total Liabilities", "Equity", "Total Liabilities and Equity"]
+            "line_category": one of ["current_assets", "noncurrent_assets", "current_liabilities", "noncurrent_liabilities", "stockholders_equity"]
         }}
     ]
 }}
@@ -654,69 +647,71 @@ Return only valid JSON, no additional text."""
 
 def post_process_balance_sheet_line_items(line_items: list[dict]) -> list[dict]:
     """
-    Post-process balance sheet line items:
-    1. Use LLM to identify key line items
-    2. Rename identified items with standardized names (original in parentheses)
+    Post-process balance sheet line items using tiger-transformer:
+    1. Validate and fix section tokens (fallback logic)
+    2. Call TigerTransformerClient for standardization
+    3. Populate standardized_name, is_calculated, is_operating from transformer + CSV lookup
 
     Returns:
-        Processed line items with standardized names
+        Processed line items with standardized metadata
     """
     if not line_items:
         return line_items
 
-    # Step 1: Get LLM insights to identify key line items
-    llm_insights, _ = get_balance_sheet_llm_insights(line_items=line_items)
-
-    # Mapping of standardized names to LLM insight keys
-    standard_names = {
-        "cash_and_equivalents_line": "Cash & Equivalents",
-        "accounts_receivable_line": "Accounts Receivable",
-        "inventory_line": "Inventory",
-        "other_current_assets_line": "Other Current Assets",
-        "total_current_assets_line": "Total Current Assets",
-        "ppe_line": "Property, Plant & Equipment",
-        "goodwill_intangible_line": "Goodwill & Intangible Assets",
-        "other_non_current_assets_line": "Other Non-Current Assets",
-        "total_assets_line": "Total Assets",
-        "accounts_payable_line": "Accounts Payable",
-        "short_term_debt_line": "Short-Term Debt",
-        "other_current_liabilities_line": "Other Current Liabilities",
-        "total_current_liabilities_line": "Total Current Liabilities",
-        "long_term_debt_line": "Long-Term Debt",
-        "other_non_current_liabilities_line": "Other Non-Current Liabilities",
-        "total_liabilities_line": "Total Liabilities",
-        "common_equity_line": "Common Equity",
-        "retained_earnings_line": "Retained Earnings",
-        "total_equity_line": "Total Equity",
-        "total_liabilities_equity_line": "Total Liabilities & Equity",
+    # Valid section tokens
+    VALID_TOKENS = {
+        "current_assets",
+        "noncurrent_assets",
+        "current_liabilities",
+        "noncurrent_liabilities",
+        "stockholders_equity",
     }
 
-    # Step 2: Rename identified line items
-    processed_items = []
+    # Step 1: Section Tag Fallback - Validate and fix invalid tokens
+    for i, item in enumerate(line_items):
+        category = item.get("line_category", "").strip()
 
-    for item in line_items:
-        item_copy = item.copy()
-        current_name = item.get("line_name", "")
+        # If token is missing or invalid, infer from neighbors
+        if not category or category not in VALID_TOKENS:
+            # Try to infer from previous item
+            if i > 0:
+                prev_category = line_items[i - 1].get("line_category", "").strip()
+                if prev_category in VALID_TOKENS:
+                    item["line_category"] = prev_category
+                    continue
 
-        # Check if this item matches any of the identified key items
-        for insight_key, standard_name in standard_names.items():
-            llm_line_name = llm_insights.get(insight_key)
-            if llm_line_name:
-                # Use exact match first, then normalized match
-                if current_name == llm_line_name or normalize_line_name(
-                    current_name
-                ) == normalize_line_name(llm_line_name):
-                    # Extract original name if it was already standardized, otherwise use current name
-                    original_name = get_orig_name(current_name) or current_name
+            # Try to infer from next item
+            if i < len(line_items) - 1:
+                next_category = line_items[i + 1].get("line_category", "").strip()
+                if next_category in VALID_TOKENS:
+                    item["line_category"] = next_category
+                    continue
 
-                    # Rename: "Standard Name (Original Name)"
-                    # Only apply if it's not already standardized to THIS standard name
-                    new_name = f"{standard_name} ({original_name})"
-                    if current_name != new_name:
-                        item_copy["line_name"] = new_name
-                    break
+            # Default fallback based on line name heuristics
+            line_name_lower = item.get("line_name", "").lower()
+            if "asset" in line_name_lower:
+                if "current" in line_name_lower or i < len(line_items) // 2:
+                    item["line_category"] = "current_assets"
+                else:
+                    item["line_category"] = "noncurrent_assets"
+            elif "liability" in line_name_lower or "liabilities" in line_name_lower:
+                if "current" in line_name_lower:
+                    item["line_category"] = "current_liabilities"
+                else:
+                    item["line_category"] = "noncurrent_liabilities"
+            elif "equity" in line_name_lower or "stockholder" in line_name_lower:
+                item["line_category"] = "stockholders_equity"
+            else:
+                # Last resort: use previous valid category or default to current_assets
+                item["line_category"] = (
+                    line_items[i - 1].get("line_category", "current_assets")
+                    if i > 0
+                    else "current_assets"
+                )
 
-        processed_items.append(item_copy)
+    # Step 2: Call TigerTransformerClient for inference
+    client = TigerTransformerClient()
+    processed_items = client.predict_balance_sheet(line_items)
 
     return processed_items
 
@@ -770,134 +765,106 @@ def get_balance_sheet_llm_insights(
 def validate_balance_sheet_calculations(line_items: list[dict]) -> tuple[bool, list[str]]:
     """
     Validate balance sheet calculations (Stage 2): Check that sums match reported totals.
-    This is used after section validation passes to verify extraction accuracy.
+    Uses standardized_name and is_calculated flags from tiger-transformer.
 
     Args:
-        line_items: List of balance sheet line items
+        line_items: List of balance sheet line items with standardized_name and is_calculated
 
     Returns:
         Tuple of (is_valid, list_of_errors_with_differences)
     """
     errors = []
 
-    # Find key totals using standardized line_category field
-    current_assets = None
-    total_assets = None
-    current_liabilities = None
-    total_liabilities = None
-    total_equity = None
-    total_liabilities_equity = None
-
+    # Find key totals using standardized_name
+    totals = {}
     for item in line_items:
-        category = item.get("line_category", "").strip()
+        std_name = item.get("standardized_name")
         value = item.get("line_value")
+        if std_name and value is not None:
+            totals[std_name] = value
 
-        # Use exact category matching - much more robust than parsing line names
-        if category == "Total Current Assets":
-            current_assets = value
-        elif category == "Total Assets":
-            total_assets = value
-        elif category == "Total Current Liabilities":
-            current_liabilities = value
-        elif category == "Total Liabilities":
-            total_liabilities = value
-        elif category == "Total Equity":
-            total_equity = value
-        elif category == "Total Liabilities and Equity":
-            total_liabilities_equity = value
-
-    # Calculate sums from line items
-    # Only sum base line items, exclude any totals or subtotals
-    # Exclude items that are totals themselves (by name or category)
-    def is_total_item(item):
-        return _is_total_or_subtotal_item(item)
-
-    # Only include base line items (not totals) in the EXACT correct category
-    # Be very explicit about category matching to avoid confusion
+    # Calculate sums from base line items (where is_calculated=False)
+    # Group by section
     current_assets_sum = sum(
         item["line_value"]
         for item in line_items
-        if (
-            item.get("line_category", "").strip() == "Current Assets"
-            and not is_total_item(item)
-            and "non-current" not in item.get("line_name", "").lower()
-        )
+        if (item.get("line_category") == "current_assets" and item.get("is_calculated") is False)
     )
 
-    total_assets_sum = sum(
+    noncurrent_assets_sum = sum(
         item["line_value"]
         for item in line_items
-        if (
-            item.get("line_category", "").strip() in ["Current Assets", "Non-Current Assets"]
-            and not is_total_item(item)
-        )
+        if (item.get("line_category") == "noncurrent_assets" and item.get("is_calculated") is False)
     )
 
     current_liabilities_sum = sum(
         item["line_value"]
         for item in line_items
         if (
-            item.get("line_category", "").strip() == "Current Liabilities"
-            and not is_total_item(item)
-            and "non-current" not in item.get("line_name", "").lower()
+            item.get("line_category") == "current_liabilities"
+            and item.get("is_calculated") is False
         )
     )
 
-    total_liabilities_sum = sum(
+    noncurrent_liabilities_sum = sum(
         item["line_value"]
         for item in line_items
         if (
-            item.get("line_category", "").strip()
-            in ["Current Liabilities", "Non-Current Liabilities"]
-            and not is_total_item(item)
+            item.get("line_category") == "noncurrent_liabilities"
+            and item.get("is_calculated") is False
         )
     )
 
-    # Validate current assets
-    if current_assets is not None:
-        diff = abs(current_assets - current_assets_sum)
-        if diff > 0.01:  # Allow small rounding differences
+    # Validate total current assets
+    if "total_current_assets" in totals:
+        reported = totals["total_current_assets"]
+        diff = abs(reported - current_assets_sum)
+        if diff > 0.01:
             errors.append(
-                f"Current assets sum mismatch: reported={current_assets}, calculated={current_assets_sum}"
+                f"Total current assets mismatch: reported={reported}, calculated={current_assets_sum}"
             )
 
     # Validate total assets
-    if total_assets is not None:
-        diff = abs(total_assets - total_assets_sum)
+    if "total_assets" in totals:
+        reported = totals["total_assets"]
+        calculated = current_assets_sum + noncurrent_assets_sum
+        diff = abs(reported - calculated)
         if diff > 0.01:
-            errors.append(
-                f"Total assets sum mismatch: reported={total_assets}, calculated={total_assets_sum}"
-            )
+            errors.append(f"Total assets mismatch: reported={reported}, calculated={calculated}")
 
-    # Validate current liabilities
-    if current_liabilities is not None:
-        diff = abs(current_liabilities - current_liabilities_sum)
+    # Validate total current liabilities
+    if "total_current_liabilities" in totals:
+        reported = totals["total_current_liabilities"]
+        diff = abs(reported - current_liabilities_sum)
         if diff > 0.01:
             errors.append(
-                f"Current liabilities sum mismatch: reported={current_liabilities}, calculated={current_liabilities_sum}"
+                f"Total current liabilities mismatch: reported={reported}, calculated={current_liabilities_sum}"
             )
 
     # Validate total liabilities
-    if total_liabilities is not None:
-        diff = abs(total_liabilities - total_liabilities_sum)
+    if "total_liabilities" in totals:
+        reported = totals["total_liabilities"]
+        calculated = current_liabilities_sum + noncurrent_liabilities_sum
+        diff = abs(reported - calculated)
         if diff > 0.01:
             errors.append(
-                f"Total liabilities sum mismatch: reported={total_liabilities}, calculated={total_liabilities_sum}"
+                f"Total liabilities mismatch: reported={reported}, calculated={calculated}"
             )
 
-    # Validate total liabilities and equity
-    if total_liabilities_equity is not None and total_assets is not None:
-        diff = abs(total_assets - total_liabilities_equity)
+    # Validate balance sheet equation: Total Assets = Total Liabilities + Total Equity
+    if "total_assets" in totals and "total_liabilities_and_equity" in totals:
+        total_assets = totals["total_assets"]
+        total_liab_equity = totals["total_liabilities_and_equity"]
+        diff = abs(total_assets - total_liab_equity)
         if diff > 0.01:
             errors.append(
-                f"Total liabilities and equity mismatch: reported={total_liabilities_equity}, should equal total assets={total_assets}"
+                f"Balance sheet equation mismatch: total_assets={total_assets}, total_liabilities_and_equity={total_liab_equity}"
             )
 
-    # Check if we have at least one key total (total assets, total liabilities, or total equity)
-    # This ensures we didn't get an empty or invalid balance sheet
-    if total_assets is None and total_liabilities is None and total_equity is None:
+    # Check if we have at least one key total
+    if not any(key in totals for key in ["total_assets", "total_liabilities", "total_equity"]):
         errors.append(
-            "Balance sheet is missing key totals (Total Assets, Total Liabilities, or Total Equity)"
+            "Balance sheet is missing key totals (total_assets, total_liabilities, or total_equity)"
         )
 
     return len(errors) == 0, errors
