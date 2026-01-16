@@ -50,6 +50,8 @@ data/uploads/
 *.sqlite
 *.sqlite3
 tiger_cafe.db
+.ruff_cache
+.pre-commit
 
 # Logs
 *.log
