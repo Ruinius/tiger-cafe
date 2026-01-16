@@ -472,22 +472,57 @@ To support the new standardized outputs from the `tiger-transformer`, the follow
 3. Create `tests/test_tiger_transformer_client.py` and verify basic inference and mapping.
 
 ### Phase 3: Balance Sheet Integration
-1. Modify `agents/balance_sheet_extractor.py`.
-   - Update extraction prompt to strictly output section tokens (`current_assets` etc).
-   - Implement `post_process_balance_sheet_line_items` to call `TigerTransformerClient`.
-   - Add "Section Tag Fallback" logic (Rule-based fix -> check neighbors).
-   - Update `validate_balance_sheet_calculations` to use `standardized_name`.
-2. Create `tests/test_validation_logic.py` (BS tests) and verify.
-3. Run `tests/test_integration_api.py` and fix any BS-related failures.
+1. **Refactor `agents/balance_sheet_extractor.py`**:
+   - **Update Extraction Prompt**:
+     - Modify `extract_balance_sheet_llm` and `extract_balance_sheet_llm_with_feedback` to strictly output one of these section tokens in `line_category`:
+       - `current_assets`
+       - `noncurrent_assets`
+       - `current_liabilities`
+       - `noncurrent_liabilities`
+       - `stockholders_equity`
+     - Remove natural language categories (e.g., "Current Assets", "Total Assets").
+   - **Integrate Tiger-Transformer**:
+     - Rewrite `post_process_balance_sheet_line_items`.
+     - **Preprocessing (Section Tag Fallback)**:
+       - Validate strict tokens. If a token is invalid/missing, infer it from neighbors (prev/next items).
+       - Ensure `total_` lines get the correct section (e.g., "Total Current Assets" -> `current_assets`).
+     - **Inference**: Call `TigerTransformerClient.predict_balance_sheet`.
+     - **Mapping**: The client service automatically populates `standardized_name` from inference and enriches `is_calculated`, `is_operating` using the loaded CSV lookup table (`bs_calculated_operating_mapping.csv`).
+   - **Update Validation Logic**:
+     - Modify `validate_balance_sheet_calculations`.
+     - Use `standardized_name` (e.g., `total_current_assets`, `total_assets`) to identify anchor values instead of fuzzy name matching.
+     - Calculate sums using items where `is_calculated=False` within the corresponding section.
+   - **Cleanup**:
+     - Remove `get_balance_sheet_llm_insights`.
+     - Remove `classify_line_items_llm`.
+
+2. **Testing & Verification**:
+   - Create `tests/test_validation_logic.py` to test section fallback and calculation logic.
+   - Run `tests/test_integration_api.py`.
+   - Update API integration tests to expect strict section tokens in responses.
 
 ### Phase 4: Income Statement Integration
-1. Modify `agents/income_statement_extractor.py`.
-   - Update prompt to output `income_statement` section token.
-   - Implement `post_process_...` to call `TigerTransformerClient`.
-   - Implement `is_expense` normalization logic (flip signs).
-   - Implement "Residual Solver" in validation retry loop.
-2. Update `tests/test_validation_logic.py` with IS Residual Solver tests.
-3. Run `tests/test_integration_api.py` and fix any IS-related failures.
+1. **Refactor `agents/income_statement_extractor.py`**:
+   - **Update Extraction Prompt**:
+     - Modify prompts to strictly output `income_statement` as the `line_category` for all items.
+   - **Integrate Tiger-Transformer**:
+     - Rewrite `post_process_income_statement_line_items`.
+     - Call `TigerTransformerClient.predict_income_statement`.
+     - **Mapping**: The client service automatically populates `standardized_name` from inference and enriches `is_calculated`, `is_operating`, `is_expense` using the loaded CSV lookup table (`is_calculated_operating_expense_mapping.csv`).
+   - **Implement Normalization Logic**:
+     - **Sign Flipping**: Ensure confirmed expenses (`is_expense=True`) are negative. If extracted value is positive, multiply by -1.
+     - **Ambiguous Items (`is_expense=None`)**: Leave signs exactly as extracted from the document initially. Do not apply a default rule.
+   - **Update Validation (Residual Solver)**:
+     - in `validate_income_statement_calculations`:
+     - If initial validation fails (Net Income check), calculate `Residual = Calculated_Net_Income - Reported_Net_Income`.
+     - **Solver Logic**: Check combinations of `is_expense=None` items. If flipping the sign of one or more ambiguous items resolves the `Residual` (difference becomes 0 within tolerance), apply those flips, update the values, and mark the statement as valid.
+   - **Cleanup**:
+     - Remove `get_income_statement_llm_insights`.
+     - Remove `classify_line_items_llm`.
+
+2. **Testing & Verification**:
+   - Update `tests/test_validation_logic.py` with IS specific cases (sign flipping, residual solving).
+   - Run `tests/test_integration_api.py` and fix failures.
 
 ### Phase 5: Cleanup & Tools
 1. Remove usage of old `classify_line_items_llm` and `get_..._llm_insights`.
