@@ -150,8 +150,9 @@ def extract_income_statement(
                     period_end_date=period_end_date,
                 )
 
-                # Classify line items immediately
-                extracted_data["line_items"] = classify_line_items_llm(extracted_data["line_items"])
+
+                # Classification is now handled by TigerTransformerClient in post_process_income_statement_line_items
+
 
                 extracted_count_msg = (
                     f"Extracted {len(extracted_data.get('line_items', []))} line items"
@@ -257,8 +258,9 @@ def extract_income_statement(
                 period_end_date=period_end_date,
             )
 
-            # Classify re-extracted items
-            extracted_data["line_items"] = classify_line_items_llm(extracted_data["line_items"])
+
+            # Classification is now handled by TigerTransformerClient in post_process_income_statement_line_items
+
 
             # Post-process final attempt
             processed_line_items, normalization_errors = post_process_income_statement_line_items(
