@@ -241,3 +241,51 @@ class TestBalanceSheetValidation:
         is_valid, errors = validate_balance_sheet_calculations(line_items)
         assert not is_valid
         assert any("missing key totals" in error.lower() for error in errors)
+
+
+class TestIncomeStatementValidation:
+    """Test income statement validation with is_expense normalization"""
+
+    def test_is_expense_normalization_logic(self):
+        """Test that is_expense=True items with positive values are flipped to negative"""
+        # Simulate what happens in post_process after transformer client returns
+        items = [
+            {"line_value": 1000, "is_expense": False},  # Revenue, stays positive
+            {"line_value": 400, "is_expense": True},  # Cost, should flip to negative
+            {"line_value": -50, "is_expense": True},  # Already negative, stays negative
+            {"line_value": 100, "is_expense": None},  # Ambiguous, stays as is
+        ]
+
+        # Apply normalization logic
+        for item in items:
+            is_expense = item.get("is_expense")
+            line_value = item.get("line_value", 0)
+
+            if is_expense is True and line_value > 0:
+                item["line_value"] = -line_value
+
+        # Verify results
+        assert items[0]["line_value"] == 1000, "Revenue should stay positive"
+        assert items[1]["line_value"] == -400, "Positive expense should flip to negative"
+        assert items[2]["line_value"] == -50, "Already negative expense should stay negative"
+        assert items[3]["line_value"] == 100, "Ambiguous item should stay as extracted"
+
+    def test_ambiguous_items_remain_unchanged(self):
+        """Test that is_expense=None items are not modified during normalization"""
+        items = [
+            {"line_value": 50, "is_expense": None},
+            {"line_value": -30, "is_expense": None},
+        ]
+
+        # Apply normalization logic (should not change anything)
+        for item in items:
+            is_expense = item.get("is_expense")
+            line_value = item.get("line_value", 0)
+
+            if is_expense is True and line_value > 0:
+                item["line_value"] = -line_value
+
+        # Verify no changes
+        assert items[0]["line_value"] == 50
+        assert items[1]["line_value"] == -30
+

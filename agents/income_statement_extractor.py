@@ -16,6 +16,7 @@ from app.utils.financial_statement_progress import (
 )
 from app.utils.line_item_utils import extract_original_name_from_standardized as get_orig_name
 from app.utils.line_item_utils import normalize_line_name
+from app.services.tiger_transformer_client import TigerTransformerClient
 
 
 def _normalize_value(value: object) -> float | None:
@@ -611,7 +612,8 @@ Return a JSON object with the following structure:
     "line_items": [
         {{
             "line_name": "exact name as it appears in the document but do not include long notes in parentheses",
-            "line_value": numeric value (as number, not string) - MUST match exactly what is shown in the document
+            "line_value": numeric value (as number, not string) - MUST match exactly what is shown in the document,
+            "line_category": "income_statement"
         }},
         ...
     ]
@@ -709,7 +711,8 @@ Return a JSON object with the following structure:
     "line_items": [
         {{
             "line_name": "exact name as it appears in the document but do not include long notes in parentheses",
-            "line_value": numeric value (as number, not string)
+            "line_value": numeric value (as number, not string),
+            "line_category": "income_statement"
         }},
         ...
     ]
@@ -764,11 +767,10 @@ def post_process_income_statement_line_items(
     line_items: list[dict],
 ) -> tuple[list[dict], list[str]]:
     """
-    Post-process income statement line items:
-    1. Use LLM to identify key line items
-    2. Rename identified items with standardized names (original in parentheses)
-    3. Detect cost format (positive vs negative) and normalize to negative costs
-    4. Validate calculations during normalization
+    Post-process income statement line items using tiger-transformer:
+    1. Call TigerTransformerClient for standardization
+    2. Normalize signs based on is_expense (flip to negative if needed)
+    3. Validate calculations with residual solver for ambiguous items
 
     Returns:
         Tuple of (processed_line_items, validation_errors)
@@ -776,267 +778,128 @@ def post_process_income_statement_line_items(
     if not line_items:
         return line_items, []
 
-    # Step 1: Get LLM insights to identify key line items
-    llm_insights, _ = get_income_statement_llm_insights(line_items=line_items)
+    # Step 1: Call TigerTransformerClient for inference and enrichment
+    client = TigerTransformerClient()
+    processed_items = client.predict_income_statement(line_items)
 
-    # Mapping of standardized names to LLM insight keys
-    standard_names = {
-        "total_net_revenue_line": "Total Net Revenue",
-        "cost_of_revenue_line": "Cost of Revenue",
-        "gross_profit_line": "Gross Profit",
-        "operating_expenses_line": "Operating Expenses",
-        "operating_income_line": "Operating Income",
-        "pretax_income_line": "Pretax Income",
-        "tax_expense_line": "Tax Expense",
-        "net_income_line": "Net Income",
-    }
+    # Step 2: Normalize signs based on is_expense
+    # Confirmed expenses (is_expense=True) should be negative
+    for item in processed_items:
+        is_expense = item.get("is_expense")
+        line_value = item.get("line_value", 0)
 
-    # Step 2: Rename identified line items
+        if is_expense is True and line_value > 0:
+            # Flip to negative
+            item["line_value"] = -line_value
 
-    processed_items = []
+    # Step 3: Validate calculations using standardized_name and is_calculated
+    validation_errors = []
 
-    for item in line_items:
-        item_copy = item.copy()
-        current_name = item.get("line_name", "")
+    # Find key totals
+    totals = {}
+    for item in processed_items:
+        std_name = item.get("standardized_name")
+        value = item.get("line_value")
+        if std_name and value is not None:
+            totals[std_name] = value
 
-        # Check if this item matches any of the identified key items
-        for insight_key, standard_name in standard_names.items():
-            llm_line_name = llm_insights.get(insight_key)
-            if llm_line_name and _match_line_item([item], llm_line_name):
-                # Extract original name if it was already standardized, otherwise use current name
-                original_name = get_orig_name(current_name) or current_name
-
-                # Rename: "Standard Name (Original Name)"
-                # Only apply if it's not already standardized to THIS standard name
-                new_name = f"{standard_name} ({original_name})"
-                if current_name != new_name:
-                    item_copy["line_name"] = new_name
-                break
-
-        processed_items.append(item_copy)
-
-    # Step 3: Detect cost format and normalize
-    # Find key line items: revenue, gross profit, operating income, pretax income
-    revenue_item = None
-    gross_profit_item = None
-    operating_income_item = None
-    pretax_income_item = None
-
-    for idx, item in enumerate(processed_items):
-        item_name_lower = item.get("line_name", "").lower()
-        # Look for Total Net Revenue (standardized name) first, then fallback to any total revenue
-        if "total net revenue" in item_name_lower:
-            if revenue_item is None:
-                revenue_item = (idx, item)
-        elif "revenue" in item_name_lower and "total" in item_name_lower:
-            if revenue_item is None:
-                revenue_item = (idx, item)
-
-        if "gross profit" in item_name_lower:
-            if gross_profit_item is None:
-                gross_profit_item = (idx, item)
-
-        # Look for standardized Operating Income name
-        if "operating income (" in item_name_lower:
-            if operating_income_item is None:
-                operating_income_item = (idx, item)
-        elif "operating income" in item_name_lower and "operating income (" not in item_name_lower:
-            # Fallback: any operating income line
-            if operating_income_item is None:
-                operating_income_item = (idx, item)
-
-        # Look for standardized Pretax Income name
-        if "pretax income (" in item_name_lower:
-            if pretax_income_item is None:
-                pretax_income_item = (idx, item)
-        elif any(
-            term in item_name_lower
-            for term in ["pretax income", "income before tax", "income before income tax"]
-        ):
-            if pretax_income_item is None:
-                pretax_income_item = (idx, item)
-
-    # Debug: print found items
-    print(
-        f"Post-processing: Found revenue_item at idx={revenue_item[0] if revenue_item else None} "
-        f"(name={revenue_item[1].get('line_name') if revenue_item else None}), "
-        f"gross_profit_item at idx={gross_profit_item[0] if gross_profit_item else None}, "
-        f"operating_income_item at idx={operating_income_item[0] if operating_income_item else None} "
-        f"(name={operating_income_item[1].get('line_name') if operating_income_item else None}), "
-        f"pretax_income_item at idx={pretax_income_item[0] if pretax_income_item else None}"
-    )
-
-    validation_errors = []  # Collect validation errors during normalization
-
-    def normalize_items_between(start_item, end_item, description):
-        """Normalize items between two line items by detecting if they should be flipped.
-        Also validates that the calculation matches the reported value.
-        Returns a validation error message if validation fails, None otherwise.
-        """
-        if not start_item or not end_item:
-            return None
-
-        start_idx = start_item[0]
-        end_idx = end_item[0]
-
-        if start_idx >= end_idx:
-            return None
-
-        items_between = processed_items[start_idx + 1 : end_idx]
-        if not items_between:
-            return None
-
-        # Filter out totals to avoid double counting in validation
-        # Totals are identified by line_category == "Total" or line name containing "total"
-        non_total_items = []
-        for item in items_between:
-            line_name_lower = item.get("line_name", "").lower()
-            line_category = item.get("line_category", "").lower()
-            is_total = line_category == "total" or "total" in line_name_lower
-            if not is_total:
-                non_total_items.append(item)
-
-        # Calculate sums to test both formats (excluding totals)
-        sum_between_raw = sum(item.get("line_value", 0) for item in non_total_items)
-        sum_between_abs = sum(abs(item.get("line_value", 0)) for item in non_total_items)
-        start_value = start_item[1].get("line_value", 0)
-        end_value = end_item[1].get("line_value", 0)
-        start_name = start_item[1].get("line_name", "Start")
-        end_name = end_item[1].get("line_name", "End")
-
-        # Test which formula matches: start + items = end (negative costs) or start - items = end (positive costs)
-        # When costs are negative: Revenue + (negative sum) = Operating Income ✓ (desired format)
-        # When costs are positive: Revenue - (positive sum) = Operating Income (needs flipping)
-        diff_with_negative = abs((start_value + sum_between_raw) - end_value)
-        diff_with_positive = abs((start_value - sum_between_abs) - end_value)
-
-        # Validation: If at least one of the differences is not zero, validation has failed
-        # Use a small tolerance for floating point comparison
-        tolerance = max(abs(end_value) * 0.01, 0.01) if end_value != 0 else 0.01
-        validation_failed = (diff_with_negative > tolerance) and (diff_with_positive > tolerance)
-
-        # Count negative vs positive items to help decide when there's a tie (excluding totals)
-        negative_count = sum(1 for item in non_total_items if item.get("line_value", 0) < 0)
-        positive_count = sum(1 for item in non_total_items if item.get("line_value", 0) > 0)
-        mostly_positive = positive_count > negative_count
-
-        # Debug output
-        print(
-            f"Normalizing {description}: start={start_value}, end={end_value}, raw_sum={sum_between_raw}, abs_sum={sum_between_abs}"
-        )
-        print(
-            f"  Diff with negative costs (desired): {diff_with_negative}, Diff with positive costs: {diff_with_positive}"
-        )
-        print(
-            f"  Items: {negative_count} negative, {positive_count} positive (mostly_positive={mostly_positive})"
+    # Calculate sums from base items (is_calculated=False)
+    def sum_items_with_filter(filter_func):
+        return sum(
+            item["line_value"]
+            for item in processed_items
+            if item.get("is_calculated") is False and filter_func(item)
         )
 
-        # Default assumption: costs should be NEGATIVE, so flip if positive format matches or if tie and mostly positive
-        # If positive format matches better, OR if they're equal but mostly positive, flip ALL signs to make costs negative
-        should_flip = (diff_with_positive < diff_with_negative) or (
-            diff_with_positive == diff_with_negative and mostly_positive
+    # Validate Revenue - Costs = Gross Profit
+    if "total_net_revenue" in totals and "gross_profit" in totals:
+        revenue = totals["total_net_revenue"]
+        gross_profit = totals["gross_profit"]
+
+        # Sum costs between revenue and gross profit
+        costs_sum = sum_items_with_filter(
+            lambda item: item.get("standardized_name")
+            not in ["total_net_revenue", "gross_profit"]
+            and processed_items.index(item)
+            > next(
+                i
+                for i, x in enumerate(processed_items)
+                if x.get("standardized_name") == "total_net_revenue"
+            )
+            and processed_items.index(item)
+            < next(
+                i
+                for i, x in enumerate(processed_items)
+                if x.get("standardized_name") == "gross_profit"
+            )
         )
 
-        if should_flip:
-            print("  Costs detected as positive, flipping signs to make negative...")
-            for item in non_total_items:  # Only flip non-total items
-                item_value = item.get("line_value", 0)
-                if item_value == 0:
-                    continue
+        calculated_gp = revenue + costs_sum  # costs are negative
+        diff = abs(calculated_gp - gross_profit)
 
-                item_name_lower = item.get("line_name", "").lower()
-                is_benefit = any(
-                    keyword in item_name_lower
-                    for keyword in ["benefit", "credit", "gain", "recovery", "refund"]
+        if diff > 0.01:
+            # Try residual solver for ambiguous items
+            residual = calculated_gp - gross_profit
+            ambiguous_items = [
+                item
+                for item in processed_items
+                if item.get("is_expense") is None and item.get("is_calculated") is False
+            ]
+
+            # Check if flipping one or two ambiguous items resolves the residual
+            solved = False
+            for item in ambiguous_items:
+                if abs(abs(item["line_value"]) * 2 - abs(residual)) < 0.01:
+                    # Flipping this item resolves the residual
+                    item["line_value"] = -item["line_value"]
+                    solved = True
+                    break
+
+            if not solved:
+                validation_errors.append(
+                    f"Gross profit mismatch: revenue + costs = {calculated_gp:.2f}, but gross_profit = {gross_profit:.2f}"
                 )
 
-                if not is_benefit:
-                    # Flip ALL signs (both positive and negative) to normalize costs to negative
-                    old_value = item["line_value"]
-                    item["line_value"] = -item_value
-                    print(
-                        f"    Flipped {item.get('line_name')}: {old_value} -> {item['line_value']}"
-                    )
-                else:
-                    print(f"    Skipped benefit/credit: {item.get('line_name')} = {item_value}")
+    # Validate Gross Profit - Operating Expenses = Operating Income
+    if "gross_profit" in totals and "operating_income" in totals:
+        gross_profit = totals["gross_profit"]
+        operating_income = totals["operating_income"]
 
-        # After normalization, check validation again with updated values
-        # Recalculate with potentially flipped values (excluding totals)
-        final_diff = diff_with_negative
-        final_sum = sum_between_raw
-
-        if should_flip:
-            # After flipping, recalculate the sum of all items (now normalized to negative costs, excluding totals)
-            final_sum = sum(item.get("line_value", 0) for item in non_total_items)
-            final_diff = abs((start_value + final_sum) - end_value)
-        else:
-            # Use the already calculated sum (which excludes totals)
-            final_sum = sum_between_raw
-            final_diff = diff_with_negative
-
-        # Return validation error if validation failed (at least one diff was not zero)
-        if validation_failed:
-            # After normalization, re-check if it's still invalid
-            tolerance = max(abs(end_value) * 0.01, 0.01) if end_value != 0 else 0.01
-            if final_diff > tolerance:
-                calculated_value = start_value + final_sum
-                return f"{description.capitalize()} calculation mismatch: {start_name} + items = {calculated_value:.2f}, but {end_name} = {end_value:.2f} (difference: {final_diff:.2f})"
-
-        return None
-
-    # Normalize items between revenue and gross profit
-    if revenue_item and gross_profit_item:
-        error = normalize_items_between(revenue_item, gross_profit_item, "costs")
-        if error:
-            validation_errors.append(error)
-
-    # Normalize items between gross profit and operating income
-    if gross_profit_item and operating_income_item:
-        error = normalize_items_between(
-            gross_profit_item, operating_income_item, "operating expenses"
-        )
-        if error:
-            validation_errors.append(error)
-
-    # Normalize items between operating income and pretax income
-    if operating_income_item and pretax_income_item:
-        error = normalize_items_between(
-            operating_income_item, pretax_income_item, "non-operating items"
-        )
-        if error:
-            validation_errors.append(error)
-
-    # Handle missing gross profit: check between revenue and operating income or pretax income
-    if revenue_item and not gross_profit_item:
-        print(
-            "Gross profit missing, normalizing between Revenue and Operating Income/Pretax Income"
-        )
-        if operating_income_item:
-            error = normalize_items_between(
-                revenue_item, operating_income_item, "costs and expenses"
+        # Sum operating expenses
+        opex_sum = sum_items_with_filter(
+            lambda item: item.get("standardized_name")
+            not in ["gross_profit", "operating_income"]
+            and item.get("is_operating") is True
+            and processed_items.index(item)
+            > next(
+                i
+                for i, x in enumerate(processed_items)
+                if x.get("standardized_name") == "gross_profit"
             )
-            if error:
-                validation_errors.append(error)
-        elif pretax_income_item:
-            error = normalize_items_between(revenue_item, pretax_income_item, "costs and expenses")
-            if error:
-                validation_errors.append(error)
-
-    # Handle missing operating income: check between revenue/gross profit and pretax income
-    if not operating_income_item and pretax_income_item:
-        print(
-            "Operating income missing, normalizing between Revenue/Gross Profit and Pretax Income"
-        )
-        if gross_profit_item:
-            error = normalize_items_between(
-                gross_profit_item, pretax_income_item, "operating and non-operating items"
+            and processed_items.index(item)
+            < next(
+                i
+                for i, x in enumerate(processed_items)
+                if x.get("standardized_name") == "operating_income"
             )
-            if error:
-                validation_errors.append(error)
-        elif revenue_item:
-            error = normalize_items_between(revenue_item, pretax_income_item, "all expenses")
-            if error:
-                validation_errors.append(error)
+        )
+
+        calculated_oi = gross_profit + opex_sum  # expenses are negative
+        diff = abs(calculated_oi - operating_income)
+
+        if diff > 0.01:
+            validation_errors.append(
+                f"Operating income mismatch: gross_profit + opex = {calculated_oi:.2f}, but operating_income = {operating_income:.2f}"
+            )
+
+    # Check if we have at least one key total
+    if not any(
+        key in totals
+        for key in ["total_net_revenue", "gross_profit", "operating_income", "net_income"]
+    ):
+        validation_errors.append(
+            "Income statement is missing key totals (total_net_revenue, gross_profit, operating_income, or net_income)"
+        )
 
     return processed_items, validation_errors
 
