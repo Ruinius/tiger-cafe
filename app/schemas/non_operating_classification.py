@@ -3,15 +3,12 @@ Non-operating classification schemas
 """
 
 from datetime import datetime
-from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
 
 class NonOperatingClassificationItemBase(BaseModel):
     line_name: str
-    line_value: Decimal | None = None
-    unit: str | None = None
     category: str | None = None
     source: str | None = None
     line_order: int

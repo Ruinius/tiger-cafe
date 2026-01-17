@@ -12,14 +12,14 @@ export default function EBITATable({ historicalCalculations, incomeStatement, fo
     // Use breakdown from backend if available
     const ebitaData = historicalCalculations?.ebita_breakdown || {}
     const ebitaAdjustments = ebitaData.adjustments || []
+    const startingValueLabel = ebitaData.starting_value_label || "Operating Income (Reported)"
 
     /**
      * @doc EBITA Table Layout (DO NOT REFACTOR)
      * This component implements specific logic for displaying EBITA adjustments:
-     * 1. Conditional Columns: "Category" column should ONLY appear if there are adjustments.
-     * 2. Status Pills: "Type" column must display "Operating" (Green) or "Non-Operating" (Amber) pills.
-     * 3. Row Order:
-     *      - Operating Income (Reported)
+     * 1. Status Pills: "Type" column must display "Operating" (Green) or "Non-Operating" (Amber) pills.
+     * 2. Row Order:
+     *      - Operating Income (Reported) OR Income Before Taxes (if fallback used)
      *      - Adjustments List
      *      - EBITA (Total)
      */
@@ -43,7 +43,6 @@ export default function EBITATable({ historicalCalculations, incomeStatement, fo
                     <thead>
                         <tr>
                             <th className="col-name">Line Item</th>
-                            {ebitaAdjustments.length > 0 && <th className="col-category">Category</th>}
                             <th className="text-right col-value">Amount</th>
                             <th className="col-type text-right">Type</th>
                         </tr>
@@ -51,8 +50,7 @@ export default function EBITATable({ historicalCalculations, incomeStatement, fo
                     <tbody>
                         {operatingIncome != null && (
                             <tr>
-                                <td className="col-name">Operating Income (Reported)</td>
-                                {ebitaAdjustments.length > 0 && <td className="col-category">N/A</td>}
+                                <td className="col-name">{startingValueLabel}</td>
                                 <td className="text-right col-value">{formatNumber(operatingIncome, historicalCalculations.unit)}</td>
                                 <td className="col-type text-right">
                                     <span className="type-badge operating">Operating</span>
@@ -65,7 +63,6 @@ export default function EBITATable({ historicalCalculations, incomeStatement, fo
                                 {ebitaAdjustments.map((item, idx) => (
                                     <tr key={`ebita-adj-${idx}`}>
                                         <td className="col-name">{item.line_name}</td>
-                                        <td className="col-category">{item.category || item.line_category || 'N/A'}</td>
                                         <td className="text-right col-value">{formatNumber(item.line_value, historicalCalculations.unit)}</td>
                                         <td className="col-type text-right">
                                             {item.is_operating === true ? (
@@ -80,7 +77,6 @@ export default function EBITATable({ historicalCalculations, incomeStatement, fo
                                 ))}
                                 <tr className="key-total-row">
                                     <td className="col-name">EBITA</td>
-                                    <td className="col-category"></td>
                                     <td className="text-right col-value">{formatNumber(historicalCalculations.ebita, historicalCalculations.unit)}</td>
                                     <td></td>
                                 </tr>

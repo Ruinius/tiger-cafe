@@ -839,7 +839,7 @@ def process_income_statement_async(document_id: str, db: Session):
                     "Additional items extraction completed",
                 )
 
-            # Classify non-operating items
+            # Classify non-operating items (balance sheet only for earnings announcements)
             update_milestone(
                 document_id,
                 FinancialStatementMilestone.CLASSIFYING_NON_OPERATING_ITEMS,
@@ -851,56 +851,20 @@ def process_income_statement_async(document_id: str, db: Session):
                 FinancialStatementMilestone.CLASSIFYING_NON_OPERATING_ITEMS,
                 "Starting non-operating item classification",
             )
+
+            # Only collect balance sheet items (earnings announcements don't have other assets/liabilities)
             non_operating_items = []
             if balance_sheet and balance_sheet.line_items:
                 for item in balance_sheet.line_items:
-                    if item.is_operating is False:
-                        non_operating_items.append(
-                            {
-                                "line_name": item.line_name,
-                                "line_value": float(item.line_value)
-                                if item.line_value is not None
-                                else None,
-                                "unit": balance_sheet.unit,
-                                "source": "balance_sheet",
-                            }
-                        )
-
-            other_assets = (
-                db_session.query(OtherAssets).filter(OtherAssets.document_id == document_id).first()
-            )
-            if other_assets and other_assets.line_items:
-                for item in other_assets.line_items:
-                    if item.is_operating is False:
-                        non_operating_items.append(
-                            {
-                                "line_name": item.line_name,
-                                "line_value": float(item.line_value)
-                                if item.line_value is not None
-                                else None,
-                                "unit": item.unit,
-                                "source": "other_assets",
-                            }
-                        )
-
-            other_liabilities = (
-                db_session.query(OtherLiabilities)
-                .filter(OtherLiabilities.document_id == document_id)
-                .first()
-            )
-            if other_liabilities and other_liabilities.line_items:
-                for item in other_liabilities.line_items:
-                    if item.is_operating is False:
-                        non_operating_items.append(
-                            {
-                                "line_name": item.line_name,
-                                "line_value": float(item.line_value)
-                                if item.line_value is not None
-                                else None,
-                                "unit": item.unit,
-                                "source": "other_liabilities",
-                            }
-                        )
+                    non_operating_items.append(
+                        {
+                            "line_name": item.line_name,
+                            "standardized_name": item.standardized_name,
+                            "is_operating": item.is_operating,
+                            "is_calculated": item.is_calculated,
+                            "source": "balance_sheet",
+                        }
+                    )
 
             classified_items = classify_non_operating_items(non_operating_items)
             if classified_items:
@@ -926,14 +890,13 @@ def process_income_statement_async(document_id: str, db: Session):
                 db_session.commit()
                 db_session.refresh(classification)
 
+                # Only save line_name, category, and source - everything else comes from balance sheet
                 for idx, item in enumerate(classified_items):
                     db_session.add(
                         NonOperatingClassificationItem(
                             id=str(uuid.uuid4()),
                             classification_id=classification.id,
                             line_name=item.get("line_name"),
-                            line_value=item.get("line_value"),
-                            unit=item.get("unit"),
                             category=item.get("category"),
                             source=item.get("source"),
                             line_order=idx,

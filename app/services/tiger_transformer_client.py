@@ -111,11 +111,10 @@ class TigerTransformerClient:
 
     def _load_mappings(self):
         """Load the CSV mapping files for is_calculated, is_operating, is_expense."""
-        # Fix: mappings are in app/data/mappings
+        # Mappings are now in app/services
         # __file__ = app/services/tiger_transformer_client.py
         # parent = app/services
-        # parent.parent = app
-        mappings_dir = Path(__file__).parent.parent / "data" / "mappings"
+        mappings_dir = Path(__file__).parent
 
         # Load balance sheet mapping
         bs_mapping_path = mappings_dir / "bs_calculated_operating_mapping.csv"

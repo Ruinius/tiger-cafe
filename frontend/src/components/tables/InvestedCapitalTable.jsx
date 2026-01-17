@@ -16,16 +16,42 @@ export default function InvestedCapitalTable({ historicalCalculations, balanceSh
     let currentLiabilitiesTotal = 0
     let netWorkingCapital = 0
 
-    if (historicalCalculations?.net_working_capital_breakdown) {
-        // Use breakdown from backend
+    if (historicalCalculations?.net_working_capital_breakdown && balanceSheet?.line_items) {
+        // Join breakdown line names with balance sheet items to get full data
         const breakdown = historicalCalculations.net_working_capital_breakdown
-        currentAssetsOperating = breakdown.current_assets || []
-        currentLiabilitiesOperating = breakdown.current_liabilities || []
+        const bsItemsMap = {}
+        balanceSheet.line_items.forEach(item => {
+            bsItemsMap[item.line_name] = item
+        })
+
+        // Map line names to full items
+        const assetLineNames = breakdown.current_assets || []
+        const liabilityLineNames = breakdown.current_liabilities || []
+
+        currentAssetsOperating = assetLineNames
+            .map(lineName => bsItemsMap[lineName])
+            .filter(item => item != null)
+            // Safety Filter: Ensure item is explicitly categorized as current_assets
+            .filter(item => {
+                const cat = (item.line_category || '').toLowerCase()
+                return cat.includes('current_assets')
+            })
+
+        currentLiabilitiesOperating = liabilityLineNames
+            .map(lineName => bsItemsMap[lineName])
+            .filter(item => item != null)
+            // Safety Filter: Ensure item is explicitly categorized as current_liabilities
+            .filter(item => {
+                const cat = (item.line_category || '').toLowerCase()
+                return cat.includes('current_liabilities')
+            })
+
         currentAssetsTotal = breakdown.current_assets_total || 0
         currentLiabilitiesTotal = breakdown.current_liabilities_total || 0
         netWorkingCapital = breakdown.total || 0
     } else if (balanceSheet?.line_items) {
         // Fallback: calculate from balance sheet
+        // Filter: category=current_assets OR current_liabilities, is_calculated=false, is_operating=true
         balanceSheet.line_items.forEach(item => {
             const categoryLower = (item.line_category || '').toLowerCase()
 
@@ -35,21 +61,23 @@ export default function InvestedCapitalTable({ historicalCalculations, balanceSh
             const isCurrent = !isNonCurrent && categoryLower.includes('current')
             const isAsset = categoryLower.includes('asset')
             const isLiability = categoryLower.includes('liability')
-            const isTotal = categoryLower.includes('total') || item.line_name.toLowerCase().includes('total') || item.line_name.toLowerCase().includes('subtotal')
 
-            const isCurrentAsset = isCurrent && isAsset && !isTotal
-            const isCurrentLiability = isCurrent && isLiability && !isTotal
+            const isCurrentAsset = isCurrent && isAsset
+            const isCurrentLiability = isCurrent && isLiability
 
-            if (isCurrentAsset && item.is_operating === true) {
+            // Only include if: is_calculated=false AND is_operating=true
+            if (isCurrentAsset && item.is_calculated === false && item.is_operating === true) {
                 currentAssetsOperating.push({
                     line_name: item.line_name,
+                    standardized_name: item.standardized_name,
                     line_value: item.line_value,
                     line_category: item.line_category,
                     is_operating: item.is_operating
                 })
-            } else if (isCurrentLiability && item.is_operating === true) {
+            } else if (isCurrentLiability && item.is_calculated === false && item.is_operating === true) {
                 currentLiabilitiesOperating.push({
                     line_name: item.line_name,
+                    standardized_name: item.standardized_name,
                     line_value: item.line_value,
                     line_category: item.line_category,
                     is_operating: item.is_operating
@@ -69,14 +97,41 @@ export default function InvestedCapitalTable({ historicalCalculations, balanceSh
     let nonCurrentLiabilitiesTotal = 0
     let netLongTerm = 0
 
-    if (historicalCalculations?.net_long_term_operating_assets_breakdown) {
+    if (historicalCalculations?.net_long_term_operating_assets_breakdown && balanceSheet?.line_items) {
+        // Join breakdown line names with balance sheet items to get full data
         const breakdown = historicalCalculations.net_long_term_operating_assets_breakdown
-        nonCurrentAssetsOperating = breakdown.non_current_assets || []
-        nonCurrentLiabilitiesOperating = breakdown.non_current_liabilities || []
+        const bsItemsMap = {}
+        balanceSheet.line_items.forEach(item => {
+            bsItemsMap[item.line_name] = item
+        })
+
+        // Map line names to full items
+        const assetLineNames = breakdown.non_current_assets || []
+        const liabilityLineNames = breakdown.non_current_liabilities || []
+
+        nonCurrentAssetsOperating = assetLineNames
+            .map(lineName => bsItemsMap[lineName])
+            .filter(item => item != null)
+            // Safety Filter: Ensure item is actually non-current
+            .filter(item => {
+                const cat = (item.line_category || '').toLowerCase()
+                return cat.includes('non_current_assets') || cat.includes('noncurrent_assets')
+            })
+
+        nonCurrentLiabilitiesOperating = liabilityLineNames
+            .map(lineName => bsItemsMap[lineName])
+            .filter(item => item != null)
+            // Safety Filter: Ensure item is actually non-current
+            .filter(item => {
+                const cat = (item.line_category || '').toLowerCase()
+                return cat.includes('non_current_liabilities') || cat.includes('noncurrent_liabilities')
+            })
+
         nonCurrentAssetsTotal = breakdown.non_current_assets_total || 0
         nonCurrentLiabilitiesTotal = breakdown.non_current_liabilities_total || 0
         netLongTerm = breakdown.total || 0
     } else if (balanceSheet?.line_items) {
+        // Filter: category=noncurrent_assets OR noncurrent_liabilities, is_calculated=false, is_operating=true
         balanceSheet.line_items.forEach(item => {
             const categoryLower = (item.line_category || '').toLowerCase()
 
@@ -85,14 +140,14 @@ export default function InvestedCapitalTable({ historicalCalculations, balanceSh
                 (categoryLower.includes('long') && categoryLower.includes('term'))
             const isAsset = categoryLower.includes('asset')
             const isLiability = categoryLower.includes('liability')
-            const isTotal = categoryLower.includes('total') || item.line_name.toLowerCase().includes('total') || item.line_name.toLowerCase().includes('subtotal')
 
-            const isNonCurrentAsset = isNonCurrent && isAsset && !isTotal
-            const isNonCurrentLiability = isNonCurrent && isLiability && !isTotal
+            const isNonCurrentAsset = isNonCurrent && isAsset
+            const isNonCurrentLiability = isNonCurrent && isLiability
 
-            if (isNonCurrentAsset && item.is_operating === true) {
+            // Only include if: is_calculated=false AND is_operating=true
+            if (isNonCurrentAsset && item.is_calculated === false && item.is_operating === true) {
                 nonCurrentAssetsOperating.push(item)
-            } else if (isNonCurrentLiability && item.is_operating === true) {
+            } else if (isNonCurrentLiability && item.is_calculated === false && item.is_operating === true) {
                 nonCurrentLiabilitiesOperating.push(item)
             }
         })
@@ -123,7 +178,7 @@ export default function InvestedCapitalTable({ historicalCalculations, balanceSh
                             <thead>
                                 <tr>
                                     <th className="col-name">Line Item</th>
-                                    <th className="col-category">Category</th>
+                                    <th className="col-standardized">Standardized Name</th>
                                     <th className="text-right col-value">Amount</th>
                                     <th className="col-type text-right">Type</th>
                                 </tr>
@@ -132,7 +187,7 @@ export default function InvestedCapitalTable({ historicalCalculations, balanceSh
                                 {currentAssetsOperating.length > 0 ? currentAssetsOperating.map((item, idx) => (
                                     <tr key={`ca-${idx}`}>
                                         <td className="col-name">{item.line_name}</td>
-                                        <td className="col-category">{item.line_category || 'N/A'}</td>
+                                        <td className="col-standardized" style={{ color: 'var(--text-secondary)', fontSize: '0.9em' }}>{item.standardized_name || '—'}</td>
                                         <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet?.unit || historicalCalculations?.unit)}</td>
                                         <td className="col-type text-right">
                                             {item.is_operating === true ? (
@@ -151,7 +206,7 @@ export default function InvestedCapitalTable({ historicalCalculations, balanceSh
                                 )}
                                 <tr className="key-total-row">
                                     <td className="col-name">Total Current Assets (Operating)</td>
-                                    <td className="col-category"></td>
+                                    <td className="col-standardized"></td>
                                     <td className="text-right col-value">{formatNumber(currentAssetsTotal, balanceSheet?.unit || historicalCalculations?.unit)}</td>
                                     <td></td>
                                 </tr>
@@ -159,7 +214,7 @@ export default function InvestedCapitalTable({ historicalCalculations, balanceSh
                                 {currentLiabilitiesOperating.length > 0 ? currentLiabilitiesOperating.map((item, idx) => (
                                     <tr key={`cl-${idx}`}>
                                         <td className="col-name">{item.line_name}</td>
-                                        <td className="col-category">{item.line_category || 'N/A'}</td>
+                                        <td className="col-standardized" style={{ color: 'var(--text-secondary)', fontSize: '0.9em' }}>{item.standardized_name || '—'}</td>
                                         <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet?.unit || historicalCalculations?.unit)}</td>
                                         <td className="col-type text-right">
                                             {item.is_operating === true ? (
@@ -178,14 +233,14 @@ export default function InvestedCapitalTable({ historicalCalculations, balanceSh
                                 )}
                                 <tr className="key-total-row">
                                     <td className="col-name">Total Current Liabilities (Operating)</td>
-                                    <td className="col-category"></td>
+                                    <td className="col-standardized"></td>
                                     <td className="text-right col-value">{formatNumber(currentLiabilitiesTotal, balanceSheet?.unit || historicalCalculations?.unit)}</td>
                                     <td></td>
                                 </tr>
 
                                 <tr className="key-total-row">
                                     <td className="col-name">Net Working Capital</td>
-                                    <td className="col-category"></td>
+                                    <td className="col-standardized"></td>
                                     <td className="text-right col-value">{formatNumber(netWorkingCapital, balanceSheet?.unit || historicalCalculations?.unit)}</td>
                                     <td></td>
                                 </tr>
@@ -201,7 +256,7 @@ export default function InvestedCapitalTable({ historicalCalculations, balanceSh
                             <thead>
                                 <tr>
                                     <th className="col-name">Line Item</th>
-                                    <th className="col-category">Category</th>
+                                    <th className="col-standardized">Standardized Name</th>
                                     <th className="text-right col-value">Amount</th>
                                     <th className="col-type text-right">Type</th>
                                 </tr>
@@ -210,7 +265,7 @@ export default function InvestedCapitalTable({ historicalCalculations, balanceSh
                                 {nonCurrentAssetsOperating.length > 0 ? nonCurrentAssetsOperating.map((item, idx) => (
                                     <tr key={`nca-${idx}`}>
                                         <td className="col-name">{item.line_name}</td>
-                                        <td className="col-category">{item.line_category || 'N/A'}</td>
+                                        <td className="col-standardized" style={{ color: 'var(--text-secondary)', fontSize: '0.9em' }}>{item.standardized_name || '—'}</td>
                                         <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet?.unit)}</td>
                                         <td className="col-type text-right">
                                             {item.is_operating === true ? (
@@ -229,7 +284,7 @@ export default function InvestedCapitalTable({ historicalCalculations, balanceSh
                                 )}
                                 <tr className="key-total-row">
                                     <td className="col-name">Total Non-Current Assets (Operating)</td>
-                                    <td className="col-category"></td>
+                                    <td className="col-standardized"></td>
                                     <td className="text-right col-value">{formatNumber(nonCurrentAssetsTotal, balanceSheet?.unit || historicalCalculations?.unit)}</td>
                                     <td></td>
                                 </tr>
@@ -237,7 +292,7 @@ export default function InvestedCapitalTable({ historicalCalculations, balanceSh
                                 {nonCurrentLiabilitiesOperating.length > 0 ? nonCurrentLiabilitiesOperating.map((item, idx) => (
                                     <tr key={`ncl-${idx}`}>
                                         <td className="col-name">{item.line_name}</td>
-                                        <td className="col-category">{item.line_category || 'N/A'}</td>
+                                        <td className="col-standardized" style={{ color: 'var(--text-secondary)', fontSize: '0.9em' }}>{item.standardized_name || '—'}</td>
                                         <td className="text-right col-value">{formatNumber(item.line_value, balanceSheet.unit)}</td>
                                         <td className="col-type text-right">
                                             {item.is_operating === true ? (
@@ -256,14 +311,14 @@ export default function InvestedCapitalTable({ historicalCalculations, balanceSh
                                 )}
                                 <tr className="key-total-row">
                                     <td className="col-name">Total Non-Current Liabilities (Operating)</td>
-                                    <td className="col-category"></td>
+                                    <td className="col-standardized"></td>
                                     <td className="text-right col-value">{formatNumber(nonCurrentLiabilitiesTotal, balanceSheet?.unit || historicalCalculations?.unit)}</td>
                                     <td></td>
                                 </tr>
 
                                 <tr className="key-total-row">
                                     <td className="col-name">Net Long Term Operating Assets</td>
-                                    <td className="col-category"></td>
+                                    <td className="col-standardized"></td>
                                     <td className="text-right col-value">{formatNumber(netLongTerm, balanceSheet?.unit)}</td>
                                     <td></td>
                                 </tr>

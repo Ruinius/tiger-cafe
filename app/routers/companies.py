@@ -10,6 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
+from app.models.balance_sheet import BalanceSheet
 from app.models.company import Company
 from app.models.document import Document, DocumentType
 from app.models.financial_assumption import FinancialAssumption
@@ -309,7 +310,11 @@ async def get_financial_assumptions(
         db.query(NonOperatingClassification)
         .join(Document)
         .filter(Document.company_id == company_id)
-        .options(selectinload(NonOperatingClassification.document))
+        .options(
+            selectinload(NonOperatingClassification.document)
+            .selectinload(Document.balance_sheet)
+            .selectinload(BalanceSheet.line_items)
+        )
         .all()
     )
 
@@ -322,6 +327,12 @@ async def get_financial_assumptions(
 
     debt = 0.0
     if non_op_classification:
+        # Create lookup map from balance sheet
+        bs_values = {}
+        if non_op_classification.document and non_op_classification.document.balance_sheet:
+            for bsi in non_op_classification.document.balance_sheet.line_items:
+                bs_values[bsi.line_name] = bsi.line_value
+
         items = (
             db.query(NonOperatingClassificationItem)
             .filter(NonOperatingClassificationItem.classification_id == non_op_classification.id)
@@ -329,7 +340,8 @@ async def get_financial_assumptions(
         )
         for item in items:
             if item.category == "debt":
-                debt += float(item.line_value or 0)
+                val = bs_values.get(item.line_name) or 0
+                debt += float(val)
 
     # Weight of Equity
     # Market Cap is in absolute dollars (e.g., 135,000,000,000)
@@ -531,7 +543,11 @@ async def get_financial_model(
         db.query(NonOperatingClassification)
         .join(Document)
         .filter(Document.company_id == company_id)
-        .options(selectinload(NonOperatingClassification.document))
+        .options(
+            selectinload(NonOperatingClassification.document)
+            .selectinload(Document.balance_sheet)
+            .selectinload(BalanceSheet.line_items)
+        )
         .all()
     )
 
@@ -560,6 +576,12 @@ async def get_financial_model(
     }
 
     if non_op_classification:
+        # Create lookup map
+        bs_values = {}
+        if non_op_classification.document and non_op_classification.document.balance_sheet:
+            for bsi in non_op_classification.document.balance_sheet.line_items:
+                bs_values[bsi.line_name] = bsi.line_value
+
         # Load items
         items = (
             db.query(NonOperatingClassificationItem)
@@ -568,7 +590,7 @@ async def get_financial_model(
         )
         for item in items:
             cat = item.category
-            val = float(item.line_value or 0)
+            val = float(bs_values.get(item.line_name) or 0)
             if cat in bridge_items:
                 bridge_items[cat] += val
 

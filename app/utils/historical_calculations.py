@@ -55,59 +55,35 @@ def calculate_net_working_capital(balance_sheet: BalanceSheet) -> dict[str, Any]
 
     current_assets_operating = Decimal("0")
     current_liabilities_operating = Decimal("0")
-    current_assets_items = []
-    current_liabilities_items = []
+    current_assets_line_names = []
+    current_liabilities_line_names = []
 
     for item in balance_sheet.line_items:
-        # Check if it's a current asset
+        # Check if it's a current asset or liability
         category_lower = item.line_category.lower() if item.line_category else ""
         item.line_name.lower()
 
-        # Skip totals and subtotals to avoid double counting
-        if "total" in category_lower:
+        # Skip calculated totals (use is_calculated field instead of name matching)
+        if item.is_calculated is True:
             continue
 
-        is_non_current = "non-current" in category_lower
-        is_current = not is_non_current
-
-        # Logic Update:
-        # A line item is a "Current Asset" if:
-        # 1. Category contains "current" AND "asset"
-        # 2. OR Category is exactly "assets" (and we assume current if not marked non-current, but safer to stick to explicit)
-        # However, some items might be categorized as just "Assets" but are in the current section.
-        # But our classification logic assigns "Current Assets" or "Non-Current Assets" usually.
-        # Let's trust the category string matching "current" and "asset".
-
-        if is_current and "assets" in category_lower:
-            if item.is_operating:
+        # Strict check for Current Assets/Liabilities using explicit category tokens
+        if "current_assets" in category_lower:
+            if item.is_operating is True:
                 current_assets_operating += item.line_value
-                current_assets_items.append(
-                    {
-                        "line_name": item.line_name,
-                        "line_value": float(item.line_value),
-                        "line_category": item.line_category,
-                        "is_operating": item.is_operating,
-                    }
-                )
+                current_assets_line_names.append(item.line_name)
 
-        elif is_current and "liabilities" in category_lower:
-            if item.is_operating:
+        elif "current_liabilities" in category_lower:
+            if item.is_operating is True:
                 current_liabilities_operating += item.line_value
-                current_liabilities_items.append(
-                    {
-                        "line_name": item.line_name,
-                        "line_value": float(item.line_value),
-                        "line_category": item.line_category,
-                        "is_operating": item.is_operating,
-                    }
-                )
+                current_liabilities_line_names.append(item.line_name)
 
     net_working_capital = current_assets_operating - current_liabilities_operating
 
     return {
         "total": float(net_working_capital.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
-        "current_assets": current_assets_items,
-        "current_liabilities": current_liabilities_items,
+        "current_assets": current_assets_line_names,  # Just line names
+        "current_liabilities": current_liabilities_line_names,  # Just line names
         "current_assets_total": float(
             current_assets_operating.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         ),
@@ -134,48 +110,40 @@ def calculate_net_long_term_operating_assets(balance_sheet: BalanceSheet) -> dic
 
     non_current_assets_operating = Decimal("0")
     non_current_liabilities_operating = Decimal("0")
-    non_current_assets_items = []
-    non_current_liabilities_items = []
+    non_current_assets_line_names = []
+    non_current_liabilities_line_names = []
 
     for item in balance_sheet.line_items:
         # Check if it's a non-current asset
         category_lower = item.line_category.lower() if item.line_category else ""
         item.line_name.lower()
 
-        # Skip totals and subtotals to avoid double counting
-        if "total" in category_lower:
+        # Skip calculated totals (use is_calculated field instead of name matching)
+        if item.is_calculated is True:
             continue
 
-        is_non_current = "non-current" in category_lower
+        # Strict check for Non-Current Assets/Liabilities using explicit category tokens
+        # Note: Transformer output usually uses underscores (non_current_asserts) or joined words
 
-        if is_non_current:
-            if "assets" in category_lower and item.is_operating:
+        if "non_current_assets" in category_lower or "noncurrent_assets" in category_lower:
+            if item.is_operating is True:
                 non_current_assets_operating += item.line_value
-                non_current_assets_items.append(
-                    {
-                        "line_name": item.line_name,
-                        "line_value": float(item.line_value),
-                        "line_category": item.line_category,
-                        "is_operating": item.is_operating,
-                    }
-                )
-            elif "liabilities" in category_lower and item.is_operating:
+                non_current_assets_line_names.append(item.line_name)
+
+        elif (
+            "non_current_liabilities" in category_lower
+            or "noncurrent_liabilities" in category_lower
+        ):
+            if item.is_operating is True:
                 non_current_liabilities_operating += item.line_value
-                non_current_liabilities_items.append(
-                    {
-                        "line_name": item.line_name,
-                        "line_value": float(item.line_value),
-                        "line_category": item.line_category,
-                        "is_operating": item.is_operating,
-                    }
-                )
+                non_current_liabilities_line_names.append(item.line_name)
 
     net_long_term = non_current_assets_operating - non_current_liabilities_operating
 
     return {
         "total": float(net_long_term.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
-        "non_current_assets": non_current_assets_items,
-        "non_current_liabilities": non_current_liabilities_items,
+        "non_current_assets": non_current_assets_line_names,  # Just line names
+        "non_current_liabilities": non_current_liabilities_line_names,  # Just line names
         "non_current_assets_total": float(
             non_current_assets_operating.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         ),
@@ -364,16 +332,35 @@ def calculate_ebita(
     Calculate EBITA by taking Operating Income and adding non-operating items
     from the Non-GAAP reconciliation table.
 
+    Fallback: If Operating Income is not found, use Income Before Taxes as the starting point.
+
     Returns a dictionary with:
     - total: The calculated EBITA value
-    - operating_income: The operating income value used
+    - operating_income: The operating income value used (or income_before_taxes if used as fallback)
     - adjustments: List of adjustment items used
+    - used_fallback: Boolean indicating if income_before_taxes was used instead of operating_income
     """
     op_income_item = get_operating_income_line_item(income_statement)
-    if op_income_item is None or op_income_item.line_value is None:
-        return None
+    used_fallback = False
+    starting_value_label = "Operating Income"
 
-    operating_income = op_income_item.line_value
+    if op_income_item is None or op_income_item.line_value is None:
+        # Fallback: Use Income Before Taxes
+        tax_inputs = extract_tax_inputs(income_statement)
+        income_before_taxes = tax_inputs.get("income_before_taxes")
+
+        if income_before_taxes is None:
+            return None
+
+        operating_income = income_before_taxes
+        used_fallback = True
+        starting_value_label = "Income Before Taxes"
+        # For fallback, we don't have a line_order to filter by
+        op_income_order = None
+    else:
+        operating_income = op_income_item.line_value
+        op_income_order = op_income_item.line_order
+
     ebita = operating_income
     adjustments = []
 
@@ -419,12 +406,11 @@ def calculate_ebita(
                     "category": category,
                 }
             )
-    else:
+    elif not used_fallback and op_income_order is not None:
         # Fallback: Use Income Statement "Non-Operating" items
         # Logic: Items marked is_operating=False explicitly
         # Constraint: Must be BEFORE Operating Income line
-
-        op_income_order = op_income_item.line_order
+        # Note: Only do this if we have operating income (not using fallback)
 
         sorted_items = sorted(income_statement.line_items, key=lambda x: x.line_order)
 
@@ -470,6 +456,8 @@ def calculate_ebita(
         "total": ebita.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
         "operating_income": float(operating_income),
         "adjustments": adjustments,
+        "used_fallback": used_fallback,
+        "starting_value_label": starting_value_label,
     }
 
 
@@ -501,46 +489,16 @@ def extract_tax_inputs(
     net_income = None
     provision_for_income_taxes = None
 
-    # First, try to find standardized names
+    # Try to use standardized names
     for item in income_statement.line_items:
-        item_name = item.line_name
-        if "Pretax Income (" in item_name:
-            income_before_taxes = item.line_value
-        elif "Tax Expense (" in item_name:
-            income_tax_expense = abs(item.line_value)
-        elif "Net Income (" in item_name:
-            net_income = item.line_value
-
-    # Fallback to original logic
-    for item in income_statement.line_items:
-        name_lower = item.line_name.lower()
-
-        if income_before_taxes is None and any(
-            term in name_lower
-            for term in [
-                "income before tax",
-                "earnings before income tax",
-                "profit before tax",
-                "pre-tax income",
-                "income before income tax expense",
-            ]
-        ):
-            income_before_taxes = item.line_value
-
-        if income_tax_expense is None and any(
-            term in name_lower
-            for term in ["income tax expense", "income taxes", "provision for income taxes"]
-        ):
-            if "provision" in name_lower:
-                provision_for_income_taxes = abs(item.line_value)
-            else:
+        std_name = getattr(item, "standardized_name", None)
+        if std_name:
+            if std_name == "income_before_taxes":
+                income_before_taxes = item.line_value
+            elif std_name == "income_tax_provision":
+                # Ensure tax expense is positive for rate calculations
                 income_tax_expense = abs(item.line_value)
-
-        if net_income is None and any(
-            term in name_lower
-            for term in ["net income", "net earnings", "profit after tax", "after tax profit"]
-        ):
-            if "total" not in name_lower:
+            elif std_name == "net_income":
                 net_income = item.line_value
 
     if income_tax_expense is None and provision_for_income_taxes is not None:
@@ -562,18 +520,9 @@ def get_tax_expense_line_item(
     if not income_statement or not income_statement.line_items:
         return None
 
-    # First, try to find standardized name
+    # Use standardized name "income_tax_provision"
     for item in income_statement.line_items:
-        if "Tax Expense (" in item.line_name:
-            return item
-
-    # Fallback to loose matching
-    for item in income_statement.line_items:
-        name_lower = item.line_name.lower()
-        if any(
-            term in name_lower
-            for term in ["income tax expense", "income taxes", "provision for income taxes"]
-        ):
+        if getattr(item, "standardized_name", None) == "income_tax_provision":
             return item
 
     return None

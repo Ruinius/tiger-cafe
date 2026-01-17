@@ -34,9 +34,9 @@ export default function AdjustedTaxTable({ historicalCalculations, incomeStateme
     const totalTaxAdjustments = adjustments.reduce((sum, adj) => sum + parseFloat(adj.tax_effect || 0), 0)
     const adjustedTaxExpense = (reportedTax || 0) + totalTaxAdjustments
 
-    // Look for standard name for tax expense
+    // Look for standard name for tax expense (strict lookup)
     const taxExpenseItem = incomeStatement?.line_items?.find(item =>
-        item.line_name.includes('Provision') && item.line_name.includes('Income Taxes')
+        item.standardized_name === 'income_tax_provision'
     )
     const taxExpenseName = taxExpenseItem?.line_name || 'Provision (Benefit) for Income Taxes'
 

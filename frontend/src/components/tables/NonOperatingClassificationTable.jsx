@@ -1,23 +1,85 @@
 import React from 'react'
-import LineItemTable from './shared/LineItemTable'
+import '../views/document/Document.css'
 
-export default function NonOperatingClassificationTable({ data, formatNumber, currency, unit, timePeriod }) {
-    if (!data) return null
+export default function NonOperatingClassificationTable({ data, formatNumber, currency = 'N/A', unit = 'N/A', timePeriod = 'N/A' }) {
+    if (!data || !data.line_items || data.line_items.length === 0) return null
 
-    const formatCategoryLabel = (category) => {
-        if (!category) return 'N/A'
+    const displayCurrency = currency !== 'N/A' ? currency : (data.currency || 'N/A')
+    const displayUnit = unit !== 'N/A' ? unit : (data.unit || (data.line_items[0]?.unit ? data.line_items[0].unit.replace('_', ' ') : 'N/A'))
+    const displayTimePeriod = timePeriod !== 'N/A' ? timePeriod : (data.time_period || 'N/A')
+
+    // Format category for display
+    const formatCategory = (category) => {
+        if (!category) return '—'
         return category.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
     }
 
     return (
-        <LineItemTable
-            data={data}
-            formatNumber={formatNumber}
-            categoryFormatter={formatCategoryLabel}
-            typeOverride={<span className="type-badge non-operating">Non-Operating</span>}
-            currency={currency}
-            unit={unit}
-            timePeriod={timePeriod}
-        />
+        <div className="table-container">
+            <div className="table-header">
+                <div className="table-meta">
+                    <span><strong>Time Period:</strong> {displayTimePeriod}</span>
+                    <span><strong>Currency:</strong> {displayCurrency}</span>
+                    {displayUnit && displayUnit !== 'N/A' && (
+                        <span><strong>Unit:</strong> {displayUnit.replace('_', ' ')}</span>
+                    )}
+                </div>
+            </div>
+
+            <div className="financial-table-container">
+                <table className="financial-table">
+                    <thead>
+                        <tr>
+                            <th className="col-name">Line Item</th>
+                            <th className="col-standardized">Standardized Name</th>
+                            <th className="text-center col-calculated">Classification</th>
+                            <th className="text-right col-value">Amount</th>
+                            <th className="text-right col-type">Type</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {data.line_items.map((item, index) => {
+                            const isCalculated = item.is_calculated === true;
+                            const nameLower = (item.line_name || '').toLowerCase()
+                            const categoryLower = (item.line_category || '').toLowerCase()
+                            const isKey = nameLower.includes('total') ||
+                                nameLower.includes('subtotal') ||
+                                (nameLower.includes('revenue') && !nameLower.includes('cost of') && !nameLower.includes('deferred revenue')) ||
+                                nameLower.includes('gross profit') ||
+                                nameLower.includes('operating income') ||
+                                nameLower.includes('net income') ||
+                                nameLower.includes('ebita') ||
+                                nameLower.includes('ebitda') ||
+                                nameLower.includes('invested capital') ||
+                                nameLower.includes('net working capital') ||
+                                categoryLower === 'total' ||
+                                isCalculated
+
+                            return (
+                                <tr key={`${item.line_name}-${index}`} className={isKey ? 'key-total-row' : ''}>
+                                    <td className="col-name">{item.line_name}</td>
+                                    <td className="col-standardized" style={{ color: 'var(--text-secondary)', fontSize: '0.9em' }}>
+                                        {item.standardized_name || '—'}
+                                    </td>
+                                    <td className="col-calculated text-center">
+                                        {item.category ? (
+                                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.9em' }}>
+                                                {formatCategory(item.category)}
+                                            </span>
+                                        ) : (
+                                            <span style={{ color: 'var(--text-muted)', fontSize: '0.9em' }}>—</span>
+                                        )}
+                                    </td>
+                                    <td className="text-right col-value">{formatNumber(item.line_value, item.unit)}</td>
+                                    <td className="text-right col-type">
+                                        <span className="type-badge non-operating">Non-Operating</span>
+                                    </td>
+                                </tr>
+                            )
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     )
 }

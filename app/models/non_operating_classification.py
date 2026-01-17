@@ -2,7 +2,7 @@
 Non-operating classification models
 """
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, Numeric, String
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -34,11 +34,11 @@ class NonOperatingClassificationItem(Base):
         String, ForeignKey("non_operating_classifications.id"), nullable=False, index=True
     )
 
-    line_name = Column(String, nullable=False)
-    line_value = Column(Numeric(20, 2), nullable=True)
-    unit = Column(String, nullable=True)
-    category = Column(String, nullable=True)
-    source = Column(String, nullable=True)
+    line_name = Column(String, nullable=False)  # Used to match back to balance sheet
+    category = Column(String, nullable=True)  # Non-operating category (cash, debt, equity, etc.)
+    source = Column(
+        String, nullable=True
+    )  # Source table (balance_sheet, other_assets, other_liabilities)
     line_order = Column(Integer, nullable=False)
 
     classification = relationship("NonOperatingClassification", back_populates="line_items")

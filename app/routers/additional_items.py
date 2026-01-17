@@ -15,9 +15,6 @@ from app.models.other_liabilities import OtherLiabilities
 from app.models.user import User
 from app.routers.auth import get_current_user
 from app.schemas.amortization import Amortization as AmortizationSchema
-from app.schemas.non_operating_classification import (
-    NonOperatingClassification as NonOperatingClassificationSchema,
-)
 from app.schemas.organic_growth import OrganicGrowth as OrganicGrowthSchema
 from app.schemas.other_assets import OtherAssets as OtherAssetsSchema
 from app.schemas.other_liabilities import OtherLiabilities as OtherLiabilitiesSchema
@@ -92,7 +89,11 @@ async def get_other_liabilities(
 async def get_non_operating_classification(
     document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
+    from app.models.balance_sheet import BalanceSheet
+
     _get_document_or_404(document_id, db)
+
+    # Get the classification
     classification = (
         db.query(NonOperatingClassification)
         .filter(NonOperatingClassification.document_id == document_id)
@@ -103,5 +104,45 @@ async def get_non_operating_classification(
             status_code=404, detail="Non-operating classification not found for this document"
         )
 
-    classification_schema = NonOperatingClassificationSchema.model_validate(classification)
-    return {"status": "exists", "data": classification_schema.model_dump()}
+    # Get the balance sheet to join with
+    balance_sheet = db.query(BalanceSheet).filter(BalanceSheet.document_id == document_id).first()
+
+    if not balance_sheet:
+        raise HTTPException(status_code=404, detail="Balance sheet not found for this document")
+
+    # Create a lookup map of balance sheet items by line_name
+    bs_items_map = {item.line_name: item for item in balance_sheet.line_items}
+
+    # Enrich classification items with balance sheet data
+    enriched_items = []
+    for class_item in classification.line_items:
+        bs_item = bs_items_map.get(class_item.line_name)
+        if bs_item:
+            enriched_items.append(
+                {
+                    "line_name": class_item.line_name,
+                    "standardized_name": bs_item.standardized_name,
+                    "line_value": float(bs_item.line_value) if bs_item.line_value else None,
+                    "unit": balance_sheet.unit,
+                    "category": class_item.category,
+                    "is_calculated": bs_item.is_calculated,
+                    "is_operating": bs_item.is_operating,
+                    "source": class_item.source,
+                    "line_order": class_item.line_order,
+                }
+            )
+
+    return {
+        "status": "exists",
+        "data": {
+            "id": classification.id,
+            "document_id": classification.document_id,
+            "time_period": classification.time_period,
+            "currency": balance_sheet.currency,
+            "unit": balance_sheet.unit,
+            "extraction_date": classification.extraction_date.isoformat()
+            if classification.extraction_date
+            else None,
+            "line_items": enriched_items,
+        },
+    }
