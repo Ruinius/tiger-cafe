@@ -21,15 +21,26 @@ export default function InvestedCapitalTable({ historicalCalculations, balanceSh
         const breakdown = historicalCalculations.net_working_capital_breakdown
         const bsItemsMap = {}
         balanceSheet.line_items.forEach(item => {
-            bsItemsMap[item.line_name] = item
+            bsItemsMap[item.line_order] = item
         })
 
         // Map line names to full items
-        const assetLineNames = breakdown.current_assets || []
-        const liabilityLineNames = breakdown.current_liabilities || []
+        // Note: These are now objects { name: "...", order: ... }
+        const assetItems = breakdown.current_assets || []
+        const liabilityItems = breakdown.current_liabilities || []
 
-        currentAssetsOperating = assetLineNames
-            .map(lineName => bsItemsMap[lineName])
+        const getItem = (itemRef) => {
+            // Handle both new format (object with order) and old format (string name) for backward compat
+            if (typeof itemRef === 'object' && itemRef.order !== undefined) {
+                return bsItemsMap[itemRef.order]
+            }
+            // Fallback for string names (though this will still have the collision issue, it prevents crash)
+            const fallbackItem = balanceSheet.line_items.find(i => i.line_name === itemRef)
+            return fallbackItem
+        }
+
+        currentAssetsOperating = assetItems
+            .map(itemRef => getItem(itemRef))
             .filter(item => item != null)
             // Safety Filter: Ensure item is explicitly categorized as current_assets
             .filter(item => {
@@ -37,8 +48,8 @@ export default function InvestedCapitalTable({ historicalCalculations, balanceSh
                 return cat.includes('current_assets')
             })
 
-        currentLiabilitiesOperating = liabilityLineNames
-            .map(lineName => bsItemsMap[lineName])
+        currentLiabilitiesOperating = liabilityItems
+            .map(itemRef => getItem(itemRef))
             .filter(item => item != null)
             // Safety Filter: Ensure item is explicitly categorized as current_liabilities
             .filter(item => {
@@ -102,15 +113,25 @@ export default function InvestedCapitalTable({ historicalCalculations, balanceSh
         const breakdown = historicalCalculations.net_long_term_operating_assets_breakdown
         const bsItemsMap = {}
         balanceSheet.line_items.forEach(item => {
-            bsItemsMap[item.line_name] = item
+            bsItemsMap[item.line_order] = item
         })
 
         // Map line names to full items
-        const assetLineNames = breakdown.non_current_assets || []
-        const liabilityLineNames = breakdown.non_current_liabilities || []
+        const assetItems = breakdown.non_current_assets || []
+        const liabilityItems = breakdown.non_current_liabilities || []
 
-        nonCurrentAssetsOperating = assetLineNames
-            .map(lineName => bsItemsMap[lineName])
+        const getItem = (itemRef) => {
+            // Handle both new format (object with order) and old format (string name) for backward compat
+            if (typeof itemRef === 'object' && itemRef.order !== undefined) {
+                return bsItemsMap[itemRef.order]
+            }
+            // Fallback for string names
+            const fallbackItem = balanceSheet.line_items.find(i => i.line_name === itemRef)
+            return fallbackItem
+        }
+
+        nonCurrentAssetsOperating = assetItems
+            .map(itemRef => getItem(itemRef))
             .filter(item => item != null)
             // Safety Filter: Ensure item is actually non-current
             .filter(item => {
@@ -118,8 +139,8 @@ export default function InvestedCapitalTable({ historicalCalculations, balanceSh
                 return cat.includes('non_current_assets') || cat.includes('noncurrent_assets')
             })
 
-        nonCurrentLiabilitiesOperating = liabilityLineNames
-            .map(lineName => bsItemsMap[lineName])
+        nonCurrentLiabilitiesOperating = liabilityItems
+            .map(itemRef => getItem(itemRef))
             .filter(item => item != null)
             // Safety Filter: Ensure item is actually non-current
             .filter(item => {

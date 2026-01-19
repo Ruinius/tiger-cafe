@@ -227,6 +227,7 @@ def extract_balance_sheet(
                 )
 
         # Step 2: If validation still fails, try one last retry with feedback
+        retried = False
         if not calc_valid:
             retry_msg = "Validation still failed. Attempting final extraction with LLM feedback."
             print(retry_msg)
@@ -235,6 +236,7 @@ def extract_balance_sheet(
                 FinancialStatementMilestone.BALANCE_SHEET,
                 retry_msg,
             )
+            retried = True
 
             # Re-extract with validation error feedback
             extracted_data = extract_balance_sheet_llm_with_feedback(
@@ -244,6 +246,15 @@ def extract_balance_sheet(
                 calc_errors,
                 currency=None,
                 period_end_date=period_end_date,
+            )
+
+            # Log completion of retry
+            retry_done_msg = f"Final retry extraction finished with {len(extracted_data.get('line_items', []))} items. Re-validating."
+            print(retry_done_msg)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.BALANCE_SHEET,
+                retry_done_msg,
             )
 
             # Post-process and Re-validate final attempt
@@ -257,6 +268,8 @@ def extract_balance_sheet(
         # Final Result Processing
         if calc_valid:
             success_msg = "Stage 2 validation passed"
+            if retried:
+                success_msg += " (after LLM retry)"
             if calc_errors:
                 success_msg += " (deduced valid despite warnings)"
             print(success_msg)

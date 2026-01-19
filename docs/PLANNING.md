@@ -67,6 +67,8 @@ The system currently supports:
     - Cost of Equity
     - Cost of Debt
     - Calculated WACC
+- [ ] Add currency translator if currency is not USD
+- [ ] Add ADR conversion line if currency is not USD
 
 ### Phase 15: App-wide Analysis and Dashboard
 - [ ] Improve the Company list
@@ -86,6 +88,7 @@ The system currently supports:
 - [ ] Growth, margin, and capital efficiency assumptions
 
 ### Phase 19: 10-K and 10-Q
+- [ ] Extract financial statements more consistently
 - [ ] Improved organic growth analysis
 - [ ] Extract details on other assets and other liabilities
 
@@ -105,16 +108,13 @@ The system currently supports:
     - So balance sheet will run through up to five chunks until LLM validation finds the complete balance sheet
     - Income statement will run through up to five chunks until LLM validation finds the complete income statement
     - Non-GAAP validation will run through up to five chunks until LLM validation finds the relevant table
+- [ ] Add reflection step for currency
+- [x] Add reflection step for time period
 
 ## Backlog and Notes of Bigger Outstanding Issues - DO NOT CODE
 - [ ] BIDU case - screwed up numbers in PDF and Validation failed: unsupported operand type(s) for +: 'int' and 'NoneType'
-- [ ] INTU case - edge case balance sheet
-- [ ] TGT case - edge case balance sheet
-- [ ] EL case - interest income and interest expense lines are both positive!
+- [ ] EL case - LLM extracting after the net earnings / net income line
 - [ ] Create a field for document date, which will have many uses. First use is to organize the list of documents (current logic is not great)
-- [ ] Create a custom tiny transformer to rename line items and manage classification
-- [ ] Explore using small specialized embedding / encoder models to replace the AUTHORITATIVE_LOOKUP and the classify using LLM
-- [ ] Use the results from the tiny transformer to handle bolding logic (current logic is not great)
 - [ ] Tool tips for key formulas and assumptions
 - [ ] Fix UI for Uploading flow
     - Milestones in the Progress Tracker are not updating as they should with SSE
@@ -122,8 +122,13 @@ The system currently supports:
     - Allow for continuing to add document and adding them into the pipeline (so the Add document button will never turn into check uploads button)
     - Add a Cell above all the companies that says "Documents Processing" which loads the Check Uploads page
     - Add the Extraction milestones to the Check Uploads page
-- [ ] Fix Time Period identification. LLM is not following the format restriction
+- [x] Fix Time Period identification. LLM is not following the format restriction
 - [ ] Consolidate batch upload tests
+- [ ] Add reflect step in revenue growth calculation
+- [ ] Add additional forms of how the date could appear in the LLM prompts checking for completion e.g., Q1 Fiscal 2026 or Q1 FY26
+- [ ] Look into the non-gaap reconciliation logic
+- [ ] Improve the prompt to find complete financial statement, especially when fiscal year and calendar year are not the same
+- [ ] Fix the chunk algorithm to do 1 page chunks and search through the first 10 chunks in order of number density
 
 
 ## Architecture Overview

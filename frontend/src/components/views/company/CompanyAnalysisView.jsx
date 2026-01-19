@@ -93,8 +93,8 @@ function CompanyAnalysisView({ selectedCompany }) {
         },
         {
             label: 'Simple Revenue Growth',
-            render: (entry) => formatPercent(entry.revenue_growth_yoy, 1),
-            stats: calculateStats(e => e.revenue_growth_yoy),
+            render: (entry) => formatPercent(entry.simple_revenue_growth, 1),
+            stats: calculateStats(e => e.simple_revenue_growth),
             formatStats: (val) => formatPercent(val, 1)
         },
         {

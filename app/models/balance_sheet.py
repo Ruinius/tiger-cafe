@@ -4,7 +4,17 @@ Balance sheet model
 
 import enum
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Numeric, String, Text
+import sqlalchemy
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+)
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -69,3 +79,9 @@ class BalanceSheetLineItem(Base):
 
     # Relationships
     balance_sheet = relationship("BalanceSheet", back_populates="line_items")
+
+    __table_args__ = (
+        # Ensure line_order is unique per balance sheet to prevent duplicates
+        # This prevents application bugs from double-inserting line items
+        sqlalchemy.UniqueConstraint("balance_sheet_id", "line_order", name="uq_bs_line_item_order"),
+    )

@@ -25,6 +25,7 @@ class CompanyHistoricalCalculationEntry(BaseModel):
     marginal_capital_turnover: Decimal | None = None
     diluted_shares_outstanding: Decimal | None = None
     basic_shares_outstanding: Decimal | None = None
+    simple_revenue_growth: Decimal | None = None
 
 
 class CompanyHistoricalCalculations(BaseModel):

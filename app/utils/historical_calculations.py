@@ -55,35 +55,31 @@ def calculate_net_working_capital(balance_sheet: BalanceSheet) -> dict[str, Any]
 
     current_assets_operating = Decimal("0")
     current_liabilities_operating = Decimal("0")
-    current_assets_line_names = []
-    current_liabilities_line_names = []
+    current_assets_items = []
+    current_liabilities_items = []
 
     for item in balance_sheet.line_items:
-        # Check if it's a current asset or liability
-        category_lower = item.line_category.lower() if item.line_category else ""
-        item.line_name.lower()
-
         # Skip calculated totals (use is_calculated field instead of name matching)
         if item.is_calculated is True:
             continue
 
         # Strict check for Current Assets/Liabilities using explicit category tokens
-        if "current_assets" in category_lower:
+        if item.line_category == "current_assets":
             if item.is_operating is True:
                 current_assets_operating += item.line_value
-                current_assets_line_names.append(item.line_name)
+                current_assets_items.append({"name": item.line_name, "order": item.line_order})
 
-        elif "current_liabilities" in category_lower:
+        elif item.line_category == "current_liabilities":
             if item.is_operating is True:
                 current_liabilities_operating += item.line_value
-                current_liabilities_line_names.append(item.line_name)
+                current_liabilities_items.append({"name": item.line_name, "order": item.line_order})
 
     net_working_capital = current_assets_operating - current_liabilities_operating
 
     return {
         "total": float(net_working_capital.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
-        "current_assets": current_assets_line_names,  # Just line names
-        "current_liabilities": current_liabilities_line_names,  # Just line names
+        "current_assets": current_assets_items,
+        "current_liabilities": current_liabilities_items,
         "current_assets_total": float(
             current_assets_operating.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         ),
@@ -100,8 +96,8 @@ def calculate_net_long_term_operating_assets(balance_sheet: BalanceSheet) -> dic
 
     Returns a dictionary with:
     - total: The net long term operating assets value
-    - non_current_assets: List of non-current asset items used
-    - non_current_liabilities: List of non-current liability items used
+    - non_current_assets: List of non-current asset items used (with order)
+    - non_current_liabilities: List of non-current liability items used (with order)
     - non_current_assets_total: Sum of non-current assets
     - non_current_liabilities_total: Sum of non-current liabilities
     """
@@ -110,14 +106,10 @@ def calculate_net_long_term_operating_assets(balance_sheet: BalanceSheet) -> dic
 
     non_current_assets_operating = Decimal("0")
     non_current_liabilities_operating = Decimal("0")
-    non_current_assets_line_names = []
-    non_current_liabilities_line_names = []
+    non_current_assets_items = []
+    non_current_liabilities_items = []
 
     for item in balance_sheet.line_items:
-        # Check if it's a non-current asset
-        category_lower = item.line_category.lower() if item.line_category else ""
-        item.line_name.lower()
-
         # Skip calculated totals (use is_calculated field instead of name matching)
         if item.is_calculated is True:
             continue
@@ -125,25 +117,24 @@ def calculate_net_long_term_operating_assets(balance_sheet: BalanceSheet) -> dic
         # Strict check for Non-Current Assets/Liabilities using explicit category tokens
         # Note: Transformer output usually uses underscores (non_current_asserts) or joined words
 
-        if "non_current_assets" in category_lower or "noncurrent_assets" in category_lower:
+        if item.line_category == "noncurrent_assets":
             if item.is_operating is True:
                 non_current_assets_operating += item.line_value
-                non_current_assets_line_names.append(item.line_name)
+                non_current_assets_items.append({"name": item.line_name, "order": item.line_order})
 
-        elif (
-            "non_current_liabilities" in category_lower
-            or "noncurrent_liabilities" in category_lower
-        ):
+        elif item.line_category == "noncurrent_liabilities":
             if item.is_operating is True:
                 non_current_liabilities_operating += item.line_value
-                non_current_liabilities_line_names.append(item.line_name)
+                non_current_liabilities_items.append(
+                    {"name": item.line_name, "order": item.line_order}
+                )
 
     net_long_term = non_current_assets_operating - non_current_liabilities_operating
 
     return {
         "total": float(net_long_term.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
-        "non_current_assets": non_current_assets_line_names,  # Just line names
-        "non_current_liabilities": non_current_liabilities_line_names,  # Just line names
+        "non_current_assets": non_current_assets_items,
+        "non_current_liabilities": non_current_liabilities_items,
         "non_current_assets_total": float(
             non_current_assets_operating.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
         ),

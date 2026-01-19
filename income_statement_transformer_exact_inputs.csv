@@ -1,2 +1,19 @@
 formatted_input
-[<START>] [<START>] [income_statement] [Total net revenue] [<END>] [<END>]
+[<START>] [<START>] [income_statement] [Net sales] [Cost of sales] [Gross profit]
+"[<START>] [Net sales] [income_statement] [Cost of sales] [Gross profit] [Selling, general and administrative]"
+"[Net sales] [Cost of sales] [income_statement] [Gross profit] [Selling, general and administrative] [Restructuring and other charges]"
+"[Cost of sales] [Gross profit] [income_statement] [Selling, general and administrative] [Restructuring and other charges] [Goodwill impairment]"
+"[Gross profit] [Selling, general and administrative] [income_statement] [Restructuring and other charges] [Goodwill impairment] [Impairment of other intangible assets]"
+"[Selling, general and administrative] [Restructuring and other charges] [income_statement] [Goodwill impairment] [Impairment of other intangible assets] [Talcum litigation settlement agreements]"
+[Restructuring and other charges] [Goodwill impairment] [income_statement] [Impairment of other intangible assets] [Talcum litigation settlement agreements] [Total operating expenses]
+[Goodwill impairment] [Impairment of other intangible assets] [income_statement] [Talcum litigation settlement agreements] [Total operating expenses] [Operating (loss) income]
+[Impairment of other intangible assets] [Talcum litigation settlement agreements] [income_statement] [Total operating expenses] [Operating (loss) income] [Interest expense]
+"[Talcum litigation settlement agreements] [Total operating expenses] [income_statement] [Operating (loss) income] [Interest expense] [Interest income and investment income, net]"
+"[Total operating expenses] [Operating (loss) income] [income_statement] [Interest expense] [Interest income and investment income, net] [Other components of net periodic benefit cost]"
+"[Operating (loss) income] [Interest expense] [income_statement] [Interest income and investment income, net] [Other components of net periodic benefit cost] [(Loss) earnings before income taxes]"
+"[Interest expense] [Interest income and investment income, net] [income_statement] [Other components of net periodic benefit cost] [(Loss) earnings before income taxes] [Provision for income taxes]"
+"[Interest income and investment income, net] [Other components of net periodic benefit cost] [income_statement] [(Loss) earnings before income taxes] [Provision for income taxes] [Net (loss) earnings]"
+[Other components of net periodic benefit cost] [(Loss) earnings before income taxes] [income_statement] [Provision for income taxes] [Net (loss) earnings] [Net loss (earnings) attributable to redeemable noncontrolling interest]
+[(Loss) earnings before income taxes] [Provision for income taxes] [income_statement] [Net (loss) earnings] [Net loss (earnings) attributable to redeemable noncontrolling interest] [Net (loss) earnings attributable to The Estée Lauder Companies Inc.]
+[Provision for income taxes] [Net (loss) earnings] [income_statement] [Net loss (earnings) attributable to redeemable noncontrolling interest] [Net (loss) earnings attributable to The Estée Lauder Companies Inc.] [<END>]
+[Net (loss) earnings] [Net loss (earnings) attributable to redeemable noncontrolling interest] [income_statement] [Net (loss) earnings attributable to The Estée Lauder Companies Inc.] [<END>] [<END>]

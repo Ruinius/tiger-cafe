@@ -234,6 +234,7 @@ def extract_income_statement(
                 is_valid = len(normalization_errors) == 0
 
         # Step 2: If validation still fails, try one last retry with feedback
+        retried = False
         if not is_valid:
             retry_msg = "Validation still failed. Attempting final extraction with LLM feedback."
             print(retry_msg)
@@ -242,6 +243,7 @@ def extract_income_statement(
                 FinancialStatementMilestone.INCOME_STATEMENT,
                 retry_msg,
             )
+            retried = True
 
             # Re-extract with validation error feedback
             extracted_data = extract_income_statement_llm_with_feedback(
@@ -251,6 +253,15 @@ def extract_income_statement(
                 normalization_errors,
                 currency=None,
                 period_end_date=period_end_date,
+            )
+
+            # Log completion of retry
+            retry_done_msg = f"Final retry extraction finished with {len(extracted_data.get('line_items', []))} items. Re-validating."
+            print(retry_done_msg)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.INCOME_STATEMENT,
+                retry_done_msg,
             )
 
             # Classification is now handled by TigerTransformerClient in post_process_income_statement_line_items
@@ -265,6 +276,8 @@ def extract_income_statement(
         # Final Result Processing
         if is_valid:
             success_msg = "Stage 2 validation passed"
+            if retried:
+                success_msg += " (after LLM retry)"
             if normalization_errors:
                 success_msg += " (deduced valid despite warnings)"
             print(success_msg)
@@ -811,10 +824,17 @@ def post_process_income_statement_line_items(
         revenue = totals["total_revenue"]
         income_before_taxes = totals["income_before_taxes"]
 
-        # Sum costs between revenue and income before taxes
-        costs_sum = sum_items_with_filter(
-            lambda item: item.get("standardized_name")
-            not in ["total_revenue", "income_before_taxes"]
+        # DEBUGGING: Print all totals
+        print(
+            f"DEBUG: Found totals - Revenue: {revenue}, Income Before Taxes: {income_before_taxes}"
+        )
+
+        # Calculate costs sum
+        costs_items = [
+            item
+            for item in processed_items
+            if item.get("is_calculated") is False
+            and item.get("standardized_name") not in ["total_revenue", "income_before_taxes"]
             and processed_items.index(item)
             > next(
                 i
@@ -827,10 +847,22 @@ def post_process_income_statement_line_items(
                 for i, x in enumerate(processed_items)
                 if x.get("standardized_name") == "income_before_taxes"
             )
-        )
+        ]
+
+        costs_sum = sum(item["line_value"] for item in costs_items)
+        print(f"DEBUG: Costs Sum calculated: {costs_sum}")
+        print("DEBUG: Items included in costs sum:")
+        for item in costs_items:
+            print(
+                f" - {item.get('line_name')} ({item.get('standardized_name')}): {item.get('line_value')}"
+            )
 
         calculated_gp = revenue + costs_sum  # costs are negative
         diff = abs(calculated_gp - income_before_taxes)
+
+        print(
+            f"DEBUG: Calculated Income ({calculated_gp}) vs Reported ({income_before_taxes}) - Diff: {diff}"
+        )
 
         if diff > 0.01:
             # Try residual solver for ambiguous items

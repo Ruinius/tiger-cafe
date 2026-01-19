@@ -2,7 +2,17 @@
 Income statement model
 """
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Numeric, String, Text
+import sqlalchemy
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+)
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -90,3 +100,10 @@ class IncomeStatementLineItem(Base):
 
     # Relationships
     income_statement = relationship("IncomeStatement", back_populates="line_items")
+
+    __table_args__ = (
+        # Ensure line_order is unique per income statement to prevent duplicates
+        sqlalchemy.UniqueConstraint(
+            "income_statement_id", "line_order", name="uq_is_line_item_order"
+        ),
+    )

@@ -213,6 +213,9 @@ async def get_company_historical_calculations(
             "interest_expense": get_interest_expense(document.income_statement)
             if document.income_statement
             else None,
+            "simple_revenue_growth": document.organic_growth.simple_revenue_growth
+            if document.organic_growth
+            else None,
         }
 
         if calc.currency:
