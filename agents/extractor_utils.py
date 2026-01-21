@@ -80,9 +80,9 @@ def check_section_completeness_llm(
     """
     Generic function to check if a document section contains a complete financial statement.
     """
-    period_info = f"time period: {time_period}"
+    period_info = f"time period in fiscal: {time_period}"
     if period_end_date:
-        period_info += f" (period ending {period_end_date})"
+        period_info += f" (period ending in calendar {period_end_date})"
 
     prompt = f"""Analyze the following document text to determine if it contains a COMPLETE {statement_name} for the {period_info}.
 

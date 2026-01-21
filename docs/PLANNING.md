@@ -25,25 +25,8 @@ The system currently supports:
 
 ## Active Roadmap
 
-## Phases 1-13.6 Complete
+## Phases 1-13 Complete
 *See `docs/COMPLETED_TASKS.md` for detailed history.*
-
-### Phase 13.7: Tiger-Transformer frontend fixes
-- [x] Document Extraction View, Non-GAAP Reconcilidation - remove the "standardized name" column
-- [x] Document Extraction View, Non-Operating Items Classification - several fixes
-    - populate the standardized name column
-    - replace the calculated column with the name of the classification (this field should already exist somewhere)
-    - this table should only be filled with line items that are is_operating=false, is_calculated=false
-    - in the bs_calculated_operating.csv, there should now be a column called nonoperating_category. Replace the LLM call for classification with just a lookup based on standardized name
-- [x] Document Extraction View, Invested Capital Tables (there are three), replace category column with standardized name and ensure it is populated
-- [x] Document Extraction View, Invested Capital Tables (there are three), double check the logic to show the items
-    - the Net Working Capital table should be category=current_assets OR current_liabilities is_calculated=false, is_operating=true
-    - the Net Long Term Operating Assets table should be category=noncurrent_assets OR noncurrent_liabilities is_calculated=false, is_operating=true
-- [x] Document Extraction View, EBITA table and logic
-    - there is a rare case where operating_income does not exist. In which case, the calculation should use income_before_taxes as the starting point
-- [x] Document Extraction View, Adjusted Tax Rate table and logic
-    - Effective Tax Rate should be calculated with income_tax_provision / income_before_taxes with fallbacks using standardized names
-    - The Provision for Income Taxes line in the table and the logic is pulling incorrectly. Make sure it pulls from income_tax_provision
 
 ### Phase 14: Financial Model enhancements
 - [x] Create one section with two columns (three fields each) in the Assumptions section between Marginal Capital Turnover and Other
@@ -88,19 +71,18 @@ The system currently supports:
 - [ ] Growth, margin, and capital efficiency assumptions
 
 ### Phase 19: 10-K and 10-Q
+- [ ] Improve the chunk query logic. For example, filter for top 10 number dense chunks, then check for similarity
 - [ ] Extract financial statements more consistently
 - [ ] Improved organic growth analysis
 - [ ] Extract details on other assets and other liabilities
 
 ## Ongoing List of UI Improvements and Bugs
-- [ ] Failing to find the Non-GAAP Reconciliation (or any items under additional items) should just be a warning instead of an error
 - [x] For financial statement extraction, the chunks need to have a critical mass of numbers (at least 15 for balance sheet and income statement. At least 10 for Non-GAAP Reconciliation) to be included in the list of chunks considered
+- [x] Fix the LLM prompts checking for completion e.g., Q1 Fiscal 2026 or Q1 FY26
 - [x] For finding the balance sheet, if the best rank chunk is the first or last chunk, push its rank down by two (given there are three tries, it will still be tried but last)
-- [ ] Enable editing extracted values in Document Extraction View
-- [ ] Improve the order in which content is loaded in Document Extraction View for better UX
-- [ ] Improve the order in which content is loaded in Company Analysis View for better UX
-- [ ] In the Document View, add where the Balance Sheet, Income Statement, and Non-GAAP Reconciliation were extracted from
-- [ ] Add additional log for Stage 2 Validation for all extractions (e.g., what's the LLM's response on time period alignment)
+- [x] BIDU case - screwed up numbers in PDF and Validation failed: unsupported operand type(s) for +: 'int' and 'NoneType'
+- [x] Fix Time Period identification. LLM is not following the format restriction
+- [x] Improve the prompt to find complete financial statement, especially when fiscal year and calendar year are not the same
 - [x] When uploading document, I get this error - Could not get FontBBox from font descriptor because None cannot be parsed as 4 floats at the beginning, especially during indexing
 - [x] Improve find_document_section
     - Keep the old function as _legacy with comment to not delete it (in case we need to revert)
@@ -108,27 +90,28 @@ The system currently supports:
     - So balance sheet will run through up to five chunks until LLM validation finds the complete balance sheet
     - Income statement will run through up to five chunks until LLM validation finds the complete income statement
     - Non-GAAP validation will run through up to five chunks until LLM validation finds the relevant table
-- [ ] Add reflection step for currency
-- [x] Add reflection step for time period
+- [x] Pulled revenue growth extraction and calculation out of the main income statement extraction for better consistency
+
 
 ## Backlog and Notes of Bigger Outstanding Issues - DO NOT CODE
-- [ ] BIDU case - screwed up numbers in PDF and Validation failed: unsupported operand type(s) for +: 'int' and 'NoneType'
 - [ ] EL case - LLM extracting after the net earnings / net income line
+- [ ] EL case - LLM extracting Non-GAAP table very strangely - look into the non-gaap reconciliation logic
 - [ ] Create a field for document date, which will have many uses. First use is to organize the list of documents (current logic is not great)
-- [ ] Tool tips for key formulas and assumptions
 - [ ] Fix UI for Uploading flow
     - Milestones in the Progress Tracker are not updating as they should with SSE
     - The UI is not updating as documents flow through the pipeline as they should
     - Allow for continuing to add document and adding them into the pipeline (so the Add document button will never turn into check uploads button)
     - Add a Cell above all the companies that says "Documents Processing" which loads the Check Uploads page
     - Add the Extraction milestones to the Check Uploads page
-- [x] Fix Time Period identification. LLM is not following the format restriction
 - [ ] Consolidate batch upload tests
-- [ ] Add reflect step in revenue growth calculation
-- [ ] Add additional forms of how the date could appear in the LLM prompts checking for completion e.g., Q1 Fiscal 2026 or Q1 FY26
-- [ ] Look into the non-gaap reconciliation logic
-- [ ] Improve the prompt to find complete financial statement, especially when fiscal year and calendar year are not the same
-- [ ] Fix the chunk algorithm to do 1 page chunks and search through the first 10 chunks in order of number density
+- [ ] Fix the chunk algorithm to be characters based instead of page based search through the first 10 chunks in order of number density
+- [ ] Improve the order in which content is loaded in Document Extraction View for better UX
+- [ ] Improve the order in which content is loaded in Company Analysis View for better UX
+- [ ] Enable editing extracted values in Document Extraction View
+- [ ] In the Document View, add where the Balance Sheet, Income Statement, and Non-GAAP Reconciliation were extracted from
+- [ ] Add additional log for Stage 2 Validation for all extractions (e.g., what's the LLM's response on time period alignment)
+- [ ] Review the full logging and fix legacy inaccuracies such as income statement finishing very late in logs
+- [ ] Failing to find the Non-GAAP Reconciliation (or any items under additional items) should just be a warning instead of an error
 
 
 ## Architecture Overview

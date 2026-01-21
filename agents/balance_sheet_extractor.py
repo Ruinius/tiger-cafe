@@ -451,7 +451,7 @@ def extract_balance_sheet_llm(
 
     prompt = f"""Extract the balance sheet from the following document text for the {period_info}.
 Extract the balance sheet exactly line by line, including all line items and their values.
-If the company is foreign, extract the values in the local currency.
+If the company is foreign, extract the values in the local currency (RMB, EUR, CAD, JPY).
 
 CRITICAL ANTI-HALLUCINATION RULES:
 - ONLY extract values that are EXPLICITLY shown in the document text below
@@ -465,7 +465,7 @@ CRITICAL ANTI-HALLUCINATION RULES:
 
 Return a JSON object with the following structure:
 {{
-    "currency": currency code,
+    "currency": currency code (USD RMB EUR CAD or JPY),
     "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract ONLY if explicitly stated like "in millions", "in thousands", etc., otherwise null),
     "time_period": "{time_period}",
     "period_end_date": "{period_end_date}" if known else null,
@@ -548,7 +548,7 @@ def extract_balance_sheet_llm_with_feedback(
 
     prompt = f"""Extract the balance sheet from the following document text for the {period_info}.
 Extract the balance sheet exactly line by line, including all line items and their values.
-If the company is foreign, extract the values in the local currency.
+If the company is foreign, extract the values in the local currency (RMB, EUR, CAD, JPY).
 
 PREVIOUS EXTRACTION ATTEMPT:
 {previous_items_text}
@@ -564,7 +564,7 @@ Please review the previous extraction and fix the issues. Pay special attention 
 
 Return a JSON object with the following structure:
 {{
-    "currency": currency code,
+    "currency": currency code (USD RMB EUR CAD or JPY),
     "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract from document, e.g., if values are in millions, use "millions"),
     "time_period": "{time_period}",
     "period_end_date": "{period_end_date}" if known else null,
@@ -714,13 +714,21 @@ def validate_balance_sheet_calculations(line_items: list[dict]) -> tuple[bool, l
     current_assets_sum = sum(
         item["line_value"]
         for item in line_items
-        if (item.get("line_category") == "current_assets" and item.get("is_calculated") is False)
+        if (
+            item.get("line_category") == "current_assets"
+            and item.get("is_calculated") is False
+            and item.get("line_value") is not None
+        )
     )
 
     noncurrent_assets_sum = sum(
         item["line_value"]
         for item in line_items
-        if (item.get("line_category") == "noncurrent_assets" and item.get("is_calculated") is False)
+        if (
+            item.get("line_category") == "noncurrent_assets"
+            and item.get("is_calculated") is False
+            and item.get("line_value") is not None
+        )
     )
 
     current_liabilities_sum = sum(
@@ -729,6 +737,7 @@ def validate_balance_sheet_calculations(line_items: list[dict]) -> tuple[bool, l
         if (
             item.get("line_category") == "current_liabilities"
             and item.get("is_calculated") is False
+            and item.get("line_value") is not None
         )
     )
 
@@ -738,6 +747,7 @@ def validate_balance_sheet_calculations(line_items: list[dict]) -> tuple[bool, l
         if (
             item.get("line_category") == "noncurrent_liabilities"
             and item.get("is_calculated") is False
+            and item.get("line_value") is not None
         )
     )
 

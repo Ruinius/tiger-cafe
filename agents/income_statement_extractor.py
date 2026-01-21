@@ -304,18 +304,35 @@ def extract_income_statement(
 
         # Calculate revenue growth YoY
         current_revenue = None
+        revenue_line_name = None
         for item in extracted_data.get("line_items", []):
-            item_name_lower = item.get("line_name", "").lower()
-            if "total net revenue" in item_name_lower:
+            if item.get("standardized_name") in ["total_revenue", "revenue"]:
                 current_revenue = _normalize_value(item.get("line_value"))
+                revenue_line_name = item.get("line_name")
                 if current_revenue is not None:
                     break
 
-        if current_revenue is not None and extracted_data.get("revenue_prior_year") is not None:
-            prior_revenue = extracted_data["revenue_prior_year"]
-            if prior_revenue > 0:
-                revenue_growth = ((current_revenue - prior_revenue) / prior_revenue) * 100
-                extracted_data["revenue_growth_yoy"] = revenue_growth
+        # Extract prior year revenue using separate LLM call
+        if current_revenue is not None:
+            prior_revenue_value, prior_revenue_unit = extract_prior_year_revenue(
+                income_statement_text,
+                time_period,
+                current_revenue,
+                revenue_line_name,
+                extracted_data.get("unit"),
+            )
+
+            if prior_revenue_value is not None:
+                # Normalize the prior year revenue to match current period unit
+                extracted_data["revenue_prior_year"] = prior_revenue_value
+                extracted_data["revenue_prior_year_unit"] = prior_revenue_unit
+
+                # Calculate YoY growth
+                if prior_revenue_value > 0:
+                    revenue_growth = (
+                        (current_revenue - prior_revenue_value) / prior_revenue_value
+                    ) * 100
+                    extracted_data["revenue_growth_yoy"] = revenue_growth
 
         # Store chunk index for persistence
         if successful_chunk_index is not None:
@@ -328,222 +345,6 @@ def extract_income_statement(
         extracted_data["is_valid"] = False
         extracted_data["validation_errors"] = [str(e)]
         return extracted_data
-
-
-def find_income_statement_near_balance_sheet(
-    document_id: str,
-    file_path: str,
-    time_period: str,
-    document_type: str | None = None,
-    attempt: int = 0,
-    balance_sheet_chunk_index: int | None = None,
-) -> tuple[str | None, int | None, dict | None]:
-    """
-    Find income statement section by locating balance sheet first, then using adjacent chunks.
-
-    Args:
-        document_id: Document ID
-        file_path: Path to PDF file
-        time_period: Time period to search for (e.g., "Q3 2023")
-        document_type: Document type (e.g., "earnings_announcement", "annual_filing", "quarterly_filing")
-        attempt: 0 = same chunk as balance sheet, 1 = chunk before, 2 = chunk after, 3 = 2 chunks after
-        balance_sheet_chunk_index: Optional balance sheet chunk index to use directly (if known from successful extraction)
-
-    Returns:
-        Tuple of (extracted_text, start_page, log_info) or (None, None, None) if not found
-    """
-    try:
-        import pdfplumber
-
-        from agents.balance_sheet_extractor import find_balance_sheet_section
-        from app.utils.document_indexer import get_chunk_metadata, get_chunk_text
-
-        # Get chunk metadata (needed for all paths)
-        chunk_metadata = get_chunk_metadata(document_id)
-        if not chunk_metadata:
-            print("Could not get chunk metadata")
-            return None, None, None
-        chunk_size = chunk_metadata.get("chunk_size", 2)
-        num_chunks = chunk_metadata.get("num_chunks", 0)
-
-        # If balance_sheet_chunk_index is provided, use it directly (from successful balance sheet extraction)
-        # Otherwise, find the balance sheet location by searching (will use rank 0 chunk)
-        if balance_sheet_chunk_index is not None:
-            # Use the provided chunk index (from successful balance sheet extraction)
-            balance_chunk_index = balance_sheet_chunk_index
-            if balance_chunk_index < 0 or balance_chunk_index >= num_chunks:
-                print(
-                    f"Balance sheet chunk index {balance_chunk_index} is out of bounds (0-{num_chunks - 1})"
-                )
-                return None, None, None
-            # Get chunk text to determine page range
-            balance_chunk_text, balance_chunk_start_page, balance_chunk_end_page = get_chunk_text(
-                file_path, balance_chunk_index, chunk_size
-            )
-            balance_log_info = {
-                "best_chunk_index": balance_chunk_index,
-                "chunk_start_page": balance_chunk_start_page,
-                "chunk_end_page": balance_chunk_end_page - 1,
-            }
-        else:
-            # Fallback: find balance sheet location (uses rank 0 chunk)
-            balance_sheet_text, balance_start_page, balance_log_info = find_balance_sheet_section(
-                document_id, file_path, time_period, document_type, chunk_rank=0
-            )
-
-            if not balance_log_info or "best_chunk_index" not in balance_log_info:
-                print("Could not find balance sheet location")
-                return None, None, None
-
-            balance_chunk_index = balance_log_info["best_chunk_index"]
-
-        chunk_size = chunk_metadata.get("chunk_size", 2)
-        num_chunks = chunk_metadata.get("num_chunks", 0)
-
-        # Determine which chunk to use based on attempt
-        # attempt 0 = same chunk as balance sheet
-        # attempt 1 = chunk before balance sheet
-        # attempt 2 = chunk after balance sheet
-        # attempt 3 = full document search for best chunk (excluding 0, 1, 2)
-        if attempt == 0:
-            target_chunk_index = balance_chunk_index
-            direction = "same as"
-        elif attempt == 1:
-            target_chunk_index = balance_chunk_index - 1
-            direction = "before"
-        elif attempt == 2:
-            target_chunk_index = balance_chunk_index + 1
-            direction = "after"
-
-            # Validate chunk index for attempts 0, 1, 2 (before continuing)
-            if target_chunk_index < 0 or target_chunk_index >= num_chunks:
-                print(
-                    f"Target chunk index {target_chunk_index} is out of bounds (0-{num_chunks - 1}), skipping to next attempt"
-                )
-                return None, None, None
-        elif attempt == 3:
-            # Full document search using income statement queries
-            from app.utils.document_section_finder import find_document_section
-
-            # Income statement specific queries
-            query_texts = ["net income", "revenue", "sales", "interest", "tax", "cost", "expenses"]
-
-            # Exclude chunks already tried
-            exclude_chunks = {
-                balance_chunk_index,  # attempt 0
-                balance_chunk_index - 1,  # attempt 1
-                balance_chunk_index + 1,  # attempt 2
-            }
-
-            # Search full document (no ignore fractions), excluding already-tried chunks
-            income_text, income_start_page, income_log_info = find_document_section(
-                document_id=document_id,
-                file_path=file_path,
-                query_texts=query_texts,
-                chunk_size=chunk_size,
-                score_threshold=0.3,
-                pages_before=1,
-                pages_after=1,
-                rerank_top_k=0,  # No reranking needed
-                ignore_front_fraction=0.0,
-                ignore_back_fraction=0.0,
-                chunk_rank=0,  # Get best match
-                min_numbers=15,
-                exclude_chunks=exclude_chunks,
-            )
-
-            if not income_log_info or "best_chunk_index" not in income_log_info:
-                msg = "Full document search failed to find income statement (excluding already-tried chunks)"
-                print(msg)
-                add_log(document_id, FinancialStatementMilestone.INCOME_STATEMENT, msg)
-                return None, None, None
-
-            target_chunk_index = income_log_info["best_chunk_index"]
-            direction = f"full search (chunk {target_chunk_index}, excluding chunks {sorted(exclude_chunks)})"
-
-            # Use the text from find_document_section directly
-            log_info = {
-                "balance_sheet_chunk_index": balance_chunk_index,
-                "income_statement_chunk_index": target_chunk_index,
-                "direction": direction,
-                "chunk_start_page": income_log_info.get("chunk_start_page"),
-                "chunk_end_page": income_log_info.get("chunk_end_page"),
-                "start_extract_page": income_log_info.get("start_extract_page"),
-                "end_extract_page": income_log_info.get("end_extract_page"),
-            }
-
-            print(
-                f"Income statement found via {direction}: chunk {target_chunk_index} "
-                f"(pages {income_log_info.get('chunk_start_page')}-{income_log_info.get('chunk_end_page')}), "
-                f"extracting pages {income_log_info.get('start_extract_page')}-{income_log_info.get('end_extract_page')}"
-            )
-
-            return income_text, income_start_page, log_info
-        else:
-            print(f"Invalid attempt number: {attempt}, must be 0, 1, 2, or 3")
-            return None, None, None
-
-        # Validate chunk index (for attempts 0, 1 only - attempt 2 validated above)
-        if attempt in [0, 1] and (target_chunk_index < 0 or target_chunk_index >= num_chunks):
-            print(f"Target chunk index {target_chunk_index} is out of bounds (0-{num_chunks - 1})")
-            return None, None, None
-
-        # Get chunk text (for attempts 0, 1, 2)
-        chunk_text, chunk_start_page, chunk_end_page = get_chunk_text(
-            file_path, target_chunk_index, chunk_size
-        )
-
-        # Apply "critical mass of numbers" filter
-        from app.utils.document_section_finder import _count_numbers
-
-        if chunk_text and _count_numbers(chunk_text) < 15:
-            print(
-                f"Attempt {attempt} (chunk {target_chunk_index}) has insufficient numbers, skipping"
-            )
-            return None, None, None
-
-        # Extract with pages_before=1 and pages_after=1 (similar to find_document_section)
-        with pdfplumber.open(file_path) as pdf:
-            total_pages = len(pdf.pages)
-
-        start_extract_page = max(0, chunk_start_page - 1)
-        end_extract_page = min(total_pages, chunk_end_page + 1)
-
-        # Extract text from page range
-        text_parts = []
-        with pdfplumber.open(file_path) as pdf:
-            clamped_start = max(0, min(start_extract_page, total_pages))
-            clamped_end = max(clamped_start, min(end_extract_page, total_pages))
-            for page_index in range(clamped_start, clamped_end):
-                page_text = pdf.pages[page_index].extract_text()
-                if page_text:
-                    text_parts.append(page_text)
-        extracted_text = "\n\n".join(text_parts)
-
-        log_info = {
-            "balance_sheet_chunk_index": balance_chunk_index,
-            "income_statement_chunk_index": target_chunk_index,
-            "direction": direction,
-            "chunk_start_page": chunk_start_page,
-            "chunk_end_page": chunk_end_page - 1,
-            "start_extract_page": start_extract_page,
-            "end_extract_page": end_extract_page - 1,
-        }
-
-        print(
-            f"Income statement found {direction} balance sheet: chunk {target_chunk_index} "
-            f"(pages {chunk_start_page}-{chunk_end_page - 1}), "
-            f"extracting pages {start_extract_page}-{end_extract_page - 1}"
-        )
-
-        return extracted_text, start_extract_page, log_info
-
-    except Exception as e:
-        print(f"Error finding income statement near balance sheet: {str(e)}")
-        import traceback
-
-        traceback.print_exc()
-        return None, None, None
 
 
 def check_income_statement_completeness_llm(
@@ -577,7 +378,6 @@ def extract_income_statement_llm(
 ) -> dict:
     """
     Use LLM to extract income statement line items exactly line by line.
-    Also extracts revenue for the same period in the prior year.
 
     Args:
         text: Text containing income statement
@@ -594,9 +394,7 @@ def extract_income_statement_llm(
 
     prompt = f"""Extract the income statement (also called "consolidated statement of operations" or "statement of earnings") from the following document text for the {period_info}.
 Extract the income statement exactly line by line, including all line items and their values starting with revenue.
-If the company is foreign, extract the values in the local currency.
-
-Also extract the revenue for the same period in the prior year (for year-over-year growth calculation).
+If the company is foreign, extract the values in the local currency (RMB, EUR, CAD, JPY).
 
 CRITICAL ANTI-HALLUCINATION RULES:
 - ONLY extract values that are EXPLICITLY shown in the document text below
@@ -607,16 +405,13 @@ CRITICAL ANTI-HALLUCINATION RULES:
 - DO NOT use any external knowledge or assumptions
 - Every line_value must correspond to an actual number shown in the document text
 - If currency or unit is not explicitly stated in the document, use null
-- For revenue_prior_year, ONLY extract if you can find the same period in the prior year explicitly stated in the document text - do not calculate or infer it
 
 Return a JSON object with the following structure:
 {{
-    "currency": currency code,
+    "currency": currency code (USD RMB EUR CAD or JPY),
     "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract ONLY if explicitly stated like "in millions", "in thousands", etc., otherwise null),
     "time_period": "{time_period}",
     "period_end_date": "{period_end_date}" if known else null,
-    "revenue_prior_year": revenue for the same period in the prior year (as number, null if not EXPLICITLY found in document),
-    "revenue_prior_year_unit": unit for revenue_prior_year - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (usually same as "unit", null if revenue_prior_year is null),
     "line_items": [
         {{
             "line_name": "exact name as it appears in the document but shortened. Do not include long notes. Do not include texts after net of...",
@@ -637,7 +432,6 @@ IMPORTANT:
 - Extract the currency code
 - Extract the unit ONLY if the document explicitly states it (look for phrases like "in millions", "in thousands", "in billions", or "in ten thousands")
 - Values should be numeric (not strings with commas or currency symbols)
-- For revenue_prior_year, look for the same period in the prior year (e.g., if time_period is "Q3 2023", look for "Q3 2022" revenue) - ONLY if explicitly shown in the document text, otherwise use null
 - Use "ten_thousands" ONLY if the document explicitly states values are in ten thousands
 
 - If you cannot find a specific value in the document text, DO NOT make it up - use null or omit it
@@ -694,7 +488,7 @@ def extract_income_statement_llm_with_feedback(
 
     prompt = f"""Extract the income statement (also called "consolidated statement of operations" or "statement of earnings") from the following document text for the {period_info}.
 Extract the income statement exactly line by line, including all line items and their values starting with revenue.
-If the company is foreign, extract the values in the local currency.
+If the company is foreign, extract the values in the local currency (RMB, EUR, CAD, JPY).
 
 PREVIOUS EXTRACTION ATTEMPT:
 {previous_items_text}
@@ -710,12 +504,10 @@ Please review the previous extraction and fix the issues. Pay special attention 
 
 Return a JSON object with the following structure:
 {{
-    "currency": currency code,
+    "currency": currency code (USD RMB EUR CAD or JPY),
     "unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (extract from document, e.g., if values are in millions, use "millions"),
     "time_period": "{time_period}",
     "period_end_date": "{period_end_date}" if known else null,
-    "revenue_prior_year": revenue for the same period in the prior year (as number, null if not found),
-    "revenue_prior_year_unit": unit for revenue_prior_year - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (usually same as "unit", null if revenue_prior_year is null),
     "line_items": [
         {{
             "line_name": "exact name as it appears in the document but shortened. Do not include long notes. Do not include texts after net of...",
@@ -745,7 +537,6 @@ IMPORTANT:
 - Extract the currency code
 - Extract the unit ONLY if the document explicitly states it (look for phrases like "in millions", "in thousands", "in billions", or "in ten thousands")
 - Values should be numeric (not strings with commas or currency symbols)
-- For revenue_prior_year, look for the same period in the prior year (e.g., if time_period is "Q3 2023", look for "Q3 2022" revenue) - ONLY if explicitly shown in the document text, otherwise use null
 - Use "ten_thousands" ONLY if the document explicitly states values are in ten thousands
 - IMPORTANT: Line items are normalized for costs to show as negative (e.g., Cost of Revenue should be negative). If the document shows costs as positive, you may need to convert them to negative to match the expected format.
 - Carefully review the validation errors and fix the issues in your extraction by referencing the actual document text - do not invent values to fix calculation errors
@@ -771,6 +562,91 @@ Return only valid JSON, no additional text."""
         raise Exception(f"Error extracting income statement: {str(e)}")
 
 
+def extract_prior_year_revenue(
+    text: str,
+    time_period: str,
+    current_revenue: float | None = None,
+    revenue_line_name: str | None = None,
+    unit: str | None = None,
+) -> tuple[float | None, str | None]:
+    """
+    Extract prior year revenue using LLM with rich context.
+
+    Args:
+        text: Text containing income statement
+        time_period: Current time period (e.g., "Q3 2023")
+        current_revenue: Current period revenue value for context
+        revenue_line_name: Raw line item name from the income statement (e.g., "Total Net Revenues")
+        unit: Unit of measurement from current period extraction
+
+    Returns:
+        Tuple of (revenue_prior_year, revenue_prior_year_unit)
+    """
+    # Determine the prior year period
+    # e.g., "Q3 2023" -> "Q3 2022", "FY 2023" -> "FY 2022"
+    import re
+
+    year_match = re.search(r"(\d{4})", time_period)
+    if not year_match:
+        print(f"Could not parse year from time_period: {time_period}")
+        return None, None
+
+    current_year = int(year_match.group(1))
+    prior_year = current_year - 1
+    prior_period = time_period.replace(str(current_year), str(prior_year))
+
+    # Build context information
+    context_info = ""
+    if current_revenue is not None:
+        context_info = (
+            f"\n\nCONTEXT: The current period ({time_period}) revenue is {current_revenue}."
+        )
+        if revenue_line_name:
+            context_info += f' This value is from the line item: "{revenue_line_name}".'
+        context_info += f" You are looking for the {prior_period} value from the SAME ROW in the comparative financial statement."
+
+    extraction_prompt = f"""Extract the revenue (or total revenue, or net revenue) for {prior_period} from the following document text.{context_info}
+
+CRITICAL ANTI-HALLUCINATION RULES:
+- ONLY extract the value if it is EXPLICITLY shown in the document text below
+- DO NOT invent, infer, calculate, estimate, or approximate any values
+- Look for revenue line items in comparative columns (prior year columns)
+- The value must be from the SAME ROW as the current period revenue in the financial statement table
+- The value must be clearly labeled as being for {prior_period}
+- If you cannot find the value explicitly stated, return null
+
+Return a JSON object:
+{{
+    "revenue_prior_year": numeric value for {prior_period} revenue (null if not found),
+    "revenue_prior_year_unit": unit - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (null if not found),
+    "explanation": "brief explanation of where you found this value in the document (mention the row/line item name)"
+}}
+
+Document text:
+{text[:30000]}
+
+Return only valid JSON, no additional text."""
+
+    try:
+        result = call_llm_and_parse_json(extraction_prompt, temperature=0.0)
+
+        revenue_value = result.get("revenue_prior_year")
+        revenue_unit = result.get("revenue_prior_year_unit")
+        explanation = result.get("explanation", "")
+
+        if revenue_value is None:
+            print(f"Prior year revenue not found for {prior_period}")
+            return None, None
+
+        print(f"Prior year revenue extracted: {revenue_value} ({revenue_unit}) for {prior_period}")
+        print(f"Explanation: {explanation}")
+        return revenue_value, revenue_unit
+
+    except Exception as e:
+        print(f"Error extracting prior year revenue: {str(e)}")
+        return None, None
+
+
 def post_process_income_statement_line_items(
     line_items: list[dict],
 ) -> tuple[list[dict], list[str]]:
@@ -794,7 +670,7 @@ def post_process_income_statement_line_items(
     # Confirmed expenses (is_expense=True) should be negative
     for item in processed_items:
         is_expense = item.get("is_expense")
-        line_value = item.get("line_value", 0)
+        line_value = item.get("line_value") or 0
 
         if is_expense is True and line_value > 0:
             # Flip to negative
@@ -816,7 +692,9 @@ def post_process_income_statement_line_items(
         return sum(
             item["line_value"]
             for item in processed_items
-            if item.get("is_calculated") is False and filter_func(item)
+            if item.get("is_calculated") is False
+            and item.get("line_value") is not None
+            and filter_func(item)
         )
 
     # Validate Total Revenue - Costs = Income before taxes
@@ -834,6 +712,7 @@ def post_process_income_statement_line_items(
             item
             for item in processed_items
             if item.get("is_calculated") is False
+            and item.get("line_value") is not None
             and item.get("standardized_name") not in ["total_revenue", "income_before_taxes"]
             and processed_items.index(item)
             > next(

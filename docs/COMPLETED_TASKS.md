@@ -202,3 +202,20 @@ This document serves as an archive of completed tasks from the Project Planning.
 - [x] Removed unused legacy agents and helper functions
 - [x] Optimized pipeline by replacing multiple LLM calls with single transformer inference
 - [x] Updated `ARCHITECTURE.md` and `DATABASE_SCHEMA.md` to reflect new flow
+
+### Phase 13.7: Tiger-Transformer frontend fixes
+- [x] Document Extraction View, Non-GAAP Reconcilidation - remove the "standardized name" column
+- [x] Document Extraction View, Non-Operating Items Classification - several fixes
+    - populate the standardized name column
+    - replace the calculated column with the name of the classification (this field should already exist somewhere)
+    - this table should only be filled with line items that are is_operating=false, is_calculated=false
+    - in the bs_calculated_operating.csv, there should now be a column called nonoperating_category. Replace the LLM call for classification with just a lookup based on standardized name
+- [x] Document Extraction View, Invested Capital Tables (there are three), replace category column with standardized name and ensure it is populated
+- [x] Document Extraction View, Invested Capital Tables (there are three), double check the logic to show the items
+    - the Net Working Capital table should be category=current_assets OR current_liabilities is_calculated=false, is_operating=true
+    - the Net Long Term Operating Assets table should be category=noncurrent_assets OR noncurrent_liabilities is_calculated=false, is_operating=true
+- [x] Document Extraction View, EBITA table and logic
+    - there is a rare case where operating_income does not exist. In which case, the calculation should use income_before_taxes as the starting point
+- [x] Document Extraction View, Adjusted Tax Rate table and logic
+    - Effective Tax Rate should be calculated with income_tax_provision / income_before_taxes with fallbacks using standardized names
+    - The Provision for Income Taxes line in the table and the logic is pulling incorrectly. Make sure it pulls from income_tax_provision
