@@ -4,57 +4,139 @@
 .companies-list {
     flex: 1;
     overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+    padding-right: 0.5rem;
+    /* Space for scrollbar */
+    align-content: start;
+}
+
+.company-item {
+    padding: 1.25rem;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid var(--border);
+    background-color: var(--bg-surface);
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
 }
 
-.company-item {
-    padding: 1rem;
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
-    border: 1px solid var(--border);
-    background-color: var(--bg-surface);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
 .company-item:hover {
-    border-color: rgba(10, 132, 255, 0.4);
-    transform: translateY(-1px);
-    box-shadow: 0 10px 24px var(--shadow);
+    border-color: var(--primary);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
 }
 
 .company-info {
-    flex: 1;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
 }
 
 .company-name {
+    font-size: 1.1rem;
     font-weight: 600;
     color: var(--text-primary);
-    margin-bottom: 0.35rem;
+    line-height: 1.3;
 }
 
 .company-ticker {
     font-size: 0.75rem;
-    color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+    background: var(--bg-subtle);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
 }
 
-.document-count-badge {
-    background-color: var(--primary);
-    color: white;
-    border-radius: 999px;
-    padding: 0 0.6rem;
-    font-size: 1.0rem;
-    font-weight: 600;
-    min-width: 28px;
-    height: 28px;
+.company-stats {
     display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: 0.75rem;
+}
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
     align-items: center;
-    justify-content: center;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    font-size: 0.85rem;
+}
+
+.stat-label {
+    color: var(--text-secondary);
+}
+
+.stat-value {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.stat-value.needs-val {
+    color: var(--text-tertiary);
+    font-style: italic;
+}
+
+.valuation-badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.8rem;
+}
+
+.val-green {
+    background-color: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+}
+
+.val-yellow {
+    background-color: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+}
+
+
+.val-red {
+    background-color: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+/* Sort Buttons */
+.sort-buttons {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.sort-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-right: 0.25rem;
+}
+
+.sort-btn {
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: 500;
+}
+
+.sort-btn:hover {
+    background: var(--bg-subtle);
+    color: var(--text-primary);
+}
+
+.sort-btn.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
 }

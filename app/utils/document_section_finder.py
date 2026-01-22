@@ -31,35 +31,6 @@ def cosine_similarity(a: Iterable[float], b: Iterable[float]) -> float:
     return dot_product / (norm_a * norm_b) if (norm_a * norm_b) > 0 else 0
 
 
-def _extract_page_range_text(file_path: str, start_page: int, end_page: int) -> str:
-    import logging
-
-    import pdfplumber
-
-    # Suppress noisy pdfminer warnings
-    logging.getLogger("pdfminer").setLevel(logging.ERROR)
-
-    text_parts = []
-    with pdfplumber.open(file_path) as pdf:
-        total_pages = len(pdf.pages)
-        clamped_start = max(0, min(start_page, total_pages))
-        clamped_end = max(clamped_start, min(end_page, total_pages))
-
-        for page_index in range(clamped_start, clamped_end):
-            page_text = pdf.pages[page_index].extract_text()
-            if page_text:
-                text_parts.append(page_text)
-    return "\n\n".join(text_parts)
-
-
-def _numeric_density(text: str) -> float:
-    if not text:
-        return 0.0
-    digit_count = sum(1 for char in text if char.isdigit())
-    alpha_count = sum(1 for char in text if char.isalpha())
-    return digit_count / max(1, digit_count + alpha_count)
-
-
 def _count_numbers(text: str) -> int:
     """Count occurrences of numerical values in text."""
     if not text:
@@ -113,8 +84,8 @@ def _find_document_section_legacy(
     query_texts: list[str],
     chunk_size: int | None = None,
     score_threshold: float = 0.3,
-    pages_before: int = 1,
-    pages_after: int = 1,
+    chars_before: int = 2500,
+    chars_after: int = 2500,
     rerank_top_k: int = 0,
     rerank_query_texts: list[str] | None = None,
     ignore_front_fraction: float = 0.0,
@@ -131,13 +102,13 @@ def _find_document_section_legacy(
         document_id: Document ID
         file_path: Path to PDF file
         query_texts: Query phrases to search for
-        chunk_size: Size of a chunk in pages; falls back to indexed metadata
+        chunk_size: Size of a chunk in characters; falls back to indexed metadata
         score_threshold: Minimum similarity score to consider a match
-        pages_before: Number of pages to include before the best matching chunk (default: 1)
-        pages_after: Number of pages to include after the best matching chunk (default: 1)
+        chars_before: Number of characters to include before the best matching chunk (default: 2500)
+        chars_after: Number of characters to include after the best matching chunk (default: 2500)
 
     Returns:
-        Tuple of (extracted_text, start_page) or (None, None) if not found
+        Tuple of (extracted_text, start_char, log_info) or (None, None, None) if not found
     """
     try:
         chunk_metadata = get_chunk_metadata(document_id)
@@ -147,18 +118,15 @@ def _find_document_section_legacy(
             )
             return None, None
 
-        resolved_chunk_size = chunk_size or chunk_metadata.get("chunk_size", 2)
+        resolved_chunk_size = chunk_size or chunk_metadata.get("chunk_size", 5000)
+        total_characters = chunk_metadata.get("total_characters", 0)
         num_chunks = chunk_metadata.get("num_chunks", 0)
 
         if num_chunks == 0:
             print(f"No chunks found for document {document_id}")
             return None, None
 
-        # Get total pages
-        import pdfplumber
-
-        with pdfplumber.open(file_path) as pdf:
-            total_pages = len(pdf.pages)
+        # No need to get total pages for character-based chunking
 
         # Generate query embeddings for all query texts
         query_embeddings = [
@@ -173,7 +141,9 @@ def _find_document_section_legacy(
 
         # Search through all chunks to find the best match
         for chunk_index in search_range:
-            chunk_text, _, _ = get_chunk_text(file_path, chunk_index, resolved_chunk_size)
+            chunk_text, _, _ = get_chunk_text(
+                file_path, chunk_index, resolved_chunk_size, document_id
+            )
             if not chunk_text:
                 continue
 
@@ -234,7 +204,7 @@ def _find_document_section_legacy(
 
                     if not chunk_embedding:
                         chunk_text, _, _ = get_chunk_text(
-                            file_path, chunk_index, resolved_chunk_size
+                            file_path, chunk_index, resolved_chunk_size, document_id
                         )
                         chunk_embedding = generate_embedding_safe(
                             chunk_text[:20000], max_chars=20000, task_type="retrieval_document"
@@ -314,21 +284,21 @@ def _find_document_section_legacy(
 
         if best_score > score_threshold and best_chunk_index >= 0:
             # Calculate the page range for the best matching chunk
-            chunk_start_page = best_chunk_index * resolved_chunk_size
-            chunk_end_page = min(chunk_start_page + resolved_chunk_size, total_pages)
+            # Calculate character positions
+            chunk_start_char = best_chunk_index * resolved_chunk_size
+            chunk_end_char = min(chunk_start_char + resolved_chunk_size, total_characters)
 
-            # Extract pages: pages_before pages before the chunk start,
-            # the entire chunk, and pages_after pages after the chunk end
-            start_extract_page = max(0, chunk_start_page - pages_before)
-            end_extract_page = min(total_pages, chunk_end_page + pages_after)
+            # Add context before and after
+            start_extract_char = max(0, chunk_start_char - chars_before)
+            end_extract_char = min(total_characters, chunk_end_char + chars_after)
 
             log_info = {
                 "best_chunk_index": best_chunk_index,
-                "chunk_start_page": chunk_start_page,
-                "chunk_end_page": chunk_end_page - 1,
+                "chunk_start_char": chunk_start_char,
+                "chunk_end_char": chunk_end_char - 1,
                 "similarity": best_score,
-                "start_extract_page": start_extract_page,
-                "end_extract_page": end_extract_page - 1,
+                "start_extract_char": start_extract_char,
+                "end_extract_char": end_extract_char - 1,
                 "search_range": {"start": search_range.start, "end": search_range.stop - 1},
             }
             if rerank_details is not None:
@@ -337,14 +307,17 @@ def _find_document_section_legacy(
 
             rank_text = f" (rank {chunk_rank + 1})" if chunk_rank > 0 else ""
             print(
-                f"Best match{rank_text}: chunk {best_chunk_index} (pages {chunk_start_page}-{chunk_end_page - 1}), "
-                f"similarity={best_score:.3f}, extracting pages {start_extract_page}-{end_extract_page - 1}"
+                f"Best match{rank_text}: chunk {best_chunk_index} (chars {chunk_start_char}-{chunk_end_char - 1}), "
+                f"similarity={best_score:.3f}, extracting chars {start_extract_char}-{end_extract_char - 1}"
             )
 
-            extracted_text = _extract_page_range_text(
-                file_path, start_extract_page, end_extract_page
-            )
-            return extracted_text, start_extract_page, log_info
+            # Load full text from cache
+            from app.utils.document_indexer import load_full_document_text
+
+            full_text = load_full_document_text(document_id, file_path)
+            extracted_text = full_text[start_extract_char:end_extract_char]
+
+            return extracted_text, start_extract_char, log_info
 
         print(f"No match found above threshold {score_threshold}. Best score: {best_score:.3f}")
         return None, None, None
@@ -432,7 +405,7 @@ def find_top_numeric_chunks(
 
     # Iterate all chunks
     for chunk_index in range(num_chunks):
-        chunk_text, _, _ = get_chunk_text(file_path, chunk_index, resolved_chunk_size)
+        chunk_text, _, _ = get_chunk_text(file_path, chunk_index, resolved_chunk_size, document_id)
         if not chunk_text:
             continue
 
@@ -446,46 +419,113 @@ def find_top_numeric_chunks(
     return [item["chunk_index"] for item in chunk_counts[:top_k]]
 
 
+def rank_chunks_by_query(
+    document_id: str,
+    file_path: str,
+    chunk_indices: list[int],
+    query_texts: list[str],
+    chunk_size: int | None = None,
+) -> list[int]:
+    """
+    Rank a list of chunk indices by their similarity to query texts.
+
+    Args:
+        document_id: Document ID
+        file_path: Path to PDF file
+        chunk_indices: List of chunk indices to rank
+        query_texts: Query phrases to search for
+        chunk_size: Number of characters per chunk
+
+    Returns:
+        List of chunk indices sorted by query similarity (best first)
+    """
+    if not chunk_indices:
+        return []
+
+    chunk_metadata = get_chunk_metadata(document_id)
+    if not chunk_metadata:
+        print(f"No chunk metadata found for document {document_id}")
+        return chunk_indices  # Return original order if no metadata
+
+    resolved_chunk_size = chunk_size or chunk_metadata.get("chunk_size", 5000)
+
+    # Generate query embeddings for all query texts
+    query_embeddings = [
+        generate_embedding_safe(query_text, max_chars=20000, task_type="retrieval_query")
+        for query_text in query_texts
+    ]
+
+    # Calculate similarity scores for each chunk
+    chunk_scores = []
+    for chunk_index in chunk_indices:
+        # Load or generate chunk embedding
+        chunk_embedding = load_chunk_embedding(document_id, chunk_index)
+
+        if not chunk_embedding:
+            # Generate embedding if not found
+            chunk_text, _, _ = get_chunk_text(
+                file_path, chunk_index, resolved_chunk_size, document_id
+            )
+            chunk_embedding = generate_embedding_safe(
+                chunk_text[:20000], max_chars=20000, task_type="retrieval_document"
+            )
+            save_chunk_embedding(chunk_embedding, document_id, chunk_index)
+
+        # Calculate max similarity across all query embeddings
+        max_similarity = max(
+            cosine_similarity(chunk_embedding, query_embedding)
+            for query_embedding in query_embeddings
+        )
+
+        chunk_scores.append({"chunk_index": chunk_index, "similarity": max_similarity})
+
+    # Sort by similarity descending
+    chunk_scores.sort(key=lambda x: x["similarity"], reverse=True)
+
+    return [item["chunk_index"] for item in chunk_scores]
+
+
 def get_chunk_with_context(
     document_id: str,
     file_path: str,
     chunk_index: int,
-    pages_before: int = 1,
-    pages_after: int = 1,
+    chars_before: int = 2500,
+    chars_after: int = 2500,
     chunk_size: int | None = None,
 ) -> tuple[str, int, dict]:
     """
-    Get text for a specific chunk including context pages.
-    Returns (extracted_text, start_page, log_info)
+    Get text for a specific chunk including context characters.
+    Returns (extracted_text, start_char, log_info)
     """
     chunk_metadata = get_chunk_metadata(document_id)
     if not chunk_metadata:
         return "", 0, {}
 
-    resolved_chunk_size = chunk_size or chunk_metadata.get("chunk_size", 2)
+    resolved_chunk_size = chunk_size or chunk_metadata.get("chunk_size", 5000)
+    total_characters = chunk_metadata.get("total_characters", 0)
 
-    # Calculate pages
-    chunk_start_page = chunk_index * resolved_chunk_size
-    chunk_end_page = (
-        chunk_start_page + resolved_chunk_size
-    )  # Exclusive for calculation but we want inclusive for display usually?
-    # Logic in find_document_section:
-    # chunk_end_page = min(chunk_start_page + resolved_chunk_size, total_pages)
-    # end_extract_page (exclusive) = ...
+    # Calculate character positions
+    chunk_start_char = chunk_index * resolved_chunk_size
+    chunk_end_char = min(chunk_start_char + resolved_chunk_size, total_characters)
 
-    start_extract_page = max(0, chunk_start_page - pages_before)
-    # We don't know total matches here without opening PDF, but _extract_page_range_text handles clamping
-    # We'll just pass a large number if needed or just calculate based on logic
-    end_extract_page = chunk_end_page + pages_after
+    # Add context before and after
+    start_extract_char = max(0, chunk_start_char - chars_before)
+    end_extract_char = min(total_characters, chunk_end_char + chars_after)
 
-    extracted_text = _extract_page_range_text(file_path, start_extract_page, end_extract_page)
+    # Load full text from cache
+    from app.utils.document_indexer import load_full_document_text
+
+    full_text = load_full_document_text(document_id, file_path)
+
+    # Extract the text with context
+    extracted_text = full_text[start_extract_char:end_extract_char]
 
     log_info = {
         "best_chunk_index": chunk_index,
-        "chunk_start_page": chunk_start_page,
-        "chunk_end_page": chunk_end_page - 1,
-        "start_extract_page": start_extract_page,
-        "end_extract_page": end_extract_page - 1,
+        "chunk_start_char": chunk_start_char,
+        "chunk_end_char": chunk_end_char - 1,
+        "start_extract_char": start_extract_char,
+        "end_extract_char": end_extract_char - 1,
     }
 
-    return extracted_text, start_extract_page, log_info
+    return extracted_text, start_extract_char, log_info

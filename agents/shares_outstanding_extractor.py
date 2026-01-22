@@ -59,14 +59,14 @@ def extract_shares_outstanding(
     query_texts = ["weighted average", "shares", "basic", "diluted"]
 
     # Try ranks 0, 1, 2 in sequence (top 3 ranking chunks)
-    # Each attempt uses 1 chunk with 1 page before and 1 page after
+    # Each attempt uses 1 chunk with 2500 chars before and 2500 chars after
     for rank in [0, 1, 2]:
         text, chunk_index, log_info = find_document_section(
             document_id=document_id,
             file_path=file_path,
             query_texts=query_texts,
-            pages_before=1,
-            pages_after=1,
+            chars_before=2500,
+            chars_after=2500,
             rerank_top_k=3,
             score_threshold=0.25,
             chunk_rank=rank,

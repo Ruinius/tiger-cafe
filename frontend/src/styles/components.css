@@ -467,3 +467,96 @@
     font-size: 0.85rem;
     margin-bottom: 0.25rem;
 }
+
+
+/* 
+   ---------------------------
+   TOOLTIP COMPONENT
+   ---------------------------
+*/
+
+.tooltip-container {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 6px;
+    position: relative;
+    cursor: help;
+    vertical-align: middle;
+}
+
+.tooltip-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background-color: var(--text-disabled);
+    color: var(--bg-surface);
+    font-size: 10px;
+    font-weight: 700;
+    font-family: serif;
+    font-style: italic;
+    line-height: 1;
+    transition: background-color 0.2s;
+}
+
+.tooltip-container:hover .tooltip-icon {
+    background-color: var(--text-secondary);
+}
+
+.tooltip-text {
+    visibility: hidden;
+    width: max-content;
+    max-width: 280px;
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
+    text-align: left;
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    position: absolute;
+    z-index: 1000;
+    bottom: 140%;
+    left: 50%;
+    transform: translateX(-50%) translateY(4px);
+    opacity: 0;
+    transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 0.75rem;
+    line-height: 1.4;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06), 0 0 0 1px var(--border);
+    font-weight: 400;
+    pointer-events: none;
+    white-space: normal;
+}
+
+/* Arrow for tooltip */
+.tooltip-text::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -6px;
+    border-width: 6px;
+    border-style: solid;
+    border-color: var(--bg-surface) transparent transparent transparent;
+}
+
+/* Add a border to the arrow to match the tooltip border */
+.tooltip-text::before {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -7px;
+    border-width: 7px;
+    border-style: solid;
+    border-color: var(--border) transparent transparent transparent;
+    z-index: -1;
+}
+
+.tooltip-container:hover .tooltip-text {
+    visibility: visible;
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}

@@ -418,6 +418,8 @@ Stores historical valuation snapshots for tracking fair value estimates over tim
 - `documents.user_id`: Index for user document queries
 - `documents.company_id`: Index for company document queries
 - `documents.unique_id`: Unique index for deduplication
+- `balance_sheet_line_items`: Unique constraint on `(balance_sheet_id, line_order)`
+- `income_statement_line_items`: Unique constraint on `(income_statement_id, line_order)`
 - `financial_metrics.company_id`: Index for company metric queries
 - `financial_metrics.metric_name`: Index for metric type queries
 - `financial_metrics.period`: Index for time period queries
@@ -430,4 +432,5 @@ Stores historical valuation snapshots for tracking fair value estimates over tim
 ## Notes
 
 - The database defaults to SQLite (`tiger_cafe.db`) via `DATABASE_URL` in `.env`.
+- **Disk-Based Text Cache**: Full document text is NOT stored in the database but cached as `{document_id}_full_text.txt` in `data/storage/` for performance.
 - Historical migrations are archived in `migrations_archive/`. New schema changes should be reflected in models + baseline migration updates.

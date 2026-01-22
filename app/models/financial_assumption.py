@@ -40,5 +40,9 @@ class FinancialAssumption(Base):
     diluted_shares_outstanding = Column(Numeric(20, 2), nullable=True)  # Shares in actual units
     base_revenue = Column(Numeric(20, 2), nullable=True)  # Revenue in actual units
 
+    # Currency Conversion
+    currency_conversion_rate = Column(Numeric(10, 4), nullable=True)  # FX Rate if not USD
+    adr_conversion_factor = Column(Numeric(10, 4), nullable=True)  # ADR Ratio if applicable
+
     # Relationship
     company = relationship("Company", back_populates="financial_assumptions")

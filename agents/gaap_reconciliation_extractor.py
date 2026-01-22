@@ -6,11 +6,9 @@ Uses chunk-based embedding search to find reconciliation tables, similar to bala
 from __future__ import annotations
 
 import json
-import re
 
 from agents.extractor_utils import call_llm_with_retry, check_section_completeness_llm
 from app.models.document import DocumentType
-from app.utils.document_section_finder import find_document_section
 from app.utils.financial_statement_progress import (
     FinancialStatementMilestone,
     add_log,
@@ -52,9 +50,28 @@ def extract_gaap_reconciliation(
     chunk_index = None
 
     # Get top numeric chunks
-    from app.utils.document_section_finder import find_top_numeric_chunks, get_chunk_with_context
+    from app.utils.document_section_finder import (
+        find_top_numeric_chunks,
+        get_chunk_with_context,
+        rank_chunks_by_query,
+    )
 
-    candidate_chunks = find_top_numeric_chunks(document_id, file_path, top_k=5)
+    # Step 1: Find top-10 chunks by number density
+    top_numeric_chunks = find_top_numeric_chunks(document_id, file_path, top_k=10)
+
+    # Step 2: Rank those top-10 chunks by query similarity
+    query_texts = [
+        "amortization",
+        "depreciation",
+        "stock-based",
+        "acquisition",
+        "restructuring",
+        "non-GAAP",
+        "adjusted",
+        "reconciliation",
+        "impairment",
+    ]
+    candidate_chunks = rank_chunks_by_query(document_id, file_path, top_numeric_chunks, query_texts)
 
     if not candidate_chunks:
         print("No chunks found with numbers, falling back to legacy search")  # Optional fallback
@@ -65,12 +82,12 @@ def extract_gaap_reconciliation(
         add_log(document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, chunk_msg)
 
         # Get chunk text with context
-        chunk_text, start_page, log_info = get_chunk_with_context(
-            document_id, file_path, idx, pages_before=1, pages_after=1
+        chunk_text, start_char, log_info = get_chunk_with_context(
+            document_id, file_path, idx, chars_before=2500, chars_after=2500
         )
 
-        pages_msg = f"Extracted section (pages {log_info['start_extract_page']}-{log_info['end_extract_page']})"
-        print(pages_msg)
+        chars_msg = f"Extracted section (chars {log_info['start_extract_char']}-{log_info['end_extract_char']})"
+        print(chars_msg)
 
         # Check if this chunk has a complete reconciliation table
         completeness_msg = f"Checking if chunk {idx} contains complete reconciliation table"
@@ -244,140 +261,6 @@ def extract_gaap_reconciliation(
         "is_valid": is_valid,
         "validation_errors": validation_errors,
     }
-
-
-def find_gaap_ebitda_reconciliation_section(
-    document_id: str,
-    file_path: str,
-    time_period: str,
-    document_type: DocumentType | None = None,
-    chunk_rank: int = 0,
-    enable_logging: bool = True,
-) -> tuple[str | None, int | None, dict | None]:
-    """
-    Use document embedding to locate the GAAP reconciliation or EBITDA reconciliation table.
-    This is used specifically for earnings announcements.
-
-    Args:
-        document_id: Document ID
-        file_path: Path to PDF file
-        time_period: Time period to search for (e.g., "Q3 2023")
-        document_type: Document type (should be EARNINGS_ANNOUNCEMENT)
-        chunk_rank: Rank of chunk to select (0 = best match, 1 = second best, etc.)
-        enable_logging: Whether to add progress logs
-
-    Returns:
-        Tuple of (extracted_text, start_page, log_info) or (None, None, None) if not found
-    """
-    try:
-        if enable_logging:
-            rank_text = f" (rank {chunk_rank + 1})" if chunk_rank > 0 else ""
-            section_msg = f"Finding GAAP/EBITDA reconciliation section{rank_text}"
-            print(section_msg)
-            add_log(
-                document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, section_msg
-            )
-        # Determine ignore fractions based on document type
-        doc_type_str = (
-            document_type.value
-            if hasattr(document_type, "value")
-            else str(document_type)
-            if document_type
-            else None
-        )
-
-        if doc_type_str == "earnings_announcement":
-            # For earnings announcements, ignore first 50% of chunks and look in second 50%
-            ignore_front_fraction = 0.5
-            ignore_back_fraction = 0.0
-        else:
-            # Default: ignore 10% from both edges
-            ignore_front_fraction = 0.1
-            ignore_back_fraction = 0.1
-
-        # Initial query texts for finding GAAP/EBITDA reconciliation tables
-        query_texts = [
-            "GAAP reconciliation",
-            "EBITDA reconciliation",
-            "reconciliation of GAAP",
-            "reconciliation of EBITDA",
-            "non-GAAP reconciliation",
-            "adjusted EBITDA",
-        ]
-
-        # Re-ranking query terms: common reconciliation table line items
-        def normalize_term(term: str) -> str:
-            # Lowercase, remove special characters except spaces, normalize whitespace
-            normalized = term.lower()
-            normalized = re.sub(r"[()]", "", normalized)  # Remove parentheses
-            normalized = normalized.replace(",", "")  # Remove commas
-            normalized = re.sub(r"\s+", " ", normalized)  # Normalize whitespace
-            return normalized.strip()
-
-        rerank_query_texts = [
-            "amortization",
-            "depreciation",
-            "stock-based compensation",
-            "acquisition-related",
-            "restructuring",
-            "non-GAAP",
-            "adjusted",
-            "reconciliation",
-        ]
-        rerank_query_texts = [normalize_term(term) for term in rerank_query_texts]
-
-        result = find_document_section(
-            document_id=document_id,
-            file_path=file_path,
-            query_texts=query_texts,
-            chunk_size=None,
-            score_threshold=0.3,
-            pages_before=1,  # Include 1 page before the best chunk
-            pages_after=1,  # Include 1 page after the best chunk
-            rerank_top_k=5,
-            rerank_query_texts=rerank_query_texts,
-            ignore_front_fraction=ignore_front_fraction,
-            ignore_back_fraction=ignore_back_fraction,
-            chunk_rank=chunk_rank,
-            min_numbers=10,
-        )
-        # Handle both old (2-tuple) and new (3-tuple) return formats for backward compatibility
-        if len(result) == 2:
-            text, start_page = result
-            log_info = None
-        else:
-            text, start_page, log_info = result
-
-        if enable_logging and text and log_info:
-            rank_text = f" (rank {chunk_rank + 1})" if chunk_rank > 0 else ""
-            chunk_msg = f"Best match{rank_text}: chunk {log_info.get('best_chunk_index')} (pages {log_info.get('chunk_start_page')}-{log_info.get('chunk_end_page')})"
-            print(chunk_msg)
-            add_log(document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, chunk_msg)
-
-            pages_msg = f"Found GAAP/EBITDA reconciliation section (pages {log_info.get('start_extract_page')}-{log_info.get('end_extract_page')})"
-            print(pages_msg)
-            add_log(document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, pages_msg)
-
-            found_msg = f"Found GAAP/EBITDA reconciliation section starting at page {start_page}, extracted {len(text)} characters"
-            print(found_msg)
-            add_log(document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, found_msg)
-        elif enable_logging and not text:
-            not_found_msg = f"GAAP/EBITDA reconciliation section not found (rank {chunk_rank + 1})"
-            print(not_found_msg)
-            add_log(
-                document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, not_found_msg
-            )
-
-        if len(result) == 2:
-            return result[0], result[1], None
-        return result
-
-    except Exception as e:
-        error_msg = f"Error finding GAAP/EBITDA reconciliation section: {str(e)}"
-        print(error_msg)
-        if enable_logging:
-            add_log(document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, error_msg)
-        return None, None, None
 
 
 def check_table_completeness(

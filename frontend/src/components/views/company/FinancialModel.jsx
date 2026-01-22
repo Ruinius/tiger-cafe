@@ -11,6 +11,20 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState(null)
 
+    // Helper function to bound WACC to 7-11% range
+    const boundWacc = (value) => {
+        if (value === null || value === undefined) return 0.09 // Default to 9% if no value
+        const numValue = parseFloat(value)
+        return Math.max(0.07, Math.min(0.11, numValue))
+    }
+
+    const ToolTip = ({ text }) => (
+        <div className="tooltip-container">
+            <div className="tooltip-icon">i</div>
+            <div className="tooltip-text">{text}</div>
+        </div>
+    )
+
     // Initial load of assumptions
     useEffect(() => {
         if (!selectedCompany) return
@@ -36,13 +50,15 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                     marginal_capital_turnover_terminal: data.marginal_capital_turnover_terminal ?? 1.0,
                     beta: data.beta ?? 1.0,
                     adjusted_tax_rate: data.adjusted_tax_rate ?? 0.25,
-                    wacc: data.wacc ?? 0.08,
+                    wacc: boundWacc(data.wacc),
                     diluted_shares_outstanding: data.diluted_shares_outstanding ?? null,
                     base_revenue: data.base_revenue ?? null,
                     weight_of_equity: data.weight_of_equity ?? 1.0,
                     cost_of_debt: data.cost_of_debt ?? 0.05,
-                    calculated_wacc: data.calculated_wacc ?? 0.08,
-                    market_cap: data.market_cap ?? 0
+                    calculated_wacc: data.calculated_wacc ?? 0.09,
+                    market_cap: data.market_cap ?? 0,
+                    currency_conversion_rate: data.currency_conversion_rate ?? 1.0,
+                    adr_conversion_factor: data.adr_conversion_factor ?? 1.0
                 })
             } catch (err) {
                 console.error("Failed to load assumptions", err)
@@ -59,18 +75,19 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                     marginal_capital_turnover_terminal: 1.0,
                     beta: 1.0,
                     adjusted_tax_rate: 0.25,
-                    wacc: 0.08,
+                    wacc: 0.09,
                     diluted_shares_outstanding: null,
                     base_revenue: null,
                     weight_of_equity: 1.0,
                     cost_of_debt: 0.05,
-                    calculated_wacc: 0.08,
+                    calculated_wacc: 0.09,
                     market_cap: 0
                 })
             }
         }
         loadAssumptions()
     }, [selectedCompany, isAuthenticated, token])
+
 
     // Load Model whenever assumptions change (debounced?)
     // For now, let's load it on mount or when assumptions are saved.
@@ -406,6 +423,9 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                 { headers }
             )
             // Update local state with reset values
+            console.log('[resetAssumptions] Received response.data:', response.data)
+            console.log('[resetAssumptions] currency_conversion_rate:', response.data.currency_conversion_rate)
+            console.log('[resetAssumptions] adr_conversion_factor:', response.data.adr_conversion_factor)
             setAssumptions({
                 revenue_growth_stage1: response.data.revenue_growth_stage1 ?? 0.05,
                 revenue_growth_stage2: response.data.revenue_growth_stage2 ?? 0.04,
@@ -418,13 +438,15 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                 marginal_capital_turnover_terminal: response.data.marginal_capital_turnover_terminal ?? 1.0,
                 beta: response.data.beta ?? 1.0,
                 adjusted_tax_rate: response.data.adjusted_tax_rate ?? 0.25,
-                wacc: response.data.wacc ?? 0.08,
+                wacc: boundWacc(response.data.wacc),
                 diluted_shares_outstanding: response.data.diluted_shares_outstanding ?? null,
                 base_revenue: response.data.base_revenue ?? null,
                 weight_of_equity: response.data.weight_of_equity ?? 1.0,
                 cost_of_debt: response.data.cost_of_debt ?? 0.05,
-                calculated_wacc: response.data.calculated_wacc ?? 0.08,
-                market_cap: response.data.market_cap ?? 0
+                calculated_wacc: response.data.calculated_wacc ?? 0.09,
+                market_cap: response.data.market_cap ?? 0,
+                currency_conversion_rate: response.data.currency_conversion_rate ?? 1.0,
+                adr_conversion_factor: response.data.adr_conversion_factor ?? 1.0
             })
             // Reload model with new defaults
             loadModel()
@@ -457,7 +479,9 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
 
     const formatDecimal = (value) => {
         if (value === null || value === undefined) return 'N/A'
-        return value.toFixed(2)
+        const num = parseFloat(value)
+        if (isNaN(num)) return 'N/A'
+        return num.toFixed(2)
     }
 
     if (!assumptions) return <div>Loading assumptions...</div>
@@ -579,23 +603,21 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                             />
                         </label>
                         <label>
-                            Cost of Equity:
+                            <span>Cost of Equity: <ToolTip text="Calculated using CAPM: 4.2% risk-free rate + Beta × 5.0% market risk premium" /></span>
                             <input
                                 type="text"
                                 value={formatPercent(0.042 + (Number(assumptions.beta) || 1.0) * 0.05)}
                                 disabled
                                 style={{ backgroundColor: 'var(--bg-base)', cursor: 'not-allowed' }}
-                                title="Calculated using CAPM: 4.2% risk-free rate + Beta × 5.0% market risk premium"
                             />
                         </label>
                         <label>
-                            Weight of Equity:
+                            <span>Weight of Equity <ToolTip text={`Market Cap / (Market Cap + Debt). Market Cap: ${formatNumber(assumptions.market_cap / (unit === 'millions' ? 1000000 : unit === 'billions' ? 1000000000 : unit === 'thousands' ? 1000 : 1))} ${unit || ''}`} />:</span>
                             <input
                                 type="text"
                                 value={formatPercent(assumptions.weight_of_equity)}
                                 disabled
                                 style={{ backgroundColor: 'var(--bg-base)', cursor: 'not-allowed' }}
-                                title={`Market Cap / (Market Cap + Debt). Market Cap: ${formatNumber(assumptions.market_cap)}`}
                             />
                         </label>
                     </div>
@@ -604,23 +626,21 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                     <div className="assumption-group">
                         <h5>&nbsp;</h5>
                         <label>
-                            Cost of Debt:
+                            <span>Cost of Debt: <ToolTip text="Annualized interest expense / total debt. Minimum 5.0%." /></span>
                             <input
                                 type="text"
                                 value={formatPercent(assumptions.cost_of_debt)}
                                 disabled
                                 style={{ backgroundColor: 'var(--bg-base)', cursor: 'not-allowed' }}
-                                title="Annualized interest expense / total debt. Minimum 5.0%."
                             />
                         </label>
                         <label>
-                            Calculated WACC:
+                            <span>Calculated WACC: <ToolTip text="(Cost of Equity × Weight of Equity) + (Cost of Debt × (1 - 25% Tax) × (1 - Weight of Equity))" /></span>
                             <input
                                 type="text"
                                 value={formatPercent(assumptions.calculated_wacc)}
                                 disabled
                                 style={{ backgroundColor: 'var(--bg-base)', cursor: 'not-allowed' }}
-                                title="(Cost of Equity × Weight of Equity) + (Cost of Debt × (1 - 25% Tax) × (1 - Weight of Equity))"
                             />
                         </label>
                         <label>
@@ -836,9 +856,59 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                                             <td className="text-right">{formatNumber(modelData.diluted_shares_outstanding)}</td>
                                         </tr>
                                         <tr className="key-total-row">
-                                            <td>Fair Value per Share</td>
+                                            <td>{currency && currency !== 'USD' ? `Fair Value per Share (${currency})` : "Fair Value per Share"}</td>
                                             <td className="text-right">{formatDecimal(modelData.fair_value_per_share)}</td>
                                         </tr>
+
+                                        {currency && currency !== 'USD' && (
+                                            <>
+                                                <tr>
+                                                    <td>Currency Conversion (USD/{currency})</td>
+                                                    <td className="text-right">
+                                                        {assumptions.currency_conversion_rate ? Number(assumptions.currency_conversion_rate).toFixed(4) : 'N/A'}
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Fair Value per Share (USD)</td>
+                                                    <td className="text-right">
+                                                        {formatDecimal(modelData.fair_value_per_share * (assumptions.currency_conversion_rate || 1))}
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>ADR Conversion Factor (Shares per ADR)</td>
+                                                    <td className="text-right" style={{ padding: '0.75rem 1.5rem' }}>
+                                                        <input
+                                                            type="number"
+                                                            step="0.0001"
+                                                            value={assumptions.adr_conversion_factor || ''}
+                                                            onChange={(e) => handleAssumptionChange('adr_conversion_factor', parseFloat(e.target.value) || 0)}
+                                                            onBlur={(e) => {
+                                                                const val = parseFloat(e.target.value)
+                                                                if (!isNaN(val)) {
+                                                                    handleAssumptionChange('adr_conversion_factor', val)
+                                                                }
+                                                            }}
+                                                            style={{
+                                                                width: '100px',
+                                                                padding: '0.25rem 0.5rem',
+                                                                border: '1px solid var(--border)',
+                                                                borderRadius: '4px',
+                                                                backgroundColor: 'var(--bg-primary)',
+                                                                color: 'var(--text-primary)',
+                                                                textAlign: 'right',
+                                                                fontSize: '0.9rem'
+                                                            }}
+                                                        />
+                                                    </td>
+                                                </tr>
+                                                <tr className="key-total-row">
+                                                    <td>Fair Value per ADR (USD)</td>
+                                                    <td className="text-right">
+                                                        {formatDecimal(modelData.fair_value_per_share * (assumptions.currency_conversion_rate || 1) * (assumptions.adr_conversion_factor || 1))}
+                                                    </td>
+                                                </tr>
+                                            </>
+                                        )}
 
                                         {modelData.current_share_price && parseFloat(modelData.current_share_price) > 0 && (
                                             <>

@@ -219,3 +219,22 @@ This document serves as an archive of completed tasks from the Project Planning.
 - [x] Document Extraction View, Adjusted Tax Rate table and logic
     - Effective Tax Rate should be calculated with income_tax_provision / income_before_taxes with fallbacks using standardized names
     - The Provision for Income Taxes line in the table and the logic is pulling incorrectly. Make sure it pulls from income_tax_provision
+
+## Phase 14: Financial Model Enhancements
+- [x] **WACC Section Updates**:
+    - Created a two-column layout for WACC assumptions inputs (Cost of Equity vs Cost of Debt).
+    - Implemented "Weight of Equity" calculation (Market Cap / (Market Cap + Debt)).
+    - Implemented "Cost of Debt" calculation (Interest Expense / Debt).
+    - Added bounds for WACC (7-11%) and Cost of Debt (min 5%).
+- [x] **New Assumptions**:
+    - Added "Diluted Shares Outstanding" and "Base Revenue" to the "Other" column.
+    - Added defaults from historical data for these fields.
+- [x] **UI Refinements**:
+    - Added decimal precision control (Marginal Capital Turnover: 2 decimals).
+    - Added formatting for shares (Millions/Billions) and revenue.
+    - Added tooltips for calculated fields (Cost of Equity, Weight of Equity, Cost of Debt, Calculated WACC).
+- [x] **Currency & ADR Support**:
+    - Implemented "Currency Conversion Rate" row (read-only) for non-USD companies.
+    - Implemented "ADR Conversion Factor" row (editable) for ADR stocks.
+    - Added backend logic to fetch exchange rates from Yahoo Finance (specifically handling RMB->CNY).
+    - Updated "Percent Undervalued" to correctly calculate using ADR-adjusted fair value.

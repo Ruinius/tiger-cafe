@@ -47,14 +47,20 @@ Navigation is hierarchical:
 **Trigger**: Initial Load / "Companies" Breadcrumb
 
 **Left Panel**: `CompanyList`
+- **Card-Based View**: Displays companies as cards with:
+  - Name and Ticker
+  - **Date Financials Cover**: The specific period of the latest data.
+  - **Most Recent Valuation**: Fair Value and Date.
+  - **Over/Under-valuation**: Color-coded status (Green/Red).
 - Searchable list of all companies
 - "Add Document" entry point
 - "Check Uploads" entry point (when uploads are active)
 
-**Right Panel**: `WelcomeView`
+**Right Panel**: `WelcomeView` (Global Analysis Dashboard)
+- **Valuation History**: Scatter plot showing Over/Under-valuation trends over time across the portfolio.
+- **Rule of 40 Map**: Scatter plot comparing Revenue Growth vs EBITA Margin to identify high-performance companies.
 - Global recent activity
 - System-wide stats
-- Empty state/Introduction
 
 **CSS**: `Dashboard.css`
 

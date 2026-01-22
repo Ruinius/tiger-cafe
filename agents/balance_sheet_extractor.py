@@ -10,12 +10,10 @@ from agents.extractor_utils import (
     check_section_completeness_llm,
 )
 from app.services.tiger_transformer_client import TigerTransformerClient
-from app.utils.document_section_finder import find_document_section
 from app.utils.financial_statement_progress import (
     FinancialStatementMilestone,
     add_log,
 )
-from app.utils.line_item_utils import normalize_line_name
 
 
 def extract_balance_sheet(
@@ -44,14 +42,33 @@ def extract_balance_sheet(
     """
     # Stage 1: Find correct section (iterate through top dense chunks)
     balance_sheet_text = None
-    start_page = None
     log_info = None
     successful_chunk_index = None
 
     # Get top numeric chunks
-    from app.utils.document_section_finder import find_top_numeric_chunks, get_chunk_with_context
+    from app.utils.document_section_finder import (
+        find_top_numeric_chunks,
+        get_chunk_with_context,
+        rank_chunks_by_query,
+    )
 
-    candidate_chunks = find_top_numeric_chunks(document_id, file_path, top_k=5)
+    # Step 1: Find top-10 chunks by number density
+    top_numeric_chunks = find_top_numeric_chunks(document_id, file_path, top_k=10)
+
+    # Step 2: Rank those top-10 chunks by query similarity
+    query_texts = [
+        "Cash",
+        "Receivable",
+        "Inventory",
+        "Other Assets",
+        "Property",
+        "Goodwill",
+        "Intangible",
+        "Other Liabilities",
+        "Payable",
+        "Debt",
+    ]
+    candidate_chunks = rank_chunks_by_query(document_id, file_path, top_numeric_chunks, query_texts)
 
     if not candidate_chunks:
         # Fallback to legacy if no chunks found (rare)
@@ -65,15 +82,15 @@ def extract_balance_sheet(
             add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, section_msg)
 
             # Get text for this chunk with padding
-            # Default padding of 1 page before/after seems standard for tables
-            balance_sheet_text, start_page, log_info = get_chunk_with_context(
-                document_id, file_path, chunk_index, pages_before=1, pages_after=1
+            # Default padding of 2500 characters before/after
+            balance_sheet_text, start_char, log_info = get_chunk_with_context(
+                document_id, file_path, chunk_index, chars_before=2500, chars_after=2500
             )
 
-            chunk_msg = f"Checking chunk {chunk_index} (pages {log_info['chunk_start_page']}-{log_info['chunk_end_page']})"
+            chunk_msg = f"Checking chunk {chunk_index} (chars {log_info['chunk_start_char']}-{log_info['chunk_end_char']})"
             print(chunk_msg)
-            pages_msg = f"Extracted section (pages {log_info['start_extract_page']}-{log_info['end_extract_page']})"
-            print(pages_msg)
+            chars_msg = f"Extracted section (chars {log_info['start_extract_char']}-{log_info['end_extract_char']})"
+            print(chars_msg)
 
             # Stage 1 validation: Check completeness of chunk text using LLM (before extraction)
             completeness_check_msg = (
@@ -314,95 +331,6 @@ def extract_balance_sheet(
         if successful_chunk_index is not None:
             extracted_data["chunk_index"] = successful_chunk_index
         return extracted_data
-
-
-def find_balance_sheet_section(
-    document_id: str,
-    file_path: str,
-    time_period: str,
-    document_type: str | None = None,
-    chunk_rank: int = 0,
-) -> tuple[str | None, int | None, dict | None]:
-    """
-    Use document embedding to locate the consolidated balance sheet section.
-
-    Args:
-        document_id: Document ID
-        file_path: Path to PDF file
-        time_period: Time period to search for (e.g., "Q3 2023")
-        document_type: Document type (e.g., "earnings_announcement", "annual_filing", "quarterly_filing")
-
-    Returns:
-        Tuple of (extracted_text, start_page, log_info) or (None, None, None) if not found
-    """
-    try:
-        # Determine ignore fractions based on document type
-        # Convert document_type to string if it's an enum
-        doc_type_str = (
-            document_type.value
-            if hasattr(document_type, "value")
-            else str(document_type)
-            if document_type
-            else None
-        )
-
-        if doc_type_str == "earnings_announcement":
-            ignore_front_fraction = 0
-            ignore_back_fraction = 0
-        elif doc_type_str == "annual_filing":
-            ignore_front_fraction = 0.5
-            ignore_back_fraction = 0.2
-        elif doc_type_str == "quarterly_filing":
-            ignore_front_fraction = 0.0
-            ignore_back_fraction = 0.5
-        else:
-            # Default: ignore 10% from both edges
-            ignore_front_fraction = 0.1
-            ignore_back_fraction = 0.1
-
-        # Initial query texts for finding the balance sheet section
-        query_texts = [
-            "consolidated balance sheet",
-            "balance sheet",
-            "total assets",
-            "total liabilities",
-        ]
-
-        # Re-ranking query terms: normalized balance sheet line items
-        rerank_query_texts = [
-            "Cash",
-            "Accounts Receivable",
-            "Inventory",
-            "Other Assets",
-            "Property",
-            "Goodwill",
-            "Intangible",
-            "Other Liabilities",
-            "Payable",
-            "Debt",
-        ]
-        rerank_query_texts = [normalize_line_name(term) for term in rerank_query_texts]
-
-        return find_document_section(
-            document_id=document_id,
-            file_path=file_path,
-            query_texts=query_texts,
-            chunk_size=None,
-            score_threshold=0.3,
-            pages_before=1,  # Include 1 page before the best chunk
-            pages_after=1,  # Include 1 page after the best chunk
-            rerank_top_k=5,
-            rerank_query_texts=rerank_query_texts,
-            ignore_front_fraction=ignore_front_fraction,
-            ignore_back_fraction=ignore_back_fraction,
-            chunk_rank=chunk_rank,
-            min_numbers=15,
-            penalize_edges=True,
-        )
-
-    except Exception as e:
-        print(f"Error finding balance sheet section: {str(e)}")
-        return None, None, None
 
 
 def check_balance_sheet_completeness_llm(

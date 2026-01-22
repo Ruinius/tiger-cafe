@@ -26,6 +26,8 @@ class FinancialAssumptionBase(BaseModel):
     cost_of_debt: Decimal | None = None
     calculated_wacc: Decimal | None = None
     market_cap: Decimal | None = None
+    currency_conversion_rate: Decimal | None = None
+    adr_conversion_factor: Decimal | None = None
 
 
 class FinancialAssumptionCreate(FinancialAssumptionBase):

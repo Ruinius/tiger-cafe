@@ -35,7 +35,7 @@ def calculate_dcf(historical_entries: list, assumptions: dict) -> dict:
         "marginal_capital_turnover_stage2": 1.0,
         "marginal_capital_turnover_terminal": 1.0,
         "adjusted_tax_rate": 0.25,
-        "wacc": 0.08,
+        "wacc": 0.09,
     }
 
     # Helper to get assumption value or default

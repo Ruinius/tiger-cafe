@@ -583,29 +583,12 @@ def calculate_adjusted_tax_rate(
         for item in sorted_items:
             if start_order < item.line_order < end_order:
                 name_lower = item.line_name.lower()
-                category_lower = item.line_category.lower() if item.line_category else ""
+                item.line_category.lower() if item.line_category else ""
 
-                # Check for totals in name or category
-                if (
-                    "total" in name_lower
-                    or "subtotal" in name_lower
-                    or "total" in category_lower
-                    or "subtotal" in category_lower
-                ):
+                if item.is_calculated is True:
                     continue
 
-                # Explicitly exclude Pretax Income lines as they are totals
-                if any(
-                    term in name_lower
-                    for term in [
-                        "pretax",
-                        "pre-tax",
-                        "income before",
-                        "earnings before",
-                        "profit before",
-                        "loss before",
-                    ]
-                ):
+                if "impairment" in name_lower:
                     continue
 
                 intermediate_items.append(item)
@@ -628,6 +611,8 @@ def calculate_adjusted_tax_rate(
 
             name_lower = line_name.lower()
             if "total" in name_lower or "subtotal" in name_lower:
+                continue
+            if "impairment" in name_lower:
                 continue
 
             non_gaap_adjustments.append(item)

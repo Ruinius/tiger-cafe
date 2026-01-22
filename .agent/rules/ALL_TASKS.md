@@ -8,6 +8,8 @@ Fix Logic, Not Config: Fix failures via code, prompts, or regex
 Do not create random fallback logic or values
 Before creating new scripts, check /scripts
 Create new scripts in /scripts instead of root
+Create new migrations in the /migration instead of /scripts
+Clean up after yourself, delete temporary scripts and logs after finishing
 IMPORTANT: do not change LLM prompts unless asked explicitly
 IMPORTANT: do not run code that will clear the database
 IMPORTANT: do not delete the database!

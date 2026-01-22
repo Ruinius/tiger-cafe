@@ -157,17 +157,61 @@ def _extract_page_range_text(file_path: str, start_page: int, end_page: int) -> 
     return "\n\n".join(text_parts)
 
 
+def load_full_document_text(
+    document_id: str, file_path: str, storage_dir: str = "data/storage"
+) -> str:
+    """
+    Load the full document text from disk cache, or extract from PDF if not cached.
+
+    Args:
+        document_id: Document ID
+        file_path: Path to PDF file (used as fallback)
+        storage_dir: Directory where full text is stored
+
+    Returns:
+        Full document text
+    """
+    import logging
+
+    # Try to load from disk first
+    full_text_path = os.path.join(storage_dir, f"{document_id}_full_text.txt")
+
+    if os.path.exists(full_text_path):
+        try:
+            with open(full_text_path, encoding="utf-8") as f:
+                return f.read()
+        except Exception as e:
+            print(f"Warning: Failed to load cached text from {full_text_path}: {e}")
+            print("Falling back to PDF extraction")
+
+    # Fallback: extract from PDF
+    logging.getLogger("pdfminer").setLevel(logging.ERROR)
+
+    full_text_parts = []
+    with pdfplumber.open(file_path) as pdf:
+        for page_idx in range(len(pdf.pages)):
+            try:
+                page_text = pdf.pages[page_idx].extract_text()
+                if page_text:
+                    full_text_parts.append(page_text)
+            except Exception as e:
+                print(f"Warning: Failed to extract text from page {page_idx}: {e}")
+                continue
+
+    return "\n\n".join(full_text_parts)
+
+
 def index_document_chunks(
-    file_path: str, document_id: str, chunk_size: int = 2, storage_dir: str = "data/storage"
+    file_path: str, document_id: str, chunk_size: int = 5000, storage_dir: str = "data/storage"
 ) -> dict:
     """
-    Index a document by creating embeddings for multi-page chunks.
-    This replaces the old document-level embedding approach.
+    Index a document by creating embeddings for character-based chunks.
+    This replaces the old page-based chunking approach.
 
     Args:
         file_path: Path to PDF file
         document_id: Document ID
-        chunk_size: Number of pages per chunk (default: 2)
+        chunk_size: Number of characters per chunk (default: 5000)
         storage_dir: Directory to save chunk embeddings
 
     Returns:
@@ -175,7 +219,8 @@ def index_document_chunks(
         {
             "num_chunks": number of chunks created,
             "total_pages": total pages in document,
-            "chunk_size": pages per chunk
+            "chunk_size": characters per chunk,
+            "total_characters": total characters in document
         }
     """
     import logging
@@ -190,17 +235,45 @@ def index_document_chunks(
         with pdfplumber.open(file_path) as pdf:
             total_pages = len(pdf.pages)
 
-            # Calculate number of chunks
-            num_chunks = (total_pages + chunk_size - 1) // chunk_size  # Ceiling division
+            # Extract all text from the document first
+            full_text_parts = []
+            for page_idx in range(total_pages):
+                try:
+                    page_text = pdf.pages[page_idx].extract_text()
+                    if page_text:
+                        full_text_parts.append(page_text)
+                except Exception as e:
+                    failed_pages.append(page_idx + 1)  # 1-indexed for user display
+                    print(
+                        f"ERROR: Failed to extract text from page {page_idx + 1} of {document_id}: {e}"
+                    )
+                    # Continue to next page rather than failing the whole process
+                    continue
+
+            full_text = "\n\n".join(full_text_parts)
+            total_characters = len(full_text)
+
+            # Calculate number of chunks based on character count
+            num_chunks = (total_characters + chunk_size - 1) // chunk_size  # Ceiling division
 
             print(
-                f"Indexing document {document_id}: {total_pages} pages, {num_chunks} chunks of {chunk_size} pages each"
+                f"Indexing document {document_id}: {total_pages} pages, {total_characters} characters, "
+                f"{num_chunks} chunks of {chunk_size} characters each"
             )
+
+            # Save full text to disk for fast retrieval
+            import os
+
+            os.makedirs(storage_dir, exist_ok=True)
+            full_text_path = os.path.join(storage_dir, f"{document_id}_full_text.txt")
+            with open(full_text_path, "w", encoding="utf-8") as f:
+                f.write(full_text)
+            print(f"Saved full document text to {full_text_path}")
 
             # Generate embeddings for each chunk
             for chunk_index in range(num_chunks):
-                start_page = chunk_index * chunk_size
-                end_page = min(start_page + chunk_size, total_pages)
+                start_char = chunk_index * chunk_size
+                end_char = min(start_char + chunk_size, total_characters)
 
                 # Check if chunk embedding already exists
                 existing_embedding = load_chunk_embedding(document_id, chunk_index, storage_dir)
@@ -208,22 +281,8 @@ def index_document_chunks(
                     # print(f"Chunk {chunk_index} embedding already exists, skipping")
                     continue
 
-                # Extract text for this chunk directly from the pages we already have open
-                text_parts = []
-                for page_idx in range(start_page, end_page):
-                    try:
-                        page_text = pdf.pages[page_idx].extract_text()
-                        if page_text:
-                            text_parts.append(page_text)
-                    except Exception as e:
-                        failed_pages.append(page_idx + 1)  # 1-indexed for user display
-                        print(
-                            f"ERROR: Failed to extract text from page {page_idx + 1} of {document_id}: {e}"
-                        )
-                        # Continue to next page rather than failing the whole process
-                        continue
-
-                chunk_text = "\n\n".join(text_parts)
+                # Extract text for this chunk
+                chunk_text = full_text[start_char:end_char]
 
                 # Generate embedding for chunk (limit to 20k chars)
                 chunk_embedding = generate_embedding_safe(
@@ -233,7 +292,7 @@ def index_document_chunks(
                 # Save chunk embedding
                 save_chunk_embedding(chunk_embedding, document_id, chunk_index, storage_dir)
                 # print(
-                #     f"Generated and saved embedding for chunk {chunk_index} (pages {start_page}-{end_page - 1})"
+                #     f"Generated and saved embedding for chunk {chunk_index} (chars {start_char}-{end_char - 1})"
                 # )
 
         # Check if too many pages failed
@@ -258,8 +317,10 @@ def index_document_chunks(
             "num_chunks": num_chunks,
             "total_pages": total_pages,
             "chunk_size": chunk_size,
+            "total_characters": total_characters,
             "failed_pages": failed_pages,
             "failure_rate": failure_rate,
+            "full_text_path": full_text_path,
         }
         save_chunk_metadata(metadata, document_id, storage_dir)
 
@@ -269,27 +330,57 @@ def index_document_chunks(
         raise Exception(f"Error indexing document chunks: {str(e)}")
 
 
-def get_chunk_text(file_path: str, chunk_index: int, chunk_size: int = 2) -> tuple[str, int, int]:
+def get_chunk_text(
+    file_path: str,
+    chunk_index: int,
+    chunk_size: int = 5000,
+    document_id: str | None = None,
+    storage_dir: str = "data/storage",
+) -> tuple[str, int, int]:
     """
     Get text for a specific chunk.
 
     Args:
         file_path: Path to PDF file
         chunk_index: Index of the chunk (0-based)
-        chunk_size: Number of pages per chunk
+        chunk_size: Number of characters per chunk
+        document_id: Document ID (optional, for loading cached text)
+        storage_dir: Directory where cached text is stored
 
     Returns:
-        Tuple of (chunk_text, start_page, end_page)
+        Tuple of (chunk_text, start_char, end_char)
     """
-    start_page = chunk_index * chunk_size
+    # Load full text from cache if document_id is provided
+    if document_id:
+        full_text = load_full_document_text(document_id, file_path, storage_dir)
+    else:
+        # Fallback: extract from PDF
+        import logging
 
-    # Get total pages first
-    with pdfplumber.open(file_path) as pdf:
-        total_pages = len(pdf.pages)
+        import pdfplumber
 
-    end_page = min(start_page + chunk_size, total_pages)
+        logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
-    # Extract text for this chunk directly from the page range
-    chunk_text = _extract_page_range_text(file_path, start_page, end_page)
+        with pdfplumber.open(file_path) as pdf:
+            total_pages = len(pdf.pages)
+            full_text_parts = []
+            for page_idx in range(total_pages):
+                try:
+                    page_text = pdf.pages[page_idx].extract_text()
+                    if page_text:
+                        full_text_parts.append(page_text)
+                except Exception:
+                    continue
 
-    return chunk_text, start_page, end_page
+        full_text = "\n\n".join(full_text_parts)
+
+    total_characters = len(full_text)
+
+    # Calculate character range for this chunk
+    start_char = chunk_index * chunk_size
+    end_char = min(start_char + chunk_size, total_characters)
+
+    # Extract text for this chunk
+    chunk_text = full_text[start_char:end_char]
+
+    return chunk_text, start_char, end_char

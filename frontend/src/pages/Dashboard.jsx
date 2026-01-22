@@ -44,8 +44,8 @@ function Dashboard() {
 
   // Default split ratios per view type
   const DEFAULT_RATIOS = {
-    GLOBAL: 0.2,
-    COMPANY: 0.2,
+    GLOBAL: 0.5,
+    COMPANY: 0.5,
     DOCUMENT: 0.5,
   }
 

@@ -55,5 +55,5 @@ def test_calculate_dcf_defaults():
     result = calculate_dcf(historical_entries, {})
 
     assert "projections" in result
-    # Check default WACC 8%
-    assert result["assumptions_used"]["wacc"] == Decimal("0.08")
+    # Check default WACC 9%
+    assert result["assumptions_used"]["wacc"] == Decimal("0.09")

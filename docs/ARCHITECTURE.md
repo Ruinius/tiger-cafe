@@ -10,6 +10,7 @@ Tiger-Cafe is a full-stack application that combines:
 - **React frontend** for the shared global dashboard experience
 - **Local storage + SQLite** for document artifacts and structured outputs
 - **Gemini models** for classification, extraction, and summarization
+- **Disk-based Cache** for full document text to speed up extraction
 
 ```
 ┌────────────┐        ┌────────────────────┐        ┌──────────────┐
@@ -35,7 +36,8 @@ Tiger-Cafe processes different document types with varying levels of detail:
   - Frontend does not attempt to fetch other assets/liabilities endpoints for earnings announcements
 - **GAAP/EBITDA Reconciliation**: Uses dedicated GAAP reconciliation extractor (exclusive to earnings announcements)
   - Searches for "GAAP reconciliation" or "EBITDA reconciliation" tables
-  - Uses chunk-based embedding search with reranking (similar to balance sheet finding workflow)
+  - Searches for "GAAP reconciliation" or "EBITDA reconciliation" tables
+  - Uses **Two-Step Filtering** (Number Density + Semantic Rank) to find the table
   - Extracts amortization and other reconciliation line items from these tables
   - **Does not use** the amortization extractor
 
@@ -103,7 +105,8 @@ This approach optimizes processing costs and focuses detailed extraction on docu
    - **Quarterly Filings & Annual Filings**: Currently classification only → Status: `CLASSIFIED` (indexing and financial statement extraction not yet implemented)
    - **Other Document Types** (press releases, analyst reports, news articles, transcripts, etc.): Classification only → Status: `CLASSIFIED` (no indexing or financial statement extraction)
 6. For eligible document types, embeddings are generated and persisted for reuse.
-7. **Real-time Updates**: Document status is pushed to the frontend via Server-Sent Events (SSE) instead of polling.
+7. **Disk-Based Text Caching**: Full document text is extracted once and saved to disk (`data/storage/{doc_id}_full_text.txt`) to allow 10x faster access during subsequent extraction steps.
+8. **Real-time Updates**: Document status is pushed to the frontend via Server-Sent Events (SSE) instead of polling.
 
 ### 2) Financial Statement Extraction
 
@@ -124,7 +127,12 @@ This approach optimizes processing costs and focuses detailed extraction on docu
    - Other assets and other liabilities use **LLM-based extraction** with detailed line item classification
 
 **Extraction Process:**
-1. **Section Location**: Use chunk embeddings and numeric density analysis to locate the correct table sections (Balance Sheet / Income Statement).
+1. **Section Location**:
+   - **Character-Based Chunking**: Documents are split into 5000-character chunks with 2500-character context overlap (replacing page-based chunking).
+   - **Two-Step Filtering**:
+     1. Find top-10 chunks by **Number Density** (count of digits).
+     2. Rank those chunks by **Semantic Similarity** to the target query (e.g., "Balance Sheet").
+   - **Disk Cache Access**: Extractors read raw text from the disk-based cache, avoiding expensive PDF re-parsing.
 2. **Raw Extraction**: Extract line items exactly as they appear in the document (names and values) using LLM.
 3. **Standardization & Classification (Tiger-Transformer)**:
    - Pass raw line items to a fine-tuned FINBERT model (`TigerTransformerClient`).

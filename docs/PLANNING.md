@@ -25,38 +25,22 @@ The system currently supports:
 
 ## Active Roadmap
 
-## Phases 1-13 Complete
+## Phases 1-14 Complete
 *See `docs/COMPLETED_TASKS.md` for detailed history.*
 
-### Phase 14: Financial Model enhancements
-- [x] Create one section with two columns (three fields each) in the Assumptions section between Marginal Capital Turnover and Other
-    - The two column section will be called WACC (right now they two sections called Cost of Equity and WACC)
-    - One column will have the fields:
-        - Beta, pulled, not editable
-        - Cost of Equity, calculated, not editable. Use 4.2% for risk free rate. Use 5% for market risk premium.
-        - Weight of Equity: pull market cap from Yahoo Finance and divide by that market cap + debt (use the same number as in the Financial model below), calculated, not editable
-    - One column will have the fields:
-        - Cost of Debt: pull interest expense from the most recent quarter, annualize it, and divide it by debt (use the same number as in the Financial model below). If error, default to using 5%. The number can also not be lower than 5%.
-        - Calculated WACC (slight rename), using cost of equity, weight of equity, cost of debt, and 25% Marginal Tax Rate. This is not editable
-        - WACC Assumption, default to calculated WACC, but this is the editable field that is used in the rest of the financial model
-- [x] Add additional items to the Other column
-    - Diluted Shares Outstanding (in the financial model below, the Diluted Shares Outstanding will use this number). Copy the default logic.
-    - Base Revenue (in the financial model below, the Revenue line item in Base year will use this number). Copy the default logic.
-- [x] Minor edits
-    - Change the Marginal Capital Turnover assumption to have two decimals instead of just one
-    - Format the Diluted Shares Outstanding field (to be same as in the financial model below)
-    - Format the Base Revenue field (to be same as in the financial model below)
-- [ ] Add tooltips (little "i" icons I can hover over) for the following fields
-    - Cost of Equity
-    - Cost of Debt
-    - Calculated WACC
-- [ ] Add currency translator if currency is not USD
-- [ ] Add ADR conversion line if currency is not USD
-
 ### Phase 15: App-wide Analysis and Dashboard
-- [ ] Improve the Company list
-    - Add the date of last valuation with color
-- [ ] Analysis Dashboard (Home Page)
+- [x] Improve the Company list
+    - Transformed list to card view displaying Valuation Status, Last Doc Date, and % Undervalued (Color Coded)  
+    - Added sorting controls (Name, Last Doc, Valuation, Status) and standardized date formats
+    - Updated default panel split to 50/50 and removed legacy badges
+    - [x] Change the card labels
+        1. Last Doc -> Date Financials Cover
+        2. Valuation -> Most Recent Valuation
+        3. Status -> Over/under-valuation
+
+- [x] Analysis Dashboard (Home Page)
+    - Implemented global visualizations defined in `docs/DASHBOARD_IDEAS.md`
+    - Added Valuation History scatter plot and Rule of 40 (Margin vs Growth) chart with L4Q logic
 
 ### Phase 16: Company View feature enhancements
 - [ ] Improve the Document list
@@ -67,7 +51,7 @@ The system currently supports:
 - [ ] Enable incorporating multiple document types per period
 - [ ] Historical trend analysis across periods
 
-### Phase 18: Transcripts, news, and analyst reports
+### Phase 18: Transcripts, news, and Gemini copy & paste
 - [ ] Growth, margin, and capital efficiency assumptions
 
 ### Phase 19: 10-K and 10-Q
@@ -91,11 +75,23 @@ The system currently supports:
     - Income statement will run through up to five chunks until LLM validation finds the complete income statement
     - Non-GAAP validation will run through up to five chunks until LLM validation finds the relevant table
 - [x] Pulled revenue growth extraction and calculation out of the main income statement extraction for better consistency
+- [x] BIDU case - Adjusted Tax Rate is using pretax income as a line
+- [x] Fix the chunk algorithm to be characters based instead of page based search through the first 10 chunks in order of number density
+    1. Change from 2 pages per chunk to 5000 characters per chunk
+    2. Replace any page_after or page_before from 1 pages to 2500 characters
+    3. Change the algorithm for finding the balance sheet and income statement to first filter the chunks for top-10 based on number density
+    4. Then rank the top-10 chunks based on the query (these should still be saved somewhere in the extractor agents)
+    5. Double check all the different extractors to ensure the refactor works
 
 
 ## Backlog and Notes of Bigger Outstanding Issues - DO NOT CODE
 - [ ] EL case - LLM extracting after the net earnings / net income line
 - [ ] EL case - LLM extracting Non-GAAP table very strangely - look into the non-gaap reconciliation logic
+- [ ] EL case - add a reflection step to the Non-GAAP table on time period of line items
+- [ ] BIDU case - rare issue where despite using income statement, the prior year revenue is being pulled from a different table (BIDU Core instead of Consolidated)
+- [ ] BABA case - uploading a duplicate document still processed instead of deleting, ending in an error
+- [ ] BABA case - the agent is not able to find the balance sheet based on the current chunking and search logic
+- [ ] META case - cannot find shares outstanding for some reason
 - [ ] Create a field for document date, which will have many uses. First use is to organize the list of documents (current logic is not great)
 - [ ] Fix UI for Uploading flow
     - Milestones in the Progress Tracker are not updating as they should with SSE
@@ -104,7 +100,6 @@ The system currently supports:
     - Add a Cell above all the companies that says "Documents Processing" which loads the Check Uploads page
     - Add the Extraction milestones to the Check Uploads page
 - [ ] Consolidate batch upload tests
-- [ ] Fix the chunk algorithm to be characters based instead of page based search through the first 10 chunks in order of number density
 - [ ] Improve the order in which content is loaded in Document Extraction View for better UX
 - [ ] Improve the order in which content is loaded in Company Analysis View for better UX
 - [ ] Enable editing extracted values in Document Extraction View

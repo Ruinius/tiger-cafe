@@ -11,6 +11,7 @@ from app.routers import (
     auth,
     balance_sheet,
     companies,
+    dashboard,
     documents,
     historical_calculations,
     income_statement,
@@ -37,6 +38,7 @@ app.add_middleware(
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
 app.include_router(companies.router, prefix="/api/companies", tags=["companies"])
+app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
 # Specific routers must effectively precede generic /{document_id} routes
 app.include_router(status_stream.router, prefix="/api/documents", tags=["status-stream"])
 app.include_router(documents.router, prefix="/api/documents", tags=["documents"])

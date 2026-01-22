@@ -72,15 +72,23 @@ def extract_income_statement(
     """
     # Stage 1: Find correct section (iterate through top dense chunks)
     income_statement_text = None
-    start_page = None
     log_info = None
     extracted_data = None
     successful_chunk_index = None
 
     # Get top numeric chunks
-    from app.utils.document_section_finder import find_top_numeric_chunks, get_chunk_with_context
+    from app.utils.document_section_finder import (
+        find_top_numeric_chunks,
+        get_chunk_with_context,
+        rank_chunks_by_query,
+    )
 
-    candidate_chunks = find_top_numeric_chunks(document_id, file_path, top_k=5)
+    # Step 1: Find top-10 chunks by number density
+    top_numeric_chunks = find_top_numeric_chunks(document_id, file_path, top_k=10)
+
+    # Step 2: Rank those top-10 chunks by query similarity
+    query_texts = ["Revenue", "Profit", "Income", "Tax", "Cost"]
+    candidate_chunks = rank_chunks_by_query(document_id, file_path, top_numeric_chunks, query_texts)
 
     if not candidate_chunks:
         print("No chunks found with numbers, falling back to legacy search")
@@ -92,12 +100,12 @@ def extract_income_statement(
             add_log(document_id, FinancialStatementMilestone.INCOME_STATEMENT, section_msg)
 
             # Get text for this chunk with padding
-            # Default padding of 1 page before/after
-            income_statement_text, start_page, log_info = get_chunk_with_context(
-                document_id, file_path, chunk_index, pages_before=1, pages_after=1
+            # Default padding of 2500 characters before/after
+            income_statement_text, start_char, log_info = get_chunk_with_context(
+                document_id, file_path, chunk_index, chars_before=2500, chars_after=2500
             )
 
-            chunk_msg = f"Checking chunk {chunk_index} (pages {log_info['chunk_start_page']}-{log_info['chunk_end_page']})"
+            chunk_msg = f"Checking chunk {chunk_index} (chars {log_info['chunk_start_char']}-{log_info['chunk_end_char']})"
             print(chunk_msg)
             add_log(document_id, FinancialStatementMilestone.INCOME_STATEMENT, chunk_msg)
 

@@ -31,7 +31,12 @@ from app.schemas.valuation import Valuation as ValuationSchema
 from app.schemas.valuation import ValuationCreate
 from app.utils.financial_modeling import calculate_dcf
 from app.utils.historical_calculations import get_interest_expense, get_revenue
-from app.utils.market_data import get_beta, get_latest_share_price, get_market_cap
+from app.utils.market_data import (
+    get_beta,
+    get_currency_rate,
+    get_latest_share_price,
+    get_market_cap,
+)
 
 router = APIRouter()
 
@@ -91,6 +96,26 @@ async def list_companies(
         if company.name == "Processing..." and (doc_count or 0) == 0:
             continue  # Skip placeholder companies with no documents
 
+        # Fetch latest valuation
+        latest_val = (
+            db.query(Valuation)
+            .filter(Valuation.company_id == company.id)
+            .order_by(Valuation.date.desc())
+            .first()
+        )
+
+        # Fetch latest document date (period_end_date)
+        latest_doc_date = None
+        latest_doc = (
+            db.query(Document)
+            .filter(Document.company_id == company.id)
+            .filter(Document.period_end_date.isnot(None))
+            .order_by(Document.period_end_date.desc())
+            .first()
+        )
+        if latest_doc:
+            latest_doc_date = latest_doc.period_end_date
+
         company_dict = {
             "id": company.id,
             "name": company.name,
@@ -98,6 +123,9 @@ async def list_companies(
             "created_at": company.created_at,
             "updated_at": company.updated_at,
             "document_count": doc_count or 0,
+            "last_valuation_date": latest_val.date if latest_val else None,
+            "percent_undervalued": latest_val.percent_undervalued if latest_val else None,
+            "latest_document_date": latest_doc_date,
         }
         result.append(company_dict)
 
@@ -351,6 +379,19 @@ async def get_financial_assumptions(
     # Debt is in millions (e.g., 31,000 means 31,000,000,000)
     debt_dollars = debt * 1_000_000
 
+    # Convert debt to USD if balance sheet is in different currency
+    # Market cap from Yahoo is typically in USD for US-listed tickers
+    if (
+        non_op_classification
+        and non_op_classification.document
+        and non_op_classification.document.balance_sheet
+    ):
+        bs_currency = non_op_classification.document.balance_sheet.currency
+        if bs_currency and bs_currency != "USD":
+            # Convert debt from local currency to USD
+            conversion_rate = float(get_currency_rate(bs_currency, "USD"))
+            debt_dollars = debt_dollars * conversion_rate
+
     weight_of_equity = 1.0
     if (market_cap + debt_dollars) > 0:
         weight_of_equity = market_cap / (market_cap + debt_dollars)
@@ -378,6 +419,10 @@ async def get_financial_assumptions(
     calculated_wacc = (cost_of_equity * weight_of_equity) + (
         cost_of_debt * (1 - marginal_tax_rate) * (1 - weight_of_equity)
     )
+
+    # Bound calculated WACC to 7-11% for default value
+    # User can still manually enter other values, but starting value is bounded
+    bounded_wacc = max(0.07, min(0.11, calculated_wacc))
 
     if not assumption:
         # Calculate defaults from L4Q historical data
@@ -424,6 +469,33 @@ async def get_financial_assumptions(
             if revenue_values:
                 base_revenue = (sum(revenue_values) / len(revenue_values)) * 4
 
+        # 7. Currency & ADR
+        # Get currency from the latest balance sheet (source of truth)
+        currency_conversion_rate = 1.0
+        latest_currency = "USD"
+
+        # Query the most recent balance sheet for this company
+        latest_balance_sheet = (
+            db.query(BalanceSheet)
+            .join(Document)
+            .filter(Document.company_id == company_id)
+            .order_by(BalanceSheet.extraction_date.desc())
+            .first()
+        )
+
+        if latest_balance_sheet and latest_balance_sheet.currency:
+            latest_currency = latest_balance_sheet.currency
+            print(f"[get_financial_assumptions] Currency from balance sheet: {latest_currency}")
+
+        if latest_currency and latest_currency != "USD":
+            print(f"[get_financial_assumptions] Fetching rate for {latest_currency} -> USD")
+            currency_conversion_rate = float(get_currency_rate(latest_currency, "USD"))
+            print(f"[get_financial_assumptions] Fetched rate: {currency_conversion_rate}")
+
+        print(
+            f"[get_financial_assumptions] About to create assumption with currency_conversion_rate={currency_conversion_rate}"
+        )
+
         assumption = FinancialAssumption(
             company_id=company_id,
             revenue_growth_stage1=stage1_growth,
@@ -437,13 +509,18 @@ async def get_financial_assumptions(
             marginal_capital_turnover_terminal=mct,
             beta=beta,
             adjusted_tax_rate=tax_rate,
-            wacc=calculated_wacc,
+            wacc=bounded_wacc,
             diluted_shares_outstanding=diluted_shares,
             base_revenue=base_revenue,
+            currency_conversion_rate=currency_conversion_rate,
+            adr_conversion_factor=1.0,
         )
         db.add(assumption)
         db.commit()
         db.refresh(assumption)
+        print(
+            f"[get_financial_assumptions] After commit/refresh, assumption.currency_conversion_rate={assumption.currency_conversion_rate}"
+        )
 
     # Attach dynamic fields for display
     assumption.weight_of_equity = weight_of_equity
@@ -489,12 +566,25 @@ async def reset_financial_assumptions(
     assumption = (
         db.query(FinancialAssumption).filter(FinancialAssumption.company_id == company_id).first()
     )
+    saved_adr_factor = None
     if assumption:
+        saved_adr_factor = assumption.adr_conversion_factor
         db.delete(assumption)
         db.commit()
 
     # Get will recreate with defaults
-    return await get_financial_assumptions(company_id, db, current_user)
+    new_assumption = await get_financial_assumptions(company_id, db, current_user)
+
+    # Restore ADR factor (do not reset)
+    if saved_adr_factor is not None and saved_adr_factor != 1.0:
+        new_assumption.adr_conversion_factor = saved_adr_factor
+        db.commit()
+        db.refresh(new_assumption)
+
+    print(
+        f"[reset_financial_assumptions] Returning assumption with currency_conversion_rate={new_assumption.currency_conversion_rate}, adr_conversion_factor={new_assumption.adr_conversion_factor}"
+    )
+    return new_assumption
 
 
 @router.get("/{company_id}/financial-model")
@@ -530,6 +620,8 @@ async def get_financial_model(
             "adjusted_tax_rate": assumption.adjusted_tax_rate,
             "wacc": assumption.wacc,
             "base_revenue": assumption.base_revenue,
+            "currency_conversion_rate": assumption.currency_conversion_rate,
+            "adr_conversion_factor": assumption.adr_conversion_factor,
         }
 
     # 3. Calculate Model
@@ -624,14 +716,25 @@ async def get_financial_model(
     if diluted_shares > 0:
         fair_value = equity_value / diluted_shares
 
+    # For percent undervalued calculation, we need to compare apples to apples:
+    # - current_share_price is the ADR price in USD (from Yahoo Finance)
+    # - fair_value is in local currency (e.g., RMB)
+    # So we need to convert fair_value to USD and adjust for ADR ratio
     percent_undervalued = 0.0
     current_share_price = result.get("current_share_price")
     if current_share_price and float(current_share_price) > 0:
         cp = float(current_share_price)
-        # Undervalued = (Fair - Current) / Current  ?? Or just (Fair / Current) - 1
-        # "Percent Undervalued": if Fair=150, Current=100 -> 50% Undervalued.
-        # if Fair=80, Current=100 -> -20% Undervalued (or 20% Overvalued).
-        percent_undervalued = (fair_value - cp) / cp
+
+        # Get currency conversion rate and ADR factor from assumptions
+        currency_rate = float(assumptions_dict.get("currency_conversion_rate", 1.0) or 1.0)
+        adr_factor = float(assumptions_dict.get("adr_conversion_factor", 1.0) or 1.0)
+
+        # Convert fair value to USD and adjust for ADR
+        # fair_value (local) * currency_rate (local->USD) * adr_factor (shares per ADR)
+        fair_value_adr_usd = fair_value * currency_rate * adr_factor
+
+        # Now compare fair value (ADR, USD) to current price (ADR, USD)
+        percent_undervalued = (fair_value_adr_usd - cp) / cp
 
     result["bridge_items"] = bridge_items
     result["equity_value"] = equity_value
