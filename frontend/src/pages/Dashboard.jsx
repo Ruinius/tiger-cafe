@@ -5,7 +5,6 @@ import { useUploadManager } from '../hooks/useUploadManager'
 import SplitScreen from '../components/layout/SplitScreen'
 import Header from '../components/layout/Header'
 import UploadModal from '../components/modals/UploadModal'
-import UploadProgressModal from '../components/modals/UploadProgressModal'
 
 // Views
 import CompanyList from '../components/views/global/CompanyList'
@@ -14,6 +13,7 @@ import DocumentList from '../components/views/company/DocumentList'
 import CompanyAnalysisView from '../components/views/company/CompanyAnalysisView'
 import DocumentView from '../components/views/document/DocumentView'
 import DocumentExtractionView from '../components/views/document/DocumentExtractionView'
+import CheckUpdatesView from '../components/views/global/CheckUpdatesView'
 
 import '../styles/layout.css'
 import '../styles/components.css'
@@ -22,7 +22,7 @@ function Dashboard() {
   const { user, logout } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const [viewState, setViewState] = useState({
-    type: 'GLOBAL', // 'GLOBAL' | 'COMPANY' | 'DOCUMENT'
+    type: 'GLOBAL', // 'GLOBAL' | 'COMPANY' | 'DOCUMENT' | 'CHECK_UPDATES'
     data: { company: null, document: null }
   })
 
@@ -37,9 +37,7 @@ function Dashboard() {
     handleReplaceAndIndex,
     handleCancelDuplicate,
     handleCancelUpload,
-    uploadingDocuments,
-    showUploadProgress,
-    setShowUploadProgress
+    uploadingDocuments
   } = useUploadManager(() => setRefreshKey(prev => prev + 1))
 
   // Default split ratios per view type
@@ -47,6 +45,7 @@ function Dashboard() {
     GLOBAL: 0.5,
     COMPANY: 0.5,
     DOCUMENT: 0.5,
+    CHECK_UPDATES: 1.0, // Full width for check updates
   }
 
   // Manage split ratios per view type
@@ -58,7 +57,8 @@ function Dashboard() {
     return {
       GLOBAL: getRatio('GLOBAL'),
       COMPANY: getRatio('COMPANY'),
-      DOCUMENT: getRatio('DOCUMENT')
+      DOCUMENT: getRatio('DOCUMENT'),
+      CHECK_UPDATES: getRatio('CHECK_UPDATES')
     }
   })
 
@@ -112,7 +112,7 @@ function Dashboard() {
           key={`company-list-${refreshKey}`} // Force remount on refresh
           onCompanySelect={handleCompanySelect}
           onOpenUploadModal={openUploadModal}
-          onShowUploadProgress={() => setShowUploadProgress(true)}
+          onShowUploadProgress={() => setViewState({ type: 'CHECK_UPDATES', data: { company: null, document: null } })}
         />
       )
       rightPanelContent = <WelcomeView />
@@ -126,7 +126,7 @@ function Dashboard() {
           onDocumentSelect={handleDocumentSelect}
           onBack={handleBackToGlobal}
           onOpenUploadModal={openUploadModal}
-          onShowUploadProgress={() => setShowUploadProgress(true)}
+          onShowUploadProgress={() => setViewState({ type: 'CHECK_UPDATES', data: { company: null, document: null } })}
         />
       )
       rightPanelContent = (
@@ -149,6 +149,15 @@ function Dashboard() {
           selectedDocument={viewState.data.document}
         />
       )
+      break
+
+    case 'CHECK_UPDATES':
+      leftPanelContent = (
+        <CheckUpdatesView
+          onBack={handleBackToGlobal}
+        />
+      )
+      rightPanelContent = <WelcomeView />
       break
 
     default:
@@ -179,14 +188,6 @@ function Dashboard() {
         onUploadSuccess={handleUploadSuccess}
       />
 
-      {showUploadProgress && (
-        <UploadProgressModal
-          uploadingDocuments={uploadingDocuments}
-          onClose={() => setShowUploadProgress(false)}
-          onReplaceAndIndex={handleReplaceAndIndex}
-          onCancelDuplicate={handleCancelDuplicate}
-        />
-      )}
     </div>
   )
 }

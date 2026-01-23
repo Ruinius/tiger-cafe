@@ -35,7 +35,7 @@ The system currently supports:
     - [x] The Document List View should ONLY pull and show documents that are finished processing
     - Because all processing is now tracked in the check updates page, SSE only needs to work there.
     - Revisit the total number of phases (currently it's 3 in check uploads and 4 in progress tracking)
-    - Update the Check Update UI/UX to feel like how modern AI agents are showing how it is thinking
+    - [x] Update the Check Update UI/UX to feel like how modern AI agents are showing how it is thinking (Phase-based milestone view created, SSE integration pending)
 - [ ] Improve the Document list
 - [ ] Uploading a duplicate document still processed instead of deleting, ending in an error
 - [ ] Enable editing extracted values in Document Extraction View
