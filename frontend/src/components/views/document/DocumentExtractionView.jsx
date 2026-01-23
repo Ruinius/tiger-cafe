@@ -186,72 +186,73 @@ function DocumentExtractionView({ selectedDocument }) {
 
                 {isEligibleForFinancialStatements && (
                     <>
-                        {/* Progress Tracker */}
-                        {financialStatementProgress && (
+                        {/* Validation Banner */}
+                        {financialStatementProgress && areAllMilestonesTerminal() && (
                             <div className="info-section">
-                                <h3 style={{ marginTop: 0, marginBottom: '1.5rem' }}>Processing Tracker</h3>
-                                <div className="processing-tracker">
-                                    {[
-                                        { key: 'balance_sheet', label: 'Extracting & classifying balance sheet' },
-                                        { key: 'income_statement', label: 'Extracting & classifying income statement' },
-                                        { key: 'extracting_additional_items', label: 'Extracting additional items' },
-                                        { key: 'classifying_non_operating_items', label: 'Classifying non-operating items' }
-                                    ].map((milestone) => {
-                                        const milestoneData = financialStatementProgress.milestones?.[milestone.key]
-                                        const status = milestoneData?.status || 'checking'
+                                {(() => {
+                                    const milestones = financialStatementProgress.milestones || {}
+                                    const errors = []
+                                    const warnings = []
 
-                                        // If the global process appears complete (all terminals set), hide unstarted/checking items
-                                        if (areAllMilestonesTerminal() && (!milestoneData || status === 'checking')) {
-                                            return null
+                                    // Collect errors and warnings from milestones
+                                    Object.entries(milestones).forEach(([key, milestone]) => {
+                                        if (milestone.status === 'error') {
+                                            errors.push({
+                                                milestone: key.replace(/_/g, ' '),
+                                                message: milestone.message || 'Processing failed'
+                                            })
                                         }
+                                        // Check for warning messages in logs
+                                        if (milestone.logs) {
+                                            milestone.logs.forEach(log => {
+                                                if (log.message && log.message.toLowerCase().includes('(warning)')) {
+                                                    warnings.push({
+                                                        milestone: key.replace(/_/g, ' '),
+                                                        message: log.message.replace(' (Warning)', '')
+                                                    })
+                                                }
+                                            })
+                                        }
+                                    })
 
-                                        const message = milestoneData?.message
-
+                                    if (errors.length > 0) {
                                         return (
-                                            <div key={milestone.key} className="processing-milestone-item">
-                                                <div className="milestone-header">
-                                                    <div className={`milestone-indicator ${status}`}>
-                                                        {status === 'completed' ? '✓' :
-                                                            status === 'error' ? '✗' :
-                                                                status === 'in_progress' ? <span className="status-spinner"></span> :
-                                                                    '○'}
-                                                    </div>
-                                                    <span className="milestone-label">{milestone.label}</span>
-                                                    <span className={`status-badge ${status}`}>
-                                                        {status.replace(/_/g, ' ')}
-                                                    </span>
+                                            <div className="validation-banner error">
+                                                <div className="banner-header">
+                                                    <span className="banner-icon">✗</span>
+                                                    <h4>Processing Errors</h4>
                                                 </div>
-
-                                                {/* Only show logs if NOT completed to avoid redundant text */}
-                                                {status !== 'completed' && (
-                                                    <>
-                                                        {(milestoneData?.logs && milestoneData.logs.length > 0) ? (
-                                                            <div className="milestone-logs">
-                                                                {milestoneData.logs.map((log, idx) => (
-                                                                    <div
-                                                                        key={idx}
-                                                                        className={`milestone-log-entry ${idx === milestoneData.logs.length - 1 ? 'latest' : ''}`}
-                                                                    >
-                                                                        <span className="log-timestamp">
-                                                                            {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                                                                        </span>
-                                                                        <span className="log-message">{log.message}</span>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        ) : message && (
-                                                            <div className="milestone-logs">
-                                                                <div className="milestone-log-entry">
-                                                                    <span className="log-message">{message}</span>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </>
-                                                )}
+                                                <ul className="banner-list">
+                                                    {errors.map((error, idx) => (
+                                                        <li key={idx}>
+                                                            <strong>{error.milestone}:</strong> {error.message}
+                                                        </li>
+                                                    ))}
+                                                </ul>
                                             </div>
                                         )
-                                    })}
-                                </div>
+                                    }
+
+                                    if (warnings.length > 0) {
+                                        return (
+                                            <div className="validation-banner warning">
+                                                <div className="banner-header">
+                                                    <span className="banner-icon">⚠</span>
+                                                    <h4>Processing Warnings</h4>
+                                                </div>
+                                                <ul className="banner-list">
+                                                    {warnings.map((warning, idx) => (
+                                                        <li key={idx}>
+                                                            <strong>{warning.milestone}:</strong> {warning.message}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )
+                                    }
+
+                                    return null
+                                })()}
                             </div>
                         )}
 

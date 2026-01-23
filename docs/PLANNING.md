@@ -31,8 +31,8 @@ The system currently supports:
 ### Phase 16: Company and Document View feature enhancements
 - [ ] Refactor Progress Tracking UI/UX
     - [x] Revisit and improve the full list of milestones / logging (See docs/PROGRESS_TRACKING_REFACTOR.md)
-    - Remove the processing tracker from the Document Extraction View. Just leave a list of errors/warnings at the top of the page if there are any
-    - The Document List View should ONLY pull and show documents that are finished processing
+    - [x] Remove the processing tracker from the Document Extraction View. Just leave a list of errors/warnings at the top of the page if there are any
+    - [x] The Document List View should ONLY pull and show documents that are finished processing
     - Because all processing is now tracked in the check updates page, SSE only needs to work there.
     - Revisit the total number of phases (currently it's 3 in check uploads and 4 in progress tracking)
     - Update the Check Update UI/UX to feel like how modern AI agents are showing how it is thinking

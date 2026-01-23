@@ -14,7 +14,25 @@ function DocumentList({ selectedCompany, onDocumentSelect, onBack, onOpenUploadM
         uploadingDocuments,
     } = useUploadManager()
 
-    // documents are loaded by the hook when selectedCompany changes
+    // Filter to only show completed documents (PROCESSED or ERROR)
+    // Exclude documents that are still in progress
+    const completedDocuments = documents.filter(doc => {
+        const indexingStatus = doc.indexing_status?.toLowerCase()
+        const analysisStatus = doc.analysis_status?.toLowerCase()
+
+        // Exclude if still indexing
+        if (['uploading', 'classifying', 'indexing'].includes(indexingStatus)) {
+            return false
+        }
+
+        // Exclude if still processing or pending
+        if (['processing', 'pending'].includes(analysisStatus)) {
+            return false
+        }
+
+        // Only show PROCESSED or ERROR
+        return ['processed', 'error'].includes(analysisStatus)
+    })
 
     const formatDocumentType = (type) => {
         if (!type) return 'Document'
@@ -34,7 +52,7 @@ function DocumentList({ selectedCompany, onDocumentSelect, onBack, onOpenUploadM
                 {loading ? (
                     <div className="loading">Loading documents...</div>
                 ) : (
-                    documents.map(document => (
+                    completedDocuments.map(document => (
                         <div
                             key={document.id}
                             className="document-item"
@@ -51,9 +69,6 @@ function DocumentList({ selectedCompany, onDocumentSelect, onBack, onOpenUploadM
                                 )}
                             </div>
                             <div className="document-meta">
-                                <span className={`status-badge status-${document.indexing_status?.toLowerCase()}`}>
-                                    {document.indexing_status || 'pending'}
-                                </span>
                                 {document.balance_sheet_status && document.balance_sheet_status !== 'not_extracted' && (
                                     <span
                                         className={`status-badge status-${document.balance_sheet_status === 'valid' ? 'indexed' : 'classified'}`}
@@ -83,6 +98,10 @@ function DocumentList({ selectedCompany, onDocumentSelect, onBack, onOpenUploadM
                             </div>
                         </div>
                     ))
+                )}
+
+                {!loading && completedDocuments.length === 0 && documents.length > 0 && (
+                    <div className="empty-state">Documents are still processing. Check the upload progress page for status.</div>
                 )}
 
                 {!loading && documents.length === 0 && (
