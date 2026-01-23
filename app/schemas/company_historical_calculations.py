@@ -2,6 +2,7 @@
 Company-level historical calculations schemas
 """
 
+from datetime import date
 from decimal import Decimal
 
 from pydantic import BaseModel
@@ -9,6 +10,7 @@ from pydantic import BaseModel
 
 class CompanyHistoricalCalculationEntry(BaseModel):
     time_period: str
+    period_end_date: date | None = None
     revenue: Decimal | None = None
     revenue_growth_yoy: Decimal | None = None
     ebita: Decimal | None = None

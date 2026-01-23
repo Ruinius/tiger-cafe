@@ -64,9 +64,23 @@ function CompanyAnalysisView({ selectedCompany }) {
         return formatPercent(val, 100)
     }
 
+    const formatDate = (val) => {
+        if (!val) return 'N/A';
+        const date = new Date(val);
+        return isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
     const hasCompanyData = companyHistoricalCalculations?.entries && companyHistoricalCalculations.entries.length > 0
-    const companyEntries = (companyHistoricalCalculations?.entries || []).filter(e => e.time_period?.includes('Q'))
-    const timePeriods = companyEntries.map(e => e.time_period)
+
+    // Sort entries by period_end_date ascending (oldest to newest)
+    const companyEntries = (companyHistoricalCalculations?.entries || [])
+        .filter(e => e.time_period?.includes('Q'))
+        .sort((a, b) => {
+            if (!a.period_end_date) return -1;
+            if (!b.period_end_date) return 1;
+            return new Date(a.period_end_date) - new Date(b.period_end_date);
+        });
+
 
     const calculateStats = (accessor) => {
         const values = companyEntries.map(accessor).map(v => parseFloat(v)).filter(v => v !== null && v !== undefined && !isNaN(v))
@@ -224,8 +238,10 @@ function CompanyAnalysisView({ selectedCompany }) {
                                         <thead>
                                             <tr>
                                                 <th>Line Item</th>
-                                                {timePeriods.map((period) => (
-                                                    <th key={period} className="text-right">{period}</th>
+                                                {companyEntries.map((entry) => (
+                                                    <th key={entry.id || entry.time_period} className="text-right">
+                                                        {formatDate(entry.period_end_date) || entry.time_period}
+                                                    </th>
                                                 ))}
                                                 <th className="text-right" style={{ borderLeft: '1px solid var(--border)' }}>L4Q Average</th>
                                                 <th className="text-right">Median</th>

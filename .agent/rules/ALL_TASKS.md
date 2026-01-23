@@ -2,6 +2,7 @@
 trigger: always_on
 ---
 
+Before performing searches to understand the app, check PLANNING.md, PRODUCT_SPECS.md, DATABASE_SCHEMA.md, and UI_UX_DESIGN.md
 Ask yourself if the fix is general and robust
 All UI changes must strictly follow UI_UX_DESIGN.md
 Fix Logic, Not Config: Fix failures via code, prompts, or regex

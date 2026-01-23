@@ -119,8 +119,13 @@ input[type="number"] {
 
 .button-primary:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 10px 20px var(--shadow);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
   background-color: var(--primary-dark);
+}
+
+.button-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .button-primary:disabled {
@@ -137,7 +142,14 @@ input[type="number"] {
 
 .button-secondary:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 10px 20px var(--shadow);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  border-color: var(--primary);
+  background-color: var(--bg-subtle);
+}
+
+.button-secondary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .button-secondary:disabled {
@@ -153,7 +165,12 @@ input[type="number"] {
 
 .button-warning:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 10px 20px var(--shadow);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.button-warning:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .button-warning:disabled {

@@ -90,8 +90,13 @@
 
 .add-document-button:hover {
     transform: translateY(-1px);
-    box-shadow: 0 12px 24px var(--shadow);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     background-color: var(--primary-dark);
+}
+
+.add-document-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .add-document-button.has-uploads {

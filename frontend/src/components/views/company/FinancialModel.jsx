@@ -694,37 +694,14 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                     </button>
                     <button
                         onClick={resetAssumptions}
-                        style={{
-                            padding: '0.85rem 1.25rem',
-                            backgroundColor: 'var(--bg-elevated)',
-                            color: 'var(--text-primary)',
-                            border: '1px solid var(--border)',
-                            borderRadius: '999px',
-                            cursor: 'pointer',
-                            fontSize: '0.875rem',
-                            fontWeight: '600',
-                            letterSpacing: '0.01em',
-                            transition: 'transform 0.2s, box-shadow 0.2s, background-color 0.2s'
-                        }}
+                        className="button-secondary"
                         disabled={loading}
                     >
                         Reset Assumptions
                     </button>
                     <button
                         onClick={handleSaveValuation}
-                        style={{
-                            padding: '0.85rem 1.25rem',
-                            backgroundColor: 'var(--bg-elevated)',
-                            color: 'var(--text-primary)',
-                            border: '1px solid var(--border)',
-                            borderRadius: '999px',
-                            cursor: 'pointer',
-                            fontSize: '0.875rem',
-                            fontWeight: '600',
-                            letterSpacing: '0.01em',
-                            transition: 'transform 0.2s, box-shadow 0.2s, background-color 0.2s',
-                            marginLeft: '0'
-                        }}
+                        className="button-secondary"
                         disabled={loading}
                     >
                         Save Valuation

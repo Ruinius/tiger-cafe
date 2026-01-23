@@ -358,7 +358,7 @@ function DocumentView({ selectedDocument, selectedCompany, onBack }) {
                                                     }}
                                                 >
                                                     <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                                                        Chunk {chunk.chunk_index} (Pages {chunk.start_page}-{chunk.end_page})
+                                                        Chunk {chunk.chunk_index} ({chunk.start_char !== undefined ? `Chars ${chunk.start_char}-${chunk.end_char}` : `Pages ${chunk.start_page}-${chunk.end_page}`})
                                                     </span>
                                                     <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                                                         {chunk.character_count.toLocaleString()} chars

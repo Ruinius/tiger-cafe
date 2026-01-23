@@ -72,14 +72,17 @@ function WelcomeView() {
         <div className="right-panel">
             <div className="panel-content">
                 <div className="panel-header">
-                    <span className="breadcrumb-current">Global Analysis Dashboard</span>
+                    <span className="breadcrumb-current">Dashboard</span>
                 </div>
 
                 <div className="dashboard-charts-container" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '2rem', overflowY: 'auto' }}>
 
                     {/* 1. Valuation History Chart */}
                     <div className="chart-card" style={{ background: 'var(--bg-surface)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                        <h3 style={{ marginBottom: '1rem', fontWeight: 600 }}>Valuation History</h3>
+                        <h3 style={{ marginBottom: '1rem', marginTop: 0, fontWeight: 600 }}>Valuation History</h3>
+                        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                            X: datetime; Y: Over/under-valuation %; Color indicates which company.
+                        </p>
                         <div style={{ height: 400 }}>
                             <ResponsiveContainer width="100%" height="100%">
                                 <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
@@ -132,9 +135,9 @@ function WelcomeView() {
 
                     {/* 2. Rule of 40 Chart */}
                     <div className="chart-card" style={{ background: 'var(--bg-surface)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                        <h3 style={{ marginBottom: '1rem', fontWeight: 600 }}>Rule of 40 (Growth vs Profitability)</h3>
+                        <h3 style={{ marginBottom: '1rem', marginTop: 0, fontWeight: 600 }}>Rule of 40</h3>
                         <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-                            X: EBITA Margin (%), Y: Revenue Growth (%). Color indicates Valuation status.
+                            X: EBITA Margin %; Y: Revenue Growth %; Color indicates Over/under-valuation.
                         </p>
                         <div style={{ height: 400 }}>
                             <ResponsiveContainer width="100%" height="100%">

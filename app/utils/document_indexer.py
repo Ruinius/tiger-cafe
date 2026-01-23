@@ -188,17 +188,33 @@ def load_full_document_text(
     logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
     full_text_parts = []
-    with pdfplumber.open(file_path) as pdf:
-        for page_idx in range(len(pdf.pages)):
-            try:
-                page_text = pdf.pages[page_idx].extract_text()
-                if page_text:
-                    full_text_parts.append(page_text)
-            except Exception as e:
-                print(f"Warning: Failed to extract text from page {page_idx}: {e}")
-                continue
+    try:
+        with pdfplumber.open(file_path) as pdf:
+            for page_idx in range(len(pdf.pages)):
+                try:
+                    page_text = pdf.pages[page_idx].extract_text()
+                    if page_text:
+                        full_text_parts.append(page_text)
+                except Exception as e:
+                    print(f"Warning: Failed to extract text from page {page_idx}: {e}")
+                    continue
 
-    return "\n\n".join(full_text_parts)
+        full_text = "\n\n".join(full_text_parts)
+
+        # Cache the text for future use
+        try:
+            os.makedirs(storage_dir, exist_ok=True)
+            with open(full_text_path, "w", encoding="utf-8") as f:
+                f.write(full_text)
+            print(f"Cached full document text to {full_text_path}")
+        except Exception as e:
+            print(f"Warning: Failed to cache full text: {e}")
+
+        return full_text
+
+    except Exception as e:
+        print(f"Error extracting text from PDF: {e}")
+        return ""
 
 
 def index_document_chunks(

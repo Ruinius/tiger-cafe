@@ -44,7 +44,9 @@ function DocumentList({ selectedCompany, onDocumentSelect, onBack, onOpenUploadM
                                 <span className="document-type-display">
                                     {formatDocumentType(document.document_type)}
                                 </span>
-                                {document.time_period && (
+                                {document.period_end_date ? (
+                                    <span className="document-time-period"> • {new Date(document.period_end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                ) : document.time_period && (
                                     <span className="document-time-period"> • {document.time_period}</span>
                                 )}
                             </div>
@@ -75,7 +77,7 @@ function DocumentList({ selectedCompany, onDocumentSelect, onBack, onOpenUploadM
                                 )}
                                 {document.uploaded_at && (
                                     <span className="document-date">
-                                        {new Date(document.uploaded_at).toLocaleString()}
+                                        {new Date(document.uploaded_at).toLocaleDateString()}
                                     </span>
                                 )}
                             </div>
@@ -87,19 +89,7 @@ function DocumentList({ selectedCompany, onDocumentSelect, onBack, onOpenUploadM
                     <div className="empty-state">No documents for this company</div>
                 )}
 
-                <button
-                    className={`add-document-button ${hasActiveUploads ? 'has-uploads' : ''}`}
-                    onClick={hasActiveUploads ? onShowUploadProgress : onOpenUploadModal}
-                >
-                    {hasActiveUploads ? (
-                        <>
-                            <span className="button-spinner" aria-hidden="true" />
-                            Check Uploads ({uploadingDocuments.length})
-                        </>
-                    ) : (
-                        '+ Add Document'
-                    )}
-                </button>
+
             </div>
         </div>
     )

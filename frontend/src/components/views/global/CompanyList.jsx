@@ -17,7 +17,7 @@ function CompanyList({ onCompanySelect, onOpenUploadModal, onShowUploadProgress 
         uploadingDocuments,
     } = useUploadManager()
 
-    const [sortBy, setSortBy] = useState('name') // 'name', 'last_doc', 'valuation', 'status'
+    const [sortBy, setSortBy] = useState('status') // 'name', 'last_doc', 'valuation', 'status'
 
     // Load companies on mount
     useEffect(() => {
@@ -74,21 +74,69 @@ function CompanyList({ onCompanySelect, onOpenUploadModal, onShowUploadProgress 
                 <span className="breadcrumb-current">Companies</span>
             </div>
 
-            <div style={{ marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                <input
-                    type="text"
-                    placeholder="Search companies..."
-                    className="search-input"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    style={{ width: '100%' }}
-                />
+            <div style={{ marginBottom: '1rem' }}>
+                {/* Search and Add Button Row */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                    <input
+                        type="text"
+                        placeholder="Search companies..."
+                        className="search-input"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        style={{ flex: 1, minWidth: '200px' }}
+                    />
 
-                <div className="sort-buttons">
-                    <span className="sort-label">Sort by:</span>
+                    <button
+                        className="round-action-btn"
+                        onClick={loadCompanies}
+                        title="Refresh company list"
+                    >
+                        <svg
+                            width="18"
+                            height="18"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                        >
+                            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
+                        </svg>
+                    </button>
+
+                    <button
+                        className={`round-action-btn primary ${hasActiveUploads ? 'has-uploads' : ''}`}
+                        onClick={hasActiveUploads ? onShowUploadProgress : onOpenUploadModal}
+                        title={hasActiveUploads ? `Uploading ${uploadingDocuments.length} document(s)` : 'Add Document'}
+                    >
+                        {hasActiveUploads ? (
+                            <span className="button-spinner" aria-hidden="true" />
+                        ) : (
+                            <svg
+                                width="20"
+                                height="20"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                        )}
+                    </button>
+                </div>
+
+                {/* Sort Buttons Row */}
+                <div className="sort-buttons" style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                    <span className="sort-label">Sort:</span>
                     <button
                         className={`sort-btn ${sortBy === 'name' ? 'active' : ''}`}
                         onClick={() => setSortBy('name')}
+                        style={{ display: 'none' }}
                     >
                         Name
                     </button>
@@ -96,19 +144,19 @@ function CompanyList({ onCompanySelect, onOpenUploadModal, onShowUploadProgress 
                         className={`sort-btn ${sortBy === 'last_doc' ? 'active' : ''}`}
                         onClick={() => setSortBy('last_doc')}
                     >
-                        Last Doc
+                        Date Financials Cover
                     </button>
                     <button
                         className={`sort-btn ${sortBy === 'valuation' ? 'active' : ''}`}
                         onClick={() => setSortBy('valuation')}
                     >
-                        Valuation Date
+                        Most Recent Valuation
                     </button>
                     <button
                         className={`sort-btn ${sortBy === 'status' ? 'active' : ''}`}
                         onClick={() => setSortBy('status')}
                     >
-                        Status
+                        Over/under-valuation
                     </button>
                 </div>
             </div>
@@ -172,20 +220,6 @@ function CompanyList({ onCompanySelect, onOpenUploadModal, onShowUploadProgress 
                     )}
                 </div>
             )}
-
-            <button
-                className={`add-document-button ${hasActiveUploads ? 'has-uploads' : ''}`}
-                onClick={hasActiveUploads ? onShowUploadProgress : onOpenUploadModal}
-            >
-                {hasActiveUploads ? (
-                    <>
-                        <span className="button-spinner" aria-hidden="true" />
-                        Check Uploads ({uploadingDocuments.length})
-                    </>
-                ) : (
-                    '+ Add Document'
-                )}
-            </button>
         </div>
     )
 }

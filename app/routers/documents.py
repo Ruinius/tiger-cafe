@@ -27,7 +27,11 @@ from app.schemas.document import (
 )
 from app.schemas.file_metadata import DuplicateCheckResult, ExistingDocumentInfo, FileMetadata
 from app.utils.document_hash import generate_document_hash
-from app.utils.document_indexer import delete_chunk_embeddings, get_chunk_metadata, get_chunk_text
+from app.utils.document_indexer import (
+    delete_chunk_embeddings,
+    get_chunk_metadata,
+    load_full_document_text,
+)
 from app.utils.pdf_extractor import extract_text_from_pdf
 from config.config import DEBUG, UPLOAD_DIR
 
@@ -1398,37 +1402,63 @@ async def get_document_chunks(
     num_chunks = chunk_metadata.get("num_chunks", 0)
     chunk_size = chunk_metadata.get("chunk_size", 2)
 
-    # Get all chunks
+    # Check if this is a legacy page-based chunking (chunk_size small, e.g. < 100)
+    is_legacy_page_based = chunk_size < 100
+
     chunks = []
-    for chunk_index in range(num_chunks):
-        try:
-            chunk_text, start_page, end_page = get_chunk_text(
-                document.file_path, chunk_index, chunk_size
-            )
+
+    if is_legacy_page_based:
+        # Legacy: Page-based chunks
+        # Return a simple message instead of trying to load content
+        for chunk_index in range(num_chunks):
+            start_page = chunk_index * chunk_size
+            end_page = start_page + chunk_size
+
             chunks.append(
                 {
                     "chunk_index": chunk_index,
-                    "text": chunk_text,
+                    "text": "Legacy chunk (page-based), please re-index document to view content.",
                     "start_page": start_page,
-                    "end_page": end_page - 1,  # end_page is exclusive, so subtract 1 for display
-                    "character_count": len(chunk_text),
-                }
-            )
-        except Exception as e:
-            # If a chunk fails, continue with others
-            print(f"Error loading chunk {chunk_index}: {str(e)}")
-            chunks.append(
-                {
-                    "chunk_index": chunk_index,
-                    "text": None,
-                    "start_page": chunk_index * chunk_size,
-                    "end_page": min(
-                        (chunk_index + 1) * chunk_size - 1, chunk_metadata.get("total_pages", 0) - 1
-                    ),
+                    "end_page": end_page - 1,
                     "character_count": 0,
-                    "error": str(e),
+                    "note": "Legacy page-based chunk",
                 }
             )
+
+    else:
+        # New: Character-based chunks
+        # Load full text once (cached or extracted)
+        full_text = load_full_document_text(document_id, document.file_path)
+        total_chars = len(full_text)
+
+        for chunk_index in range(num_chunks):
+            try:
+                start_char = chunk_index * chunk_size
+                end_char = min(start_char + chunk_size, total_chars)
+                chunk_text = full_text[start_char:end_char]
+
+                chunks.append(
+                    {
+                        "chunk_index": chunk_index,
+                        "text": chunk_text,
+                        "start_char": start_char,
+                        "end_char": end_char,
+                        "start_page": None,
+                        "end_page": None,
+                        "character_count": len(chunk_text),
+                    }
+                )
+            except Exception as e:
+                chunks.append(
+                    {
+                        "chunk_index": chunk_index,
+                        "text": None,
+                        "start_char": chunk_index * chunk_size,
+                        "end_char": (chunk_index + 1) * chunk_size,
+                        "character_count": 0,
+                        "error": str(e),
+                    }
+                )
 
     return {
         "document_id": document_id,
@@ -1468,39 +1498,59 @@ if DEBUG:
         num_chunks = chunk_metadata.get("num_chunks", 0)
         chunk_size = chunk_metadata.get("chunk_size", 2)
 
-        # Get all chunks
+        is_legacy_page_based = chunk_size < 100
+
         chunks = []
-        for chunk_index in range(num_chunks):
-            try:
-                chunk_text, start_page, end_page = get_chunk_text(
-                    document.file_path, chunk_index, chunk_size
-                )
+
+        if is_legacy_page_based:
+            # Legacy: Page-based chunks
+            # Return a simple message instead of trying to load content
+            for chunk_index in range(num_chunks):
+                start_page = chunk_index * chunk_size
+                end_page = start_page + chunk_size
+
                 chunks.append(
                     {
                         "chunk_index": chunk_index,
-                        "text": chunk_text,
+                        "text": "Legacy chunk (page-based), please re-index document to view content.",
                         "start_page": start_page,
-                        "end_page": end_page
-                        - 1,  # end_page is exclusive, so subtract 1 for display
-                        "character_count": len(chunk_text),
-                    }
-                )
-            except Exception as e:
-                # If a chunk fails, continue with others
-                print(f"Error loading chunk {chunk_index}: {str(e)}")
-                chunks.append(
-                    {
-                        "chunk_index": chunk_index,
-                        "text": None,
-                        "start_page": chunk_index * chunk_size,
-                        "end_page": min(
-                            (chunk_index + 1) * chunk_size - 1,
-                            chunk_metadata.get("total_pages", 0) - 1,
-                        ),
+                        "end_page": end_page - 1,
                         "character_count": 0,
-                        "error": str(e),
+                        "note": "Legacy page-based chunk",
                     }
                 )
+        else:
+            full_text = load_full_document_text(document_id, document.file_path)
+            total_chars = len(full_text)
+
+            for chunk_index in range(num_chunks):
+                try:
+                    start_char = chunk_index * chunk_size
+                    end_char = min(start_char + chunk_size, total_chars)
+                    chunk_text = full_text[start_char:end_char]
+
+                    chunks.append(
+                        {
+                            "chunk_index": chunk_index,
+                            "text": chunk_text,
+                            "start_char": start_char,
+                            "end_char": end_char,
+                            "start_page": None,
+                            "end_page": None,
+                            "character_count": len(chunk_text),
+                        }
+                    )
+                except Exception as e:
+                    chunks.append(
+                        {
+                            "chunk_index": chunk_index,
+                            "text": None,
+                            "start_char": chunk_index * chunk_size,
+                            "end_char": (chunk_index + 1) * chunk_size,
+                            "character_count": 0,
+                            "error": str(e),
+                        }
+                    )
 
         return {
             "document_id": document_id,

@@ -7,8 +7,8 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 1rem;
-    padding-right: 0.5rem;
-    /* Space for scrollbar */
+    padding: 0.5rem 0.5rem 0.5rem 0;
+    /* Top, right (scrollbar space), bottom, left padding */
     align-content: start;
 }
 
@@ -133,10 +133,74 @@
 .sort-btn:hover {
     background: var(--bg-subtle);
     color: var(--text-primary);
+    border-color: var(--primary);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.sort-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .sort-btn.active {
     background: var(--primary);
     color: white;
     border-color: var(--primary);
+}
+
+/* Round Action Buttons (Refresh, Add) */
+.round-action-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid var(--border);
+    background-color: var(--bg-elevated);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.round-action-btn:hover {
+    background-color: var(--bg-subtle);
+    border-color: var(--primary);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.round-action-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.round-action-btn .button-spinner {
+    display: block;
+    width: 18px;
+    height: 18px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.round-action-btn.has-uploads {
+    color: var(--primary);
+    border-color: var(--primary);
+    background-color: rgba(10, 132, 255, 0.05);
+}
+
+.round-action-btn.primary {
+    background-color: var(--primary);
+    color: #ffffff;
+    border-color: var(--primary);
+}
+
+.round-action-btn.primary:hover {
+    background-color: var(--primary-dark);
+    border-color: var(--primary-dark);
 }

@@ -238,3 +238,16 @@ This document serves as an archive of completed tasks from the Project Planning.
     - Implemented "ADR Conversion Factor" row (editable) for ADR stocks.
     - Added backend logic to fetch exchange rates from Yahoo Finance (specifically handling RMB->CNY).
     - Updated "Percent Undervalued" to correctly calculate using ADR-adjusted fair value.
+
+### Phase 15: App-wide Analysis and Dashboard
+- [x] Improve the Company list
+    - Transformed list to card view displaying Valuation Status, Last Doc Date, and % Undervalued (Color Coded)  
+    - Added sorting controls (Name, Last Doc, Valuation, Status) and standardized date formats
+    - Updated default panel split to 50/50 and removed legacy badges
+    - [x] Change the card labels
+        1. Last Doc -> Date Financials Cover
+        2. Valuation -> Most Recent Valuation
+        3. Status -> Over/under-valuation
+- [x] Analysis Dashboard (Home Page)
+    - Implemented global visualizations defined in `docs/DASHBOARD_IDEAS.md`
+    - Added Valuation History scatter plot and Rule of 40 (Margin vs Growth) chart with L4Q logic

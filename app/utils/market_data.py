@@ -1,15 +1,81 @@
+import json
+from datetime import datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 
 import yfinance as yf
+
+# Cache configuration
+CACHE_DIR = Path("data/cache/yfinance")
+CACHE_EXPIRY_HOURS = 24
+
+
+def _get_cache_path(cache_key: str) -> Path:
+    """Get the cache file path for a given key."""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    # Sanitize the key to be filesystem-safe
+    safe_key = cache_key.replace("/", "_").replace("\\", "_").replace(":", "_")
+    return CACHE_DIR / f"{safe_key}.json"
+
+
+def _get_cached_value(cache_key: str):
+    """
+    Retrieve a cached value if it exists and hasn't expired.
+    Returns None if cache miss or expired.
+    """
+    cache_path = _get_cache_path(cache_key)
+
+    if not cache_path.exists():
+        return None
+
+    try:
+        with open(cache_path) as f:
+            cache_data = json.load(f)
+
+        # Check expiration
+        cached_time = datetime.fromisoformat(cache_data["timestamp"])
+        expiry_time = cached_time + timedelta(hours=CACHE_EXPIRY_HOURS)
+
+        if datetime.now() < expiry_time:
+            print(f"[CACHE HIT] {cache_key}")
+            return cache_data["value"]
+        else:
+            print(f"[CACHE EXPIRED] {cache_key}")
+            return None
+    except Exception as e:
+        print(f"[CACHE ERROR] Failed to read cache for {cache_key}: {e}")
+        return None
+
+
+def _set_cached_value(cache_key: str, value):
+    """
+    Store a value in the cache with current timestamp.
+    """
+    cache_path = _get_cache_path(cache_key)
+
+    try:
+        cache_data = {"timestamp": datetime.now().isoformat(), "value": value}
+        with open(cache_path, "w") as f:
+            json.dump(cache_data, f, indent=2)
+        print(f"[CACHE SET] {cache_key}")
+    except Exception as e:
+        print(f"[CACHE ERROR] Failed to write cache for {cache_key}: {e}")
 
 
 def get_latest_share_price(ticker: str) -> Decimal:
     """
     Fetch the latest share price for a given ticker from Yahoo Finance.
     Returns Decimal("0") if failed.
+    Uses 24-hour cache to prevent throttling.
     """
     if not ticker:
         return Decimal("0")
+
+    # Check cache first
+    cache_key = f"price_{ticker}"
+    cached = _get_cached_value(cache_key)
+    if cached is not None:
+        return Decimal(str(cached))
 
     try:
         # Use yfinance to get ticker data
@@ -25,6 +91,8 @@ def get_latest_share_price(ticker: str) -> Decimal:
                 price = hist["Close"].iloc[-1]
 
         if price is not None:
+            # Cache the result
+            _set_cached_value(cache_key, float(price))
             return Decimal(str(price))
 
         return Decimal("0")
@@ -37,9 +105,16 @@ def get_beta(ticker: str) -> Decimal:
     """
     Fetch the beta for a given ticker from Yahoo Finance.
     Returns Decimal("1.0") if failed (market beta).
+    Uses 24-hour cache to prevent throttling.
     """
     if not ticker:
         return Decimal("1.0")
+
+    # Check cache first
+    cache_key = f"beta_{ticker}"
+    cached = _get_cached_value(cache_key)
+    if cached is not None:
+        return Decimal(str(cached))
 
     try:
         ticker_obj = yf.Ticker(ticker)
@@ -49,6 +124,8 @@ def get_beta(ticker: str) -> Decimal:
         beta = info.get("beta")
 
         if beta is not None:
+            # Cache the result
+            _set_cached_value(cache_key, float(beta))
             return Decimal(str(beta))
 
         return Decimal("1.0")  # Default to market beta
@@ -61,9 +138,16 @@ def get_market_cap(ticker: str) -> Decimal:
     """
     Fetch the market capitalization for a given ticker from Yahoo Finance.
     Returns Decimal("0") if failed.
+    Uses 24-hour cache to prevent throttling.
     """
     if not ticker:
         return Decimal("0")
+
+    # Check cache first
+    cache_key = f"market_cap_{ticker}"
+    cached = _get_cached_value(cache_key)
+    if cached is not None:
+        return Decimal(str(cached))
 
     try:
         ticker_obj = yf.Ticker(ticker)
@@ -76,6 +160,8 @@ def get_market_cap(ticker: str) -> Decimal:
             mkt_cap = info.get("marketCap")
 
         if mkt_cap is not None:
+            # Cache the result
+            _set_cached_value(cache_key, float(mkt_cap))
             return Decimal(str(mkt_cap))
 
         return Decimal("0")
@@ -111,6 +197,13 @@ def get_currency_rate(from_currency: str, to_currency: str = "USD") -> Decimal:
         f"[get_currency_rate] Normalized: {from_currency} -> {from_curr}, {to_currency} -> {to_curr}"
     )
 
+    # Check cache first
+    cache_key = f"currency_{from_curr}_{to_curr}"
+    cached = _get_cached_value(cache_key)
+    if cached is not None:
+        print(f"[get_currency_rate] Returning cached rate: {cached}")
+        return Decimal(str(cached))
+
     try:
         # Ticker format usually "EURUSD=X"
         ticker = f"{from_curr}{to_curr}=X"
@@ -132,6 +225,8 @@ def get_currency_rate(from_currency: str, to_currency: str = "USD") -> Decimal:
                 print(f"[get_currency_rate] Got price from history: {price}")
 
         if price:
+            # Cache the result
+            _set_cached_value(cache_key, float(price))
             result = Decimal(str(price))
             print(f"[get_currency_rate] Successfully fetched rate: {result}")
             return result

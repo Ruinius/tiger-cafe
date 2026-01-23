@@ -214,6 +214,7 @@ async def get_company_historical_calculations(
         revenue = get_revenue(document.income_statement) if document.income_statement else None
         entry = {
             "time_period": time_period,
+            "period_end_date": document.period_end_date,
             "revenue": revenue,
             "revenue_growth_yoy": document.income_statement.revenue_growth_yoy
             if document.income_statement
@@ -255,9 +256,18 @@ async def get_company_historical_calculations(
         if existing is None or entry["calculated_at"] > existing["calculated_at"]:
             entries_by_period[time_period] = entry
 
-    sorted_entries = sorted(
-        entries_by_period.values(), key=lambda item: time_period_sort_key(item["time_period"])
-    )
+    # Sort by period_end_date (most reliable), fallback to time_period_sort_key
+    def sort_key(item):
+        if item.get("period_end_date"):
+            # Use period_end_date as primary sort key (convert to timestamp)
+            from datetime import datetime
+
+            return (datetime.fromisoformat(str(item["period_end_date"])).timestamp(), 0, "")
+        else:
+            # Fallback to time_period parsing
+            return time_period_sort_key(item["time_period"])
+
+    sorted_entries = sorted(entries_by_period.values(), key=sort_key)
 
     # Calculate YOY Marginal Capital Turnover
     # Marginal Capital Turnover = Change in Revenue / Change in Invested Capital

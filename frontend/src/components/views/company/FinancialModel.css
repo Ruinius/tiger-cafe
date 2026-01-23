@@ -112,16 +112,18 @@
 }
 
 .delete-valuation-btn:hover {
-    background-color: rgba(239, 68, 68, 0.08);
+    background-color: rgba(239, 68, 68, 0.1);
     /* Minimal red tint */
     color: #ef4444;
     /* Soft red */
     opacity: 1 !important;
-    transform: scale(1.05);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.15);
 }
 
 .delete-valuation-btn:active {
-    transform: scale(0.95);
+    transform: translateY(0);
+    box-shadow: none;
 }
 
 .delete-valuation-btn svg {

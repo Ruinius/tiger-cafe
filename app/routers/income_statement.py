@@ -458,11 +458,10 @@ def process_income_statement_async(document_id: str, db: Session):
                             "GAAP/EBITDA reconciliation extraction completed",
                         )
                     else:
-                        additional_item_errors.append("GAAP reconciliation")
                         add_log(
                             document_id,
                             FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                            "GAAP/EBITDA reconciliation extraction failed or not found",
+                            "GAAP/EBITDA reconciliation extraction failed or not found (Warning)",
                         )
                 except Exception as extraction_error:
                     additional_item_errors.append("GAAP reconciliation")
@@ -537,11 +536,10 @@ def process_income_statement_async(document_id: str, db: Session):
                             "Amortization extraction completed",
                         )
                     else:
-                        additional_item_errors.append("amortization")
                         add_log(
                             document_id,
                             FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                            "Amortization extraction failed or not found",
+                            "Amortization extraction failed or not found (Warning)",
                         )
                 except Exception as extraction_error:
                     additional_item_errors.append("amortization")
