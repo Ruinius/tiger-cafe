@@ -12,12 +12,24 @@ class MilestoneStatus(Enum):
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     ERROR = "error"
+    WARNING = "warning"  # New status for non-fatal issues
 
 
 class FinancialStatementMilestone(Enum):
+    # Phase 1: Ingestion
+    UPLOAD = "upload"
+    CLASSIFICATION = "classification"
+    INDEX = "index"
+    # Phase 2: Core Extraction
     BALANCE_SHEET = "balance_sheet"
     INCOME_STATEMENT = "income_statement"
-    EXTRACTING_ADDITIONAL_ITEMS = "extracting_additional_items"
+    # Phase 3: Deep Analysis
+    SHARES_OUTSTANDING = "shares_outstanding"
+    ORGANIC_GROWTH = "organic_growth"
+    GAAP_RECONCILIATION = "gaap_reconciliation"
+    AMORTIZATION = "amortization"
+    OTHER_ASSETS = "other_assets"
+    OTHER_LIABILITIES = "other_liabilities"
     CLASSIFYING_NON_OPERATING_ITEMS = "classifying_non_operating_items"
 
 
@@ -122,35 +134,20 @@ def clear_progress(document_id: str):
 
 
 def initialize_progress(document_id: str):
-    """Initialize progress tracking for a document"""
+    """Initialize progress tracking for a document with all 12 milestones"""
     with _progress_lock:
+        milestones = {}
+        # Initialize all 12 milestones as PENDING
+        for milestone in FinancialStatementMilestone:
+            milestones[milestone.value] = {
+                "status": MilestoneStatus.PENDING.value,
+                "message": None,
+                "logs": [],
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+
         _progress_store[document_id] = {
-            "milestones": {
-                FinancialStatementMilestone.BALANCE_SHEET.value: {
-                    "status": MilestoneStatus.PENDING.value,
-                    "message": None,
-                    "logs": [],
-                    "updated_at": datetime.utcnow().isoformat(),
-                },
-                FinancialStatementMilestone.INCOME_STATEMENT.value: {
-                    "status": MilestoneStatus.PENDING.value,
-                    "message": None,
-                    "logs": [],
-                    "updated_at": datetime.utcnow().isoformat(),
-                },
-                FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS.value: {
-                    "status": MilestoneStatus.PENDING.value,
-                    "message": None,
-                    "logs": [],
-                    "updated_at": datetime.utcnow().isoformat(),
-                },
-                FinancialStatementMilestone.CLASSIFYING_NON_OPERATING_ITEMS.value: {
-                    "status": MilestoneStatus.PENDING.value,
-                    "message": None,
-                    "logs": [],
-                    "updated_at": datetime.utcnow().isoformat(),
-                },
-            },
+            "milestones": milestones,
             "last_updated": datetime.utcnow().isoformat(),
         }
 
@@ -187,31 +184,26 @@ def reset_income_statement_milestones(document_id: str):
                 "last_updated": datetime.utcnow().isoformat(),
             }
 
-        # Only reset income statement milestones (don't touch balance sheet milestones)
-        _progress_store[document_id]["milestones"][
-            FinancialStatementMilestone.INCOME_STATEMENT.value
-        ] = {
-            "status": MilestoneStatus.PENDING.value,
-            "message": None,
-            "logs": [],
-            "updated_at": datetime.utcnow().isoformat(),
-        }
-        _progress_store[document_id]["milestones"][
-            FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS.value
-        ] = {
-            "status": MilestoneStatus.PENDING.value,
-            "message": None,
-            "logs": [],
-            "updated_at": datetime.utcnow().isoformat(),
-        }
-        _progress_store[document_id]["milestones"][
-            FinancialStatementMilestone.CLASSIFYING_NON_OPERATING_ITEMS.value
-        ] = {
-            "status": MilestoneStatus.PENDING.value,
-            "message": None,
-            "logs": [],
-            "updated_at": datetime.utcnow().isoformat(),
-        }
+        # Reset income statement and all Phase 3 milestones (don't touch balance sheet)
+        milestones_to_reset = [
+            FinancialStatementMilestone.INCOME_STATEMENT,
+            FinancialStatementMilestone.SHARES_OUTSTANDING,
+            FinancialStatementMilestone.ORGANIC_GROWTH,
+            FinancialStatementMilestone.GAAP_RECONCILIATION,
+            FinancialStatementMilestone.AMORTIZATION,
+            FinancialStatementMilestone.OTHER_ASSETS,
+            FinancialStatementMilestone.OTHER_LIABILITIES,
+            FinancialStatementMilestone.CLASSIFYING_NON_OPERATING_ITEMS,
+        ]
+
+        for milestone in milestones_to_reset:
+            _progress_store[document_id]["milestones"][milestone.value] = {
+                "status": MilestoneStatus.PENDING.value,
+                "message": None,
+                "logs": [],
+                "updated_at": datetime.utcnow().isoformat(),
+            }
+
         _progress_store[document_id]["last_updated"] = datetime.utcnow().isoformat()
 
 
