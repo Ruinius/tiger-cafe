@@ -34,6 +34,7 @@ class BalanceSheet(Base):
 
     # Metadata
     time_period = Column(String, nullable=True)  # e.g., "Q3 2023", "FY 2023"
+    period_end_date = Column(String, nullable=True)  # e.g., "2024-03-31" (YYYY-MM-DD)
     currency = Column(String, nullable=True)  # Local currency code (e.g., "USD", "EUR")
     unit = Column(
         String, nullable=True

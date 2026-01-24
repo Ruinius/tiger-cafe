@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { useAuth } from '../../../contexts/AuthContext'
 import { useAnalysisEvents } from '../../../hooks/useAnalysisEvents'
 import { useFinancialStatements } from '../../../hooks/useFinancialStatements'
@@ -38,6 +38,7 @@ function DocumentExtractionView({ selectedDocument }) {
         balanceSheet,
         incomeStatement,
         organicGrowth,
+        shares,
         amortization,
         otherAssets,
         otherLiabilities,
@@ -114,23 +115,26 @@ function DocumentExtractionView({ selectedDocument }) {
     // Coordination: Data Loading when milestones complete
     useEffect(() => {
         if (!selectedDocument?.id || !isEligibleForFinancialStatements) return
-        if (!areAllMilestonesTerminal()) return
-
         const bsStatus = financialStatementProgress?.milestones?.balance_sheet?.status
         if (balanceSheetLoadAttempts < MAX_LOAD_ATTEMPTS && !balanceSheet) {
-            if (bsStatus === 'completed' || bsStatus === 'error') {
+            if (bsStatus === 'completed' || bsStatus === 'error' || bsStatus === 'warning') {
                 loadBalanceSheet()
             }
         }
 
         const isStatus = financialStatementProgress?.milestones?.income_statement?.status
         if (incomeStatementLoadAttempts < MAX_LOAD_ATTEMPTS && !incomeStatement) {
-            if (isStatus === 'completed' || isStatus === 'error') {
+            if (isStatus === 'completed' || isStatus === 'error' || isStatus === 'warning') {
                 loadIncomeStatement()
             }
         }
 
-        if (!additionalItemsLoadAttempted) {
+        const sharesStatus = financialStatementProgress?.milestones?.shares_outstanding?.status
+        // Also check if overall status is completed as a fallback
+        const isOverallComplete = financialStatementProgress?.status === 'completed'
+
+        if (!additionalItemsLoadAttempted && (sharesStatus === 'completed' || sharesStatus === 'error' || sharesStatus === 'warning' || sharesStatus === 'skipped' || isOverallComplete)) {
+            console.log('[DocumentExtractionView] Condition met, calling loadAdditionalItems')
             loadAdditionalItems().then(() => setAdditionalItemsLoadAttempted(true))
         }
     }, [
@@ -168,6 +172,42 @@ function DocumentExtractionView({ selectedDocument }) {
         setHistoricalCalculationsLoadAttempted
     ])
 
+    // Coordination: Auto-refresh when processing completes
+    const prevAnalysisStatusRef = useRef(selectedDocument?.analysis_status)
+
+    useEffect(() => {
+        const currentStatus = selectedDocument?.analysis_status
+        const prevStatus = prevAnalysisStatusRef.current
+
+        if (prevStatus === 'processing' && currentStatus !== 'processing') {
+            console.log('[DocumentExtractionView] Pipeline finished, refreshing all data...')
+
+            if (selectedDocument && isEligibleForFinancialStatements) {
+                // 1. Refresh progress first
+                loadFinancialStatementProgress()
+
+                // 2. Clear stale data
+                clearFinancialStatements()
+                clearHistoricalCalculations()
+
+                // 3. Reset load flags to allow re-fetching
+                setAdditionalItemsLoadAttempted(false)
+                setHistoricalCalculationsLoadAttempted(false)
+            }
+        }
+
+        prevAnalysisStatusRef.current = currentStatus
+    }, [
+        selectedDocument?.analysis_status,
+        selectedDocument,
+        isEligibleForFinancialStatements,
+        loadFinancialStatementProgress,
+        clearFinancialStatements,
+        clearHistoricalCalculations,
+        setAdditionalItemsLoadAttempted,
+        setHistoricalCalculationsLoadAttempted
+    ])
+
     if (!selectedDocument) return null
 
     const hasNoData = !balanceSheet && !incomeStatement
@@ -186,83 +226,152 @@ function DocumentExtractionView({ selectedDocument }) {
 
                 {isEligibleForFinancialStatements && (
                     <>
-                        {/* Validation Banner */}
-                        {financialStatementProgress && areAllMilestonesTerminal() && (
-                            <div className="info-section">
-                                {(() => {
-                                    const milestones = financialStatementProgress.milestones || {}
-                                    const errors = []
-                                    const warnings = []
+                        {/* Validation Banner & Processing Status */}
+                        {(() => {
+                            const milestones = financialStatementProgress?.milestones || {};
+                            const errors = [];
+                            const warnings = [];
+                            const overallStatus = financialStatementProgress?.status || 'not_started';
 
-                                    // Collect errors and warnings from milestones
-                                    Object.entries(milestones).forEach(([key, milestone]) => {
-                                        if (milestone.status === 'error') {
-                                            errors.push({
-                                                milestone: key.replace(/_/g, ' '),
-                                                message: milestone.message || 'Processing failed'
-                                            })
-                                        }
-                                        // Check for warning messages in logs
-                                        if (milestone.logs) {
-                                            milestone.logs.forEach(log => {
-                                                if (log.message && log.message.toLowerCase().includes('(warning)')) {
-                                                    warnings.push({
-                                                        milestone: key.replace(/_/g, ' '),
-                                                        message: log.message.replace(' (Warning)', '')
-                                                    })
+                            // 1. Collect errors and warnings from milestones
+                            Object.entries(milestones).forEach(([key, milestone]) => {
+                                if (milestone.status === 'error') {
+                                    errors.push({
+                                        milestone: key.replace(/_/g, ' '),
+                                        message: milestone.message || 'Processing failed'
+                                    });
+                                }
+                                if (milestone.status === 'warning') {
+                                    warnings.push({
+                                        milestone: key.replace(/_/g, ' '),
+                                        message: milestone.message || 'Warning'
+                                    });
+                                }
+                            });
+
+                            // 2. Add specific validation errors from the statements themselves
+                            const processStatementErrors = (statement, label) => {
+                                if (statement && statement.is_valid === false) {
+                                    const errorDetails = statement.validation_errors;
+                                    if (errorDetails) {
+                                        try {
+                                            const parsed = JSON.parse(errorDetails);
+                                            if (Array.isArray(parsed)) {
+                                                parsed.forEach(err => {
+                                                    if (!warnings.find(w => w.milestone === label && w.message === err)) {
+                                                        warnings.push({ milestone: label, message: err });
+                                                    }
+                                                });
+                                            } else {
+                                                if (!warnings.find(w => w.milestone === label && w.message === errorDetails)) {
+                                                    warnings.push({ milestone: label, message: errorDetails });
                                                 }
-                                            })
+                                            }
+                                        } catch (e) {
+                                            if (!warnings.find(w => w.milestone === label && w.message === errorDetails)) {
+                                                warnings.push({ milestone: label, message: errorDetails });
+                                            }
                                         }
-                                    })
-
-                                    if (errors.length > 0) {
-                                        return (
-                                            <div className="validation-banner error">
-                                                <div className="banner-header">
-                                                    <span className="banner-icon">✗</span>
-                                                    <h4>Processing Errors</h4>
-                                                </div>
-                                                <ul className="banner-list">
-                                                    {errors.map((error, idx) => (
-                                                        <li key={idx}>
-                                                            <strong>{error.milestone}:</strong> {error.message}
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            </div>
-                                        )
                                     }
+                                }
+                            };
 
-                                    if (warnings.length > 0) {
-                                        return (
-                                            <div className="validation-banner warning">
-                                                <div className="banner-header">
-                                                    <span className="banner-icon">⚠</span>
-                                                    <h4>Processing Warnings</h4>
-                                                </div>
-                                                <ul className="banner-list">
-                                                    {warnings.map((warning, idx) => (
-                                                        <li key={idx}>
-                                                            <strong>{warning.milestone}:</strong> {warning.message}
-                                                        </li>
-                                                    ))}
-                                                </ul>
+                            processStatementErrors(balanceSheet, 'Balance Sheet');
+                            processStatementErrors(incomeStatement, 'Income Statement');
+
+                            // 3. Data Integrity & Health Checks
+                            // We run these if the pipeline is terminal OR if enough attempts have failed
+                            const isDone = areAllMilestonesTerminal() || overallStatus === 'completed' || overallStatus === 'error';
+                            const primaryDataMissing = !balanceSheet || !incomeStatement;
+                            const attemptsExhausted = balanceSheetLoadAttempts >= MAX_LOAD_ATTEMPTS;
+
+                            if (isDone || (primaryDataMissing && attemptsExhausted)) {
+                                // Critical Path Errors (Red)
+                                if (!balanceSheet) {
+                                    errors.push({ milestone: 'Critical Data', message: 'Balance Sheet is missing' });
+                                }
+
+                                if (!incomeStatement) {
+                                    errors.push({ milestone: 'Critical Data', message: 'Income Statement is missing' });
+                                }
+
+                                const hasShares = shares && ((shares.basic_shares_outstanding !== null && shares.basic_shares_outstanding !== undefined) ||
+                                    (shares.diluted_shares_outstanding !== null && shares.diluted_shares_outstanding !== undefined));
+                                if (!hasShares && isDone) {
+                                    errors.push({ milestone: 'Critical Data', message: 'Shares Outstanding data is missing' });
+                                }
+
+                                if (!organicGrowth && isDone) {
+                                    warnings.push({ milestone: 'Analytical Data', message: 'Organic Growth / Prior Period Revenue is missing' });
+                                }
+
+                                if (!nonOperatingClassification && isDone) {
+                                    warnings.push({ milestone: 'Analytical Data', message: 'Non-Operating Classification is missing' });
+                                }
+
+                                // Warnings (Yellow)
+                                const isEA = selectedDocument?.document_type?.toLowerCase() === 'earnings_announcement';
+                                if (!amortization && !isEA && isDone) {
+                                    warnings.push({ milestone: 'Data Integrity', message: 'GAAP Reconciliation data is missing' });
+                                }
+                            }
+
+                            // 4. Render Banners
+                            const showProcessingBanner = (overallStatus === 'processing' || overallStatus === 'not_started') &&
+                                primaryDataMissing &&
+                                !attemptsExhausted &&
+                                errors.length === 0;
+
+                            return (
+                                <div className="validation-banner-container">
+                                    {showProcessingBanner && (
+                                        <div className="validation-banner warning" style={{ background: 'rgba(10, 132, 255, 0.05)', borderColor: 'rgba(10, 132, 255, 0.2)' }}>
+                                            <div className="banner-header">
+                                                <div className="status-spinner" style={{ color: 'var(--primary)', width: '18px', height: '18px' }} />
+                                                <h4 style={{ color: 'var(--primary)' }}>Processing Document...</h4>
                                             </div>
-                                        )
-                                    }
+                                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginLeft: '2.75rem' }}>
+                                                Extraction is currently in progress. Tables will appear as they are completed.
+                                            </p>
+                                        </div>
+                                    )}
 
-                                    return null
-                                })()}
-                            </div>
-                        )}
+                                    {errors.length > 0 && (
+                                        <div className="validation-banner error">
+                                            <div className="banner-header">
+                                                <span className="banner-icon">✗</span>
+                                                <h4>Processing Errors</h4>
+                                            </div>
+                                            <ul className="banner-list">
+                                                {errors.map((error, idx) => (
+                                                    <li key={idx}>
+                                                        <strong>{error.milestone}:</strong> {error.message}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
 
-                        {showNothingMessage && (
-                            <div className="info-section">
-                                <p className="info-text">
-                                    Document processing complete, but no financial tables could be extracted.
-                                </p>
-                            </div>
-                        )}
+                                    {warnings.length > 0 && (
+                                        <div className="validation-banner warning">
+                                            <div className="banner-header">
+                                                <span className="banner-icon">⚠</span>
+                                                <h4>Processing Warnings</h4>
+                                            </div>
+                                            <ul className="banner-list">
+                                                {warnings.map((warning, idx) => (
+                                                    <li key={idx}>
+                                                        <strong>{warning.milestone}:</strong> {warning.message}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
+
+
 
                         {/* Extractions */}
                         {balanceSheet && (
@@ -308,11 +417,11 @@ function DocumentExtractionView({ selectedDocument }) {
                             </div>
                         )}
 
-                        {incomeStatement && (
+                        {shares && (
                             <div className="extraction-section">
                                 <h3>Shares Outstanding</h3>
                                 <SharesOutstandingTable
-                                    incomeStatement={incomeStatement}
+                                    shares={shares}
                                 />
                             </div>
                         )}

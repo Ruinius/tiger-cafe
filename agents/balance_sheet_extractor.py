@@ -53,7 +53,9 @@ def extract_balance_sheet(
     )
 
     # Step 1: Find top-10 chunks by number density
-    top_numeric_chunks = find_top_numeric_chunks(document_id, file_path, top_k=10)
+    top_numeric_chunks = find_top_numeric_chunks(
+        document_id, file_path, top_k=10, context_name="Balance Sheet"
+    )
 
     # Step 2: Rank those top-10 chunks by query similarity
     query_texts = [
@@ -68,17 +70,21 @@ def extract_balance_sheet(
         "Payable",
         "Debt",
     ]
-    candidate_chunks = rank_chunks_by_query(document_id, file_path, top_numeric_chunks, query_texts)
+    candidate_chunks = rank_chunks_by_query(
+        document_id, file_path, top_numeric_chunks, query_texts, context_name="Balance Sheet"
+    )
 
     if not candidate_chunks:
-        # Fallback to legacy if no chunks found (rare)
-        print("No chunks found with numbers, falling back to legacy search")
+        add_log(
+            document_id,
+            FinancialStatementMilestone.BALANCE_SHEET,
+            "I couldn't find any sections with clear financial figures. This is unusual, but I'll keep trying.",
+        )
         # Legacy fallback logic could go here or just raise error
 
     for attempt_idx, chunk_index in enumerate(candidate_chunks):
         try:
             section_msg = f"Stage 1: Finding balance sheet section (attempt {attempt_idx + 1}, chunk {chunk_index})"
-            print(section_msg)
             add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, section_msg)
 
             # Get text for this chunk with padding
@@ -87,25 +93,39 @@ def extract_balance_sheet(
                 document_id, file_path, chunk_index, chars_before=2500, chars_after=2500
             )
 
-            chunk_msg = f"Checking chunk {chunk_index} (chars {log_info['chunk_start_char']}-{log_info['chunk_end_char']})"
-            print(chunk_msg)
-            chars_msg = f"Extracted section (chars {log_info['start_extract_char']}-{log_info['end_extract_char']})"
-            print(chars_msg)
+            f"Checking chunk {chunk_index} (chars {log_info['chunk_start_char']}-{log_info['chunk_end_char']})"
+            f"Extracted section (chars {log_info['start_extract_char']}-{log_info['end_extract_char']})"
 
             # Stage 1 validation: Check completeness of chunk text using LLM (before extraction)
             completeness_check_msg = (
                 "Stage 1: Checking if chunk contains complete balance sheet using LLM"
             )
-            print(completeness_check_msg)
             add_log(
                 document_id,
                 FinancialStatementMilestone.BALANCE_SHEET,
                 completeness_check_msg,
             )
 
+            add_log(
+                document_id,
+                FinancialStatementMilestone.BALANCE_SHEET,
+                f"I'm asking Gemini to check if this section (chunk {chunk_index}) has a complete balance sheet for {time_period}.",
+            )
             is_complete, reason = check_balance_sheet_completeness_llm(
                 balance_sheet_text, time_period, period_end_date
             )
+            if is_complete:
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.BALANCE_SHEET,
+                    "Gemini confirmed this section looks complete and ready for extraction.",
+                )
+            else:
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.BALANCE_SHEET,
+                    f"Gemini thinks this section is incomplete because: {reason}.",
+                )
 
             if not is_complete:
                 section_failed_msg = f"Stage 1 validation failed: {reason}"
@@ -131,46 +151,46 @@ def extract_balance_sheet(
                     }
                     return extracted_data
 
-            # Extract balance sheet using LLM (only if chunk is complete)
-            extraction_msg = "Extracting balance sheet from complete chunk"
-            print(extraction_msg)
             add_log(
                 document_id,
                 FinancialStatementMilestone.BALANCE_SHEET,
-                extraction_msg,
+                f"I'm examining a promising section of the document (attempt {attempt_idx + 1}).",
             )
 
+            add_log(
+                document_id,
+                FinancialStatementMilestone.BALANCE_SHEET,
+                "I'm now asking Gemini to extract all the detailed line items from this section.",
+            )
             extracted_data = extract_balance_sheet_llm(
                 balance_sheet_text, time_period, currency=None, period_end_date=period_end_date
+            )
+            add_log(
+                document_id,
+                FinancialStatementMilestone.BALANCE_SHEET,
+                f"Gemini has finished extracting {len(extracted_data.get('line_items', []))} line items.",
             )
 
             # Ensure line_items exists and is a list
             if "line_items" not in extracted_data:
                 extracted_data["line_items"] = []
             elif not isinstance(extracted_data["line_items"], list):
-                print(
-                    f"Warning: line_items is not a list, got {type(extracted_data['line_items'])}"
-                )
                 extracted_data["line_items"] = []
 
-            extracted_count_msg = (
-                f"Extracted {len(extracted_data.get('line_items', []))} line items"
-            )
-            print(extracted_count_msg)
+            # Assign line_order to extracted items
+            for i, item in enumerate(extracted_data.get("line_items", [])):
+                item["line_order"] = i
+
             add_log(
                 document_id,
                 FinancialStatementMilestone.BALANCE_SHEET,
-                extracted_count_msg,
+                f"I've successfully identified {len(extracted_data.get('line_items', []))} line items from this section.",
             )
 
-            section_valid_msg = (
-                "Stage 1 validation passed (complete balance sheet chunk found and extracted)"
-            )
-            print(section_valid_msg)
             add_log(
                 document_id,
                 FinancialStatementMilestone.BALANCE_SHEET,
-                section_valid_msg,
+                "The section looks complete. I'm moving forward with this data.",
             )
             # Store successful chunk index for income statement extraction
             successful_chunk_index = chunk_index
@@ -178,8 +198,6 @@ def extract_balance_sheet(
 
         except Exception as e:
             str(e).lower()
-            # Basic error handling
-            print(f"Error on section attempt {attempt_idx + 1}: {str(e)}")
             if attempt_idx == len(candidate_chunks) - 1:
                 raise
 
@@ -194,15 +212,17 @@ def extract_balance_sheet(
 
     try:
         # Step 0: Initial Validation
-        extraction_msg = "Stage 2: Validating extraction calculations"
-        print(extraction_msg)
         add_log(
             document_id,
             FinancialStatementMilestone.BALANCE_SHEET,
-            extraction_msg,
+            "I'm now double-checking the math to make sure everything adds up correctly.",
         )
 
         # Post-process to add standard names
+        # Inject document_id into items for logging if not present
+        for item in extracted_data["line_items"]:
+            item["document_id"] = document_id
+
         extracted_data["line_items"] = post_process_balance_sheet_line_items(
             extracted_data["line_items"]
         )
@@ -211,31 +231,59 @@ def extract_balance_sheet(
 
         # Step 1: If validation fails, check time periods and remove out-of-place items
         if not calc_valid:
-            validation_error_str = "; ".join(calc_errors)
-            time_check_msg = f"Validation failed ({validation_error_str}). Checking for out-of-period line items."
-            print(time_check_msg)
-            add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, time_check_msg)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.BALANCE_SHEET,
+                "The subtotals don't quite match. I'm checking if some items belong to a different time period.",
+            )
 
+            add_log(
+                document_id,
+                FinancialStatementMilestone.BALANCE_SHEET,
+                "I'm asking Gemini to check if any of these balance sheet items belong to a different time period.",
+            )
             time_check_result = check_line_item_time_periods_balance_sheet(
                 extracted_data["line_items"], time_period
             )
             mismatched_items = time_check_result.get("mismatched_items", [])
+            if mismatched_items:
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.BALANCE_SHEET,
+                    f"Gemini found {len(mismatched_items)} items from the wrong period.",
+                )
+            else:
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.BALANCE_SHEET,
+                    "Gemini confirmed all items belong to the correct period.",
+                )
 
             if mismatched_items:
                 # Remove out-of-place items
                 mismatched_names = {item["line_name"] for item in mismatched_items}
-                original_count = len(extracted_data["line_items"])
+                len(extracted_data["line_items"])
                 extracted_data["line_items"] = [
                     item
                     for item in extracted_data["line_items"]
                     if item["line_name"] not in mismatched_names
                 ]
 
-                removed_msg = f"Removed {len(mismatched_items)} out-of-period items from {original_count} total items. Re-validating."
-                print(removed_msg)
-                add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, removed_msg)
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.BALANCE_SHEET,
+                    f"I've removed {len(mismatched_items)} items that seemed out of place. Re-calculating now.",
+                )
+
+                # Re-assign line_order after removal
+                for i, item in enumerate(extracted_data["line_items"]):
+                    item["line_order"] = i
 
                 # Post-process and Re-validate after removal
+                # Inject document_id
+                for item in extracted_data["line_items"]:
+                    item["document_id"] = document_id
+
                 extracted_data["line_items"] = post_process_balance_sheet_line_items(
                     extracted_data["line_items"]
                 )
@@ -244,17 +292,18 @@ def extract_balance_sheet(
                 )
 
         # Step 2: If validation still fails, try one last retry with feedback
-        retried = False
         if not calc_valid:
-            retry_msg = "Validation still failed. Attempting final extraction with LLM feedback."
-            print(retry_msg)
             add_log(
                 document_id,
                 FinancialStatementMilestone.BALANCE_SHEET,
-                retry_msg,
+                "The numbers are still inconsistent. I'm asking for a more precise extraction with specific feedback.",
             )
-            retried = True
 
+            add_log(
+                document_id,
+                FinancialStatementMilestone.BALANCE_SHEET,
+                "I'm sending the math errors back to Gemini for a corrected extraction.",
+            )
             # Re-extract with validation error feedback
             extracted_data = extract_balance_sheet_llm_with_feedback(
                 balance_sheet_text,
@@ -264,17 +313,28 @@ def extract_balance_sheet(
                 currency=None,
                 period_end_date=period_end_date,
             )
-
-            # Log completion of retry
-            retry_done_msg = f"Final retry extraction finished with {len(extracted_data.get('line_items', []))} items. Re-validating."
-            print(retry_done_msg)
             add_log(
                 document_id,
                 FinancialStatementMilestone.BALANCE_SHEET,
-                retry_done_msg,
+                f"Gemini has finished the retry and provided {len(extracted_data.get('line_items', []))} updated line items.",
             )
 
+            # Log completion of retry
+            add_log(
+                document_id,
+                FinancialStatementMilestone.BALANCE_SHEET,
+                "I've finished the retry extraction. Let's see if the math works now.",
+            )
+
+            # Assign line_order to retried items
+            for i, item in enumerate(extracted_data.get("line_items", [])):
+                item["line_order"] = i
+
             # Post-process and Re-validate final attempt
+            # Inject document_id
+            for item in extracted_data["line_items"]:
+                item["document_id"] = document_id
+
             extracted_data["line_items"] = post_process_balance_sheet_line_items(
                 extracted_data["line_items"]
             )
@@ -284,24 +344,16 @@ def extract_balance_sheet(
 
         # Final Result Processing
         if calc_valid:
-            success_msg = "Stage 2 validation passed"
-            if retried:
-                success_msg += " (after LLM retry)"
-            if calc_errors:
-                success_msg += " (deduced valid despite warnings)"
-            print(success_msg)
             add_log(
                 document_id,
                 FinancialStatementMilestone.BALANCE_SHEET,
-                success_msg,
+                "Great! All the numbers in the balance sheet are now verified and consistent.",
             )
         else:
-            fail_msg = f"Stage 2 validation failed after retries: {', '.join(calc_errors[:2])}"
-            print(fail_msg)
             add_log(
                 document_id,
                 FinancialStatementMilestone.BALANCE_SHEET,
-                fail_msg,
+                "I couldn't get all the numbers to balance perfectly, but I've captured the best available data.",
             )
 
         extracted_data["is_valid"] = calc_valid
@@ -325,7 +377,6 @@ def extract_balance_sheet(
         return extracted_data
 
     except Exception as e:
-        print(f"Error in Stage 2 extraction: {str(e)}")
         extracted_data["is_valid"] = False
         extracted_data["validation_errors"] = [str(e)]
         if successful_chunk_index is not None:
@@ -348,10 +399,14 @@ def check_balance_sheet_completeness_llm(
     Returns:
         Tuple of (is_complete, reason)
     """
-    validation_criteria = """- Start with cash
-- Have multiple asset lines with a total
-- Have multiple liability lines with a total
-- Have a "Total Liabilities and Equity line"""
+    validation_criteria = """
+    - The title of the balance sheet needs to be visible
+    - The table must have time header at the top signifying the date or quarter
+    - The statement itself starts with asset header or cash
+    - Have multiple asset lines with a total
+    - Have multiple liability lines with a total
+    - Have a "Total Liabilities and Equity line
+    """
 
     return check_section_completeness_llm(
         text, time_period, "consolidated balance sheet", validation_criteria, period_end_date
@@ -610,8 +665,18 @@ def post_process_balance_sheet_line_items(line_items: list[dict]) -> list[dict]:
                 )
 
     # Step 2: Call TigerTransformerClient for inference
+    add_log(
+        line_items[0].get("document_id") if line_items and line_items[0].get("document_id") else "",
+        FinancialStatementMilestone.BALANCE_SHEET,
+        "I'm sending the line items to the tiger-transformer model to standardize the names and categories.",
+    )
     client = TigerTransformerClient()
     processed_items = client.predict_balance_sheet(line_items)
+    add_log(
+        line_items[0].get("document_id") if line_items and line_items[0].get("document_id") else "",
+        FinancialStatementMilestone.BALANCE_SHEET,
+        "The tiger-transformer model has finished standardizing the line items.",
+    )
 
     return processed_items
 

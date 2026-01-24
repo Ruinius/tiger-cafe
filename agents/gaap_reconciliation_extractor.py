@@ -57,7 +57,9 @@ def extract_gaap_reconciliation(
     )
 
     # Step 1: Find top-10 chunks by number density
-    top_numeric_chunks = find_top_numeric_chunks(document_id, file_path, top_k=10)
+    top_numeric_chunks = find_top_numeric_chunks(
+        document_id, file_path, top_k=10, context_name="GAAP Reconciliation"
+    )
 
     # Step 2: Rank those top-10 chunks by query similarity
     query_texts = [
@@ -71,57 +73,79 @@ def extract_gaap_reconciliation(
         "reconciliation",
         "impairment",
     ]
-    candidate_chunks = rank_chunks_by_query(document_id, file_path, top_numeric_chunks, query_texts)
+    candidate_chunks = rank_chunks_by_query(
+        document_id, file_path, top_numeric_chunks, query_texts, context_name="GAAP Reconciliation"
+    )
 
     if not candidate_chunks:
-        print("No chunks found with numbers, falling back to legacy search")  # Optional fallback
+        add_log(
+            document_id,
+            FinancialStatementMilestone.GAAP_RECONCILIATION,
+            "I couldn't find any clear sections containing GAAP reconciliations. I'll keep looking.",
+        )
 
     for attempt_idx, idx in enumerate(candidate_chunks):
-        chunk_msg = f"Checking chunk {idx} (attempt {attempt_idx + 1}) for complete GAAP to non-GAAP reconciliation table"
-        print(chunk_msg)
-        add_log(document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, chunk_msg)
+        add_log(
+            document_id,
+            FinancialStatementMilestone.GAAP_RECONCILIATION,
+            f"I'm checking a promising section for the GAAP reconciliation (attempt {attempt_idx + 1}).",
+        )
 
         # Get chunk text with context
         chunk_text, start_char, log_info = get_chunk_with_context(
             document_id, file_path, idx, chars_before=2500, chars_after=2500
         )
 
-        chars_msg = f"Extracted section (chars {log_info['start_extract_char']}-{log_info['end_extract_char']})"
-        print(chars_msg)
-
         # Check if this chunk has a complete reconciliation table
-        completeness_msg = f"Checking if chunk {idx} contains complete reconciliation table"
-        print(completeness_msg)
         add_log(
-            document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, completeness_msg
+            document_id,
+            FinancialStatementMilestone.GAAP_RECONCILIATION,
+            "I'm verifying if this section contains a full reconciliation table.",
         )
 
+        add_log(
+            document_id,
+            FinancialStatementMilestone.GAAP_RECONCILIATION,
+            f"I'm asking Gemini to check if this section (chunk {idx}) contains a complete GAAP reconciliation table for {time_period}.",
+        )
         is_complete, explanation = check_table_completeness(
             chunk_text, time_period, period_end_date
         )
+        if is_complete:
+            add_log(
+                document_id,
+                FinancialStatementMilestone.GAAP_RECONCILIATION,
+                f"Gemini confirmed it found a complete reconciliation table: {explanation}",
+            )
+        else:
+            add_log(
+                document_id,
+                FinancialStatementMilestone.GAAP_RECONCILIATION,
+                f"Gemini thinks this section is incomplete because: {explanation}",
+            )
 
         if is_complete:
-            complete_msg = f"Found complete reconciliation table in chunk {idx}: {explanation}"
-            print(complete_msg)
             add_log(
-                document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, complete_msg
+                document_id,
+                FinancialStatementMilestone.GAAP_RECONCILIATION,
+                "Found it! I've located a complete GAAP to non-GAAP reconciliation table.",
             )
             text = chunk_text
             chunk_index = idx
             break
         else:
-            incomplete_msg = (
-                f"Chunk {idx} does not contain complete reconciliation table: {explanation}"
-            )
-            print(incomplete_msg)
             add_log(
-                document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, incomplete_msg
+                document_id,
+                FinancialStatementMilestone.GAAP_RECONCILIATION,
+                f"This section isn't quite right because: {explanation}. Trying another spot.",
             )
 
     if not text:
-        error_msg = "No complete GAAP to non-GAAP reconciliation table found after checking top dense chunks"
-        print(error_msg)
-        add_log(document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, error_msg)
+        add_log(
+            document_id,
+            FinancialStatementMilestone.GAAP_RECONCILIATION,
+            "I couldn't find a complete reconciliation table in this document.",
+        )
         return {
             "line_items": [],
             "chunk_index": None,
@@ -130,50 +154,86 @@ def extract_gaap_reconciliation(
         }
 
     # Extract line items using LLM
-    extraction_msg = "Extracting line items from operating income or EBITDA reconciliation table"
-    print(extraction_msg)
-    add_log(document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, extraction_msg)
+    add_log(
+        document_id,
+        FinancialStatementMilestone.GAAP_RECONCILIATION,
+        "Now, I'm extracting all the individual adjustments and add-backs.",
+    )
 
     validation_errors: list[str] = []
+    add_log(
+        document_id,
+        FinancialStatementMilestone.GAAP_RECONCILIATION,
+        "I'm now asking Gemini to extract all the individual adjustment items from the table.",
+    )
     extraction = extract_gaap_reconciliation_llm(text, time_period, period_end_date)
     line_items = extraction.get("line_items", []) if isinstance(extraction, dict) else []
-
-    extracted_count_msg = f"Extracted {len(line_items)} line items from reconciliation table"
-    print(extracted_count_msg)
     add_log(
-        document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, extracted_count_msg
+        document_id,
+        FinancialStatementMilestone.GAAP_RECONCILIATION,
+        f"Gemini has successfully extracted {len(line_items)} adjustment line items.",
+    )
+
+    add_log(
+        document_id,
+        FinancialStatementMilestone.GAAP_RECONCILIATION,
+        f"I've successfully identified {len(line_items)} line items from the table.",
     )
 
     # Validate: sum of all items except last should equal last item (excluding intermediate totals)
     is_valid, validation_error = validate_reconciliation_table(line_items)
 
+    if is_valid:
+        add_log(
+            document_id,
+            FinancialStatementMilestone.GAAP_RECONCILIATION,
+            "Great! The adjustments correctly reconcile the GAAP figures to the non-GAAP totals.",
+        )
+
     if not is_valid and line_items:
         validation_errors.append(validation_error)
-        validation_msg = f"Validation failed: {validation_error}"
-        print(validation_msg)
         add_log(
-            document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, validation_msg
+            document_id,
+            FinancialStatementMilestone.GAAP_RECONCILIATION,
+            "The numbers don't perfectly balance. I'll try to refine the results.",
         )
 
         # Step 1: Check if line items are from wrong time period
-        time_check_msg = "Checking if line items belong to correct time period"
-        print(time_check_msg)
         add_log(
-            document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, time_check_msg
+            document_id,
+            FinancialStatementMilestone.GAAP_RECONCILIATION,
+            "Checking if some adjustments belong to a different time period.",
         )
 
+        add_log(
+            document_id,
+            FinancialStatementMilestone.GAAP_RECONCILIATION,
+            "I'm asking Gemini to check if any of these adjustments belong to a different time period.",
+        )
         time_check_result = check_line_item_time_periods(line_items, time_period)
         mismatched_items = time_check_result.get("mismatched_items", [])
+        if mismatched_items:
+            add_log(
+                document_id,
+                FinancialStatementMilestone.GAAP_RECONCILIATION,
+                f"Gemini identified {len(mismatched_items)} items from the wrong period.",
+            )
+        else:
+            add_log(
+                document_id,
+                FinancialStatementMilestone.GAAP_RECONCILIATION,
+                "Gemini confirmed all items belong to the correct time period.",
+            )
 
         if mismatched_items:
             # Remove out-of-place items
             mismatched_names = {item["line_name"] for item in mismatched_items}
             line_items = [item for item in line_items if item["line_name"] not in mismatched_names]
 
-            removed_msg = f"Removed {len(mismatched_items)} out-of-period items: {', '.join(mismatched_names)}"
-            print(removed_msg)
             add_log(
-                document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, removed_msg
+                document_id,
+                FinancialStatementMilestone.GAAP_RECONCILIATION,
+                f"I've removed {len(mismatched_items)} items that seemed out of place. Re-calculating now.",
             )
 
             # Re-validate after removing mismatched items
@@ -181,12 +241,10 @@ def extract_gaap_reconciliation(
                 is_valid, validation_error = validate_reconciliation_table(line_items)
                 if is_valid:
                     validation_errors = []  # Clear errors if validation now passes
-                    success_msg = "Validation passed after removing out-of-period items"
-                    print(success_msg)
                     add_log(
                         document_id,
-                        FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                        success_msg,
+                        FinancialStatementMilestone.GAAP_RECONCILIATION,
+                        "Validation success! The numbers match up now that out-of-period items are gone.",
                     )
                 else:
                     validation_errors.append(
@@ -195,39 +253,42 @@ def extract_gaap_reconciliation(
 
         # Step 2: If still invalid, try final retry with full feedback
         if not is_valid and line_items:
-            final_retry_msg = "Attempting final extraction with validation feedback"
-            print(final_retry_msg)
             add_log(
                 document_id,
-                FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                final_retry_msg,
+                FinancialStatementMilestone.GAAP_RECONCILIATION,
+                "The math is still inconsistent. I'm asking for a highly precise re-extraction with specific feedback.",
             )
 
+            add_log(
+                document_id,
+                FinancialStatementMilestone.GAAP_RECONCILIATION,
+                "I'm sending the math errors back to Gemini for a more precise re-extraction.",
+            )
             retry_result = retry_extraction_with_feedback(
                 text, time_period, line_items, validation_error, period_end_date
             )
-
             final_line_items = retry_result.get("line_items", [])
+            add_log(
+                document_id,
+                FinancialStatementMilestone.GAAP_RECONCILIATION,
+                f"Gemini has finished the retry and provided {len(final_line_items)} corrected line items.",
+            )
             if final_line_items:
                 line_items = final_line_items
-                final_msg = f"Final retry extracted {len(line_items)} line items"
-                print(final_msg)
                 add_log(
                     document_id,
-                    FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                    final_msg,
+                    FinancialStatementMilestone.GAAP_RECONCILIATION,
+                    "Finished the retry! Let's check the math one last time.",
                 )
 
                 # Final validation
                 is_valid, validation_error = validate_reconciliation_table(line_items)
                 if is_valid:
                     validation_errors = []
-                    success_msg = "Validation passed after final retry"
-                    print(success_msg)
                     add_log(
                         document_id,
-                        FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
-                        success_msg,
+                        FinancialStatementMilestone.GAAP_RECONCILIATION,
+                        "Success! The refined extraction balances perfectly.",
                     )
                 else:
                     validation_errors.append(
@@ -236,24 +297,42 @@ def extract_gaap_reconciliation(
 
     if not line_items:
         validation_errors.append("No reconciliation line items extracted")
-        error_msg = "No reconciliation line items extracted"
-        print(error_msg)
-        add_log(document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, error_msg)
+        add_log(
+            document_id,
+            FinancialStatementMilestone.GAAP_RECONCILIATION,
+            "I wasn't able to extract any valid reconciliation items.",
+        )
         is_valid = False
 
     # Classify line items
     if line_items:
-        classification_msg = "Classifying line items using LLM"
-        print(classification_msg)
         add_log(
-            document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, classification_msg
+            document_id,
+            FinancialStatementMilestone.GAAP_RECONCILIATION,
+            "I'm classifying each adjustment into standard categories like Recurring or One-Time.",
+        )
+        add_log(
+            document_id,
+            FinancialStatementMilestone.GAAP_RECONCILIATION,
+            "I'm asking Gemini to categorize these adjustments into standard groups like Recurring or One-Time.",
         )
         line_items = classify_line_items_llm(line_items)
+        add_log(
+            document_id,
+            FinancialStatementMilestone.GAAP_RECONCILIATION,
+            "Gemini has finished classifying all the adjustment items.",
+        )
 
     if is_valid:
-        success_msg = f"Non-GAAP reconciliation extraction completed: {len(line_items)} line items"
-        print(success_msg)
-        add_log(document_id, FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS, success_msg)
+        add_log(
+            document_id,
+            FinancialStatementMilestone.GAAP_RECONCILIATION,
+            "The GAAP to non-GAAP reconciliation is complete!",
+        )
+
+    # Assign line_order
+    for i, item in enumerate(line_items):
+        item["line_order"] = i
 
     return {
         "line_items": line_items,
@@ -477,8 +556,8 @@ Return only valid JSON, no additional text."""
     try:
         result = call_llm_with_retry(prompt, max_retries=2, temperature=0.0)
         return result
-    except Exception as e:
-        print(f"Error checking time periods: {str(e)}")
+    except Exception:
+        pass
         return {"mismatched_items": []}
 
 
@@ -558,8 +637,8 @@ Return only valid JSON, no additional text."""
     try:
         result = call_llm_with_retry(prompt, max_retries=2, temperature=0.0)
         return result
-    except Exception as e:
-        print(f"Error in final retry extraction: {str(e)}")
+    except Exception:
+        pass
         return {"line_items": []}
 
 
@@ -697,7 +776,7 @@ Return only valid JSON, no additional text."""
         result = call_llm_with_retry(prompt, max_retries=max_retries, temperature=0.0)
         return process_result(result)
 
-    except Exception as e:
-        print(f"Error classifying line items: {str(e)}")
+    except Exception:
+        pass
         # Return items without classification if classification fails
         return line_items

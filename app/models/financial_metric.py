@@ -21,6 +21,7 @@ class FinancialMetric(Base):
     )  # e.g., "organic_growth", "operating_margin", "capital_turnover"
     period = Column(String, nullable=False, index=True)  # e.g., "Q3 2023", "FY 2023"
     period_date = Column(Date, nullable=True, index=True)  # Specific date for the period
+    period_end_date = Column(String, nullable=True, index=True)  # ISO format date
 
     # Metric value
     value = Column(Float, nullable=False)

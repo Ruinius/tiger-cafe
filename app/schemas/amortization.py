@@ -30,6 +30,7 @@ class AmortizationLineItem(AmortizationLineItemBase):
 
 class AmortizationBase(BaseModel):
     time_period: str | None = None
+    period_end_date: str | None = None
     currency: str | None = None
     chunk_index: int | None = None
     is_valid: bool = False
@@ -46,5 +47,5 @@ class Amortization(AmortizationBase):
 
     id: str
     document_id: str
-    extraction_date: datetime
+    extraction_date: datetime | None = None
     line_items: list[AmortizationLineItem] = []

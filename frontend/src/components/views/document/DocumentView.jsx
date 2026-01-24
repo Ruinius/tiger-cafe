@@ -4,9 +4,10 @@ import { useAuth } from '../../../contexts/AuthContext'
 import { usePdfViewer } from '../../../hooks/usePdfViewer'
 import { useDocumentData } from '../../../hooks/useDocumentData'
 import { API_BASE_URL } from '../../../config'
+import { formatDate } from '../../../utils/formatting'
 import './Document.css'
 
-function DocumentView({ selectedDocument, selectedCompany, onBack }) {
+function DocumentView({ selectedDocument, selectedCompany, onBack, onShowUpdates }) {
     const { isAuthenticated, token } = useAuth()
     const [pdfUrl, setPdfUrl] = useState(null)
     const pdfUrlRef = useRef(null)
@@ -99,6 +100,8 @@ function DocumentView({ selectedDocument, selectedCompany, onBack }) {
         ? doc.document_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
         : 'Document'
 
+
+
     return (
         <div className="panel-content">
             <div className="panel-header">
@@ -128,7 +131,7 @@ function DocumentView({ selectedDocument, selectedCompany, onBack }) {
                     </button>
                     <span className="breadcrumb-separator">›</span>
                     <span className="breadcrumb-current">
-                        {documentName}{doc.time_period ? ` • ${doc.time_period}` : ''}
+                        {documentName}{doc.period_end_date ? ` • ${formatDate(doc.period_end_date)}` : (doc.time_period ? ` • ${doc.time_period}` : '')}
                     </span>
                 </div>
             </div>
@@ -169,7 +172,7 @@ function DocumentView({ selectedDocument, selectedCompany, onBack }) {
                             <strong>Time Period:</strong> {doc.time_period || 'N/A'}
                         </div>
                         <div className="metadata-item">
-                            <strong>Period Ending:</strong> {doc.period_end_date || 'N/A'}
+                            <strong>Period Ending:</strong> {formatDate(doc.period_end_date) || 'N/A'}
                         </div>
                         <div className="metadata-item">
                             <strong>Pages:</strong> {doc.page_count || 'N/A'}
@@ -184,7 +187,7 @@ function DocumentView({ selectedDocument, selectedCompany, onBack }) {
                         )}
                         {doc.uploaded_at && (
                             <div className="metadata-item">
-                                <strong>Uploaded:</strong> {new Date(doc.uploaded_at).toLocaleDateString()}
+                                <strong>Uploaded:</strong> {formatDate(doc.uploaded_at, true)}
                             </div>
                         )}
                     </div>
@@ -210,7 +213,11 @@ function DocumentView({ selectedDocument, selectedCompany, onBack }) {
                                         !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(doc.document_type) ||
                                         buttonDebouncing['rerun-extraction']
                                     }
-                                    onClick={() => debounceAction('rerun-extraction', () => performAction('rerun-extraction', doc.id))}
+                                    onClick={() => debounceAction('rerun-extraction', () => {
+                                        performAction('rerun-extraction', doc.id)
+                                            .then(() => { if (onShowUpdates) onShowUpdates() })
+                                            .catch(e => console.error(e))
+                                    })}
                                     style={{ width: '100%', textAlign: 'left' }}
                                 >
                                     Re-run Extraction and Classification

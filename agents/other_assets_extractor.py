@@ -7,6 +7,10 @@ from __future__ import annotations
 import json
 
 from app.utils.document_section_finder import collect_top_chunk_texts
+from app.utils.financial_statement_progress import (
+    FinancialStatementMilestone,
+    add_log,
+)
 from app.utils.gemini_client import generate_content_safe
 from app.utils.line_item_utils import (
     normalize_line_name,
@@ -178,6 +182,13 @@ def extract_other_assets(
         rerank_top_k=3,
         top_k=3,
         score_threshold=0.25,
+        context_name="Other Assets",
+    )
+
+    add_log(
+        document_id,
+        FinancialStatementMilestone.OTHER_ASSETS,
+        "I'm checking the detailed breakdown of 'Other Assets' in the notes.",
     )
 
     if not text:
@@ -188,10 +199,27 @@ def extract_other_assets(
             "validation_errors": ["Other assets section not found"],
         }
 
+    add_log(
+        document_id,
+        FinancialStatementMilestone.OTHER_ASSETS,
+        f"I'm asking Gemini to find the detailed composition of 'Other Assets' for {time_period}.",
+    )
     extraction = extract_other_assets_llm(
         text, time_period, expected_current_total, expected_non_current_total
     )
     line_items = extraction.get("line_items", []) if isinstance(extraction, dict) else []
+    add_log(
+        document_id,
+        FinancialStatementMilestone.OTHER_ASSETS,
+        f"Gemini has finished extracting {len(line_items)} specific items from the notes.",
+    )
+
+    if line_items:
+        add_log(
+            document_id,
+            FinancialStatementMilestone.OTHER_ASSETS,
+            f"I've successfully broken down the other assets into {len(line_items)} specific items.",
+        )
 
     line_items, dedup_warnings = _deduplicate_line_items(line_items)
     validation_errors = dedup_warnings
@@ -211,12 +239,22 @@ def extract_other_assets(
     retries = 0
     while validation_errors and retries < max_retries:
         retries += 1
+        add_log(
+            document_id,
+            FinancialStatementMilestone.OTHER_ASSETS,
+            "I'm sending the total mismatches back to Gemini for a more accurate breakdown.",
+        )
         extraction = extract_other_assets_llm_with_feedback(
             text,
             time_period,
             expected_current_total,
             expected_non_current_total,
             validation_errors,
+        )
+        add_log(
+            document_id,
+            FinancialStatementMilestone.OTHER_ASSETS,
+            "Gemini has provided a refined list of other asset items.",
         )
         line_items = extraction.get("line_items", []) if isinstance(extraction, dict) else []
         line_items, dedup_warnings = _deduplicate_line_items(line_items)
@@ -283,6 +321,10 @@ def extract_other_assets(
         final_line_items.extend(non_current_items)
 
     is_valid = bool(final_line_items)
+
+    # Assign line_order
+    for i, item in enumerate(final_line_items):
+        item["line_order"] = i
 
     return {
         "line_items": final_line_items,

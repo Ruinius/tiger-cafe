@@ -19,17 +19,17 @@ export function useFinancialStatementProgress(selectedDocument, isEligibleForFin
         if (allMilestones.length === 0) return false
 
         return allMilestones.every((milestone) =>
-            milestone.status === 'completed' || milestone.status === 'error' || milestone.status === 'not_found'
+            milestone.status === 'completed' || milestone.status === 'error' || milestone.status === 'not_found' || milestone.status === 'skipped' || milestone.status === 'warning'
         )
     }, [financialStatementProgress])
 
     const loadFinancialStatementProgress = useCallback(async () => {
         if (!selectedDocument?.id || !isEligibleForFinancialStatements) return
         try {
-            const endpoint = isAuthenticated ? 'financial-statement-progress' : 'financial-statement-progress-test'
             const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
+            // Use standardized processing status endpoint
             const response = await axios.get(
-                `${API_BASE_URL}/documents/${selectedDocument.id}/${endpoint}`,
+                `${API_BASE_URL}/processing/documents/${selectedDocument.id}/status`,
                 { headers }
             )
             setFinancialStatementProgress(response.data)

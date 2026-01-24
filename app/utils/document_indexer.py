@@ -4,11 +4,15 @@ Document indexing with Gemini embeddings
 
 import glob
 import json
+import logging
 import os
 
 import pdfplumber
 
 from app.utils.gemini_client import generate_embedding_safe
+
+# Suppress pdfminer FontBBox warnings
+logging.getLogger("pdfminer").setLevel(logging.ERROR)
 
 
 def save_chunk_embedding(
@@ -275,6 +279,15 @@ def index_document_chunks(
             print(
                 f"Indexing document {document_id}: {total_pages} pages, {total_characters} characters, "
                 f"{num_chunks} chunks of {chunk_size} characters each"
+            )
+
+            # Log to UI
+            from app.utils.financial_statement_progress import FinancialStatementMilestone, add_log
+
+            add_log(
+                document_id,
+                FinancialStatementMilestone.INDEX,
+                f"Starting indexing: {num_chunks} chunks from {total_pages} pages",
             )
 
             # Save full text to disk for fast retrieval

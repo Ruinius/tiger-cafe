@@ -117,6 +117,9 @@ This section details the proposed unified 12-step milestone structure, including
 10. **`OTHER_ASSETS`** (`other_assets`) - `app/routers/income_statement.py` (Agents: `agents/other_assets_extractor.py`)
 11. **`OTHER_LIABILITIES`** (`other_liabilities`) - `app/routers/income_statement.py` (Agents: `agents/other_liabilities_extractor.py`)
 12. **`CLASSIFYING_NON_OPERATING_ITEMS`** (`classifying_non_operating_items`) - `app/routers/income_statement.py` (Agents: `agents/non_operating_classifier.py`)
+13. **`UPDATE_HISTORICAL_DATA`** (`update_historical_data`) - `app/routers/companies.py`
+14. **`UPDATE_ASSUMPTIONS`** (`update_assumptions`) - `app/routers/companies.py`
+15. **`CALCULATE_INTRINSIC_VALUE`** (`calculate_intrinsic_value`) - `app/routers/companies.py`
 
 ### Statuses
 *   `PENDING`
@@ -240,74 +243,186 @@ This section details the proposed unified 12-step milestone structure, including
 *   **Success**: `Non-operating items classification completed`
 *   **Failure**: `Classification error: {Error}`
 
+#### 13. Update Historical Data
+*   **Start**: `Updating historical data calculations...`
+*   **Success**: `Historical data updated successfully`
+*   **Failure**: `Failed to update historical data: {Error}`
 
-## Section 3: UI/UX Implementation Plan
+#### 14. Update Assumptions
+*   **Start**: `Updating financial assumptions...`
+*   **Success**: `Financial assumptions updated`
+*   **Failure**: `Failed to update assumptions: {Error}`
 
-This section outlines the UI/UX changes required to support the new milestone structure and improved user feedback.
-
-### 1. Centralized Progress Hub ("Check Updates" Page)
-**Current File**: `frontend/src/components/modals/UploadProgressModal.jsx` (Partial implementation)
-**Target File**: `frontend/src/components/views/global/CheckUpdatesView.jsx` (New)
-**Backend Source**: `app/routers/status.py` (SSE Stream - New) / `app/routers/documents.py` (Current Polling)
-
-**Goal**: Create a "Modern AI Agent" experience that transparently shows the system's "thought process" as it analyzes documents.
-
-*   **Thought Process Stream**:
-    *   Replace the generic progress bar with a granular, scrolling "Thought Stream" or "Log Stream".
-    *   Display the **12 Milestones** defined in Section 2 as they occur.
-    *   For each milestone, show its state: `pending` (dimmed), `in_progress` (pulse/spinner), `success` (green check), `warning` (yellow alert), `failure` (red X).
-    *   Expandable details: Clicking a milestone reveals specific logs (e.g., "Scanning chunk 3...", "Validation failed, retrying...").
-*   **Visual Phases**: Refine the high-level visual phases to map to the 12 granular steps:
-    *   **Phase 1: Ingestion** (Steps 1-3: Upload, Classify, Index)
-    *   **Phase 2: Core Extraction** (Steps 4-5: Balance Sheet, Income Statement)
-    *   **Phase 3: Deep Analysis** (Steps 6-12: Additional Items, Non-Operating Classification)
-*   **Technology**:
-    *   Use **Server-Sent Events (SSE)** exclusively on this page to push real-time updates.
-    *   Disable SSE on other pages to reduce server load.
-*   **Cleanup**:
-    *   Delete `frontend/src/components/modals/UploadProgressModal.jsx` after migrating logic.
-    *   Remove usage of `UploadProgressModal` from `CompanyList.jsx`.
-    *   Remove legacy polling endpoints (e.g., `get_upload_progress`) from `app/routers/documents.py`.
-
-### 2. Document Extraction View Cleanup
-**Goal**: Simplify the document view to focus on the result, not the process.
-
-*   **Remove Progress Tracker**: Delete the legacy progress bar/stepper from the Document View.
-*   **Validation Banner**:
-    *   Add a static "Validation Status" banner at the top of the page.
-    *   If `analysis_status` is `PROCESSED` but contains warning logs (e.g., missing GAAP tables), show a Yellow Warning Banner listing the missing items.
-    *   If `analysis_status` is `ERROR`, show a Red Error Banner with the terminal error message.
-    *   If `analysis_status` is `PROCESSED` (clean), show nothing.
-
-### 3. Document List View Optimization
-**Goal**: Only show ready-to-use documents to prevent user confusion.
-
-*   **Filter Logic**:
-    *   Modify the `DocumentList` component to filter out documents that are in active progress.
-    *   **Logic**: Exclude if `indexing_status` is (`UPLOADING`, `CLASSIFYING`, `INDEXING`) OR `analysis_status` is (`PROCESSING`, `PENDING`).
-    *   Only display documents with `analysis_status` of `PROCESSED` or `ERROR`.
-*   **Remove "Processing" Badges**:
-    *   Since unfinished documents are hidden, remove the "Processing..." chips/badges.
+#### 15. Calculate Intrinsic Value
+*   **Start**: `Calculating intrinsic value...`
+*   **Success**: `Intrinsic value calculation completed`
+*   **Failure**: `Failed to calculate intrinsic value: {Error}`
 
 
-## Section 4: Testing Strategy
 
-### Backend Tests (Pytest)
-*   **New Tests**:
-    *   `tests/routers/test_status.py`: Verify SSE endpoint connection and event streaming format.
-    *   `tests/integration/test_pipeline_logging.py`: Ensure all 12 milestones (Upload -> Classification -> Extraction) emit correct start/success/failure logs.
-    *   `tests/agents/test_gaap_warning.py`: Verify that missing GAAP reconciliation logs a Warning but does NOT raise an exception or fail the milestone.
-*   **Updates**:
-    *   `tests/routers/test_documents.py`: Update document status checks to respect the new `PROCESSED` vs `ERROR` logic.
-*   **Removals**:
-    *   Remove tests for `get_upload_progress` polling endpoint once deprecated.
+## Section 3: Router Refactor Plan
 
-### Frontend Tests (NPM / Playwright)
-*   **New Tests**:
-    *   `src/components/views/global/__tests__/CheckUpdatesView.test.jsx`: Test rendering of the 12-milestone stream and SSE event handling.
-    *   `src/components/views/document/__tests__/DocumentValidation.test.jsx`: Verify Warning Banner appears when `analysis_status` is PROCESSED but warnings exist.
-*   **Updates**:
-    *   `tests/e2e/test_upload_flow.py`: Update End-to-End upload flow to check the "Check Updates" page instead of the Document List for progress.
-    *   `src/components/views/company/__tests__/DocumentList.test.jsx`: Verify filter logic (Processing documents should be hidden).
-*   **Removals**:
-    *   Remove `src/components/modals/__tests__/UploadProgressModal.test.jsx`.
+The current router structure suffers from poor separation of concerns:
+- `income_statement.py` is monolithic, handling extraction for organic growth, shares, amortization, AND non-operating classification.
+- `documents.py` handles upload but also has vestigial logic for processing progress.
+- `additional_items.py` is read-only and defines schemas but contains no extraction logic.
+- Pipeline triggering logic is scattered across `balance_sheet.py` and `documents.py`.
+
+### Proposed Structure
+
+#### 1. `app/routers/processing.py` (New)
+**Orchestrates the extraction pipeline (HTTP layer only).**
+- **Responsibility**: Receives HTTP requests and delegates to the service layer.
+- **Endpoints**:
+    - `POST /api/processing/documents/{document_id}/ingest`: Triggers Phase 1 (Classify → Index) *after* upload.
+    - `POST /api/processing/documents/{document_id}/extract`: Triggers Phases 2-3 (Balance Sheet → Income Statement → Additional Items → Classification).
+    - `POST /api/processing/documents/{document_id}/analyze`: Triggers Phase 4 (Analysis: Historical Data → Assumptions → Intrinsic Value). **User-triggered.**
+    - `POST /api/processing/documents/{document_id}/rerun`: Re-runs the entire pipeline (clears existing data first).
+    - `POST /api/processing/documents/{document_id}/retry/{milestone}`: Retries a specific failed milestone (e.g., `GAAP_RECONCILIATION`).
+    - `GET /api/processing/documents/{document_id}/status`: Returns current granular progress (may be moved from `status_stream.py`).
+- **Call Chain**: `processing.py` → `extraction_orchestrator.py` (service layer)
+- **Why**: Centralizes pipeline control. Routers should only handle HTTP concerns (validation, auth, serialization).
+
+#### 2. `app/routers/extraction_tasks.py` (Renamed from `additional_items.py`)
+**Provides CRUD access to extracted auxiliary data.**
+- **Responsibility**: REST API for reading/updating auxiliary financial data (Shares, Organic Growth, Amortization, Other Assets/Liabilities).
+- **Current Endpoints** (Move from `additional_items.py`):
+    - `GET /api/documents/{document_id}/amortization`
+    - `GET /api/documents/{document_id}/organic-growth`
+    - `GET /api/documents/{document_id}/other-assets`
+    - `GET /api/documents/{document_id}/other-liabilities`
+- **New Endpoints** (To be implemented):
+    - `GET /api/documents/{document_id}/gaap-reconciliation`: Returns data extracted by `agents/gaap_reconciliation_extractor.py`.
+    - `GET /api/documents/{document_id}/shares`: Returns data extracted by `agents/shares_outstanding_extractor.py`.
+- **Does NOT contain extraction logic** (that lives in the service layer).
+- **Why Rename**: "additional_items" is vague. "extraction_tasks" better reflects that this data comes from extraction tasks.
+
+#### 3. `app/routers/income_statement.py` & `app/routers/balance_sheet.py` (Simplify)
+**Handles CRUD for core financial statements.**
+- **Responsibility**: Pure REST API for the resulting financial statement data.
+- **Keep**:
+    - `GET /api/documents/{document_id}/income-statement`: Retrieve income statement.
+    - `GET /api/documents/{document_id}/balance-sheet`: Retrieve balance sheet.
+- **Add** (for manual editing):
+    - `PUT /api/documents/{document_id}/income-statement/line-items/{id}`: Update a line item.
+    - `DELETE /api/documents/{document_id}/income-statement`: Clear the statement.
+    - `PUT /api/documents/{document_id}/balance-sheet/line-items/{id}`: Update a line item.
+    - `DELETE /api/documents/{document_id}/balance-sheet`: Clear the statement.
+- **Remove**:
+    - `process_income_statement_async` → Move to `extraction_orchestrator.py`
+    - `process_balance_sheet_async` → Move to `extraction_orchestrator.py`
+    - All background task logic → Move to service layer
+
+#### 4. `app/routers/companies.py` (Minimal Changes)
+**Handles company-level analysis (Phase 4).**
+- **Keep existing endpoints** (they already work well):
+    - `GET /api/companies/{company_id}/historical-calculations`
+    - `GET /api/companies/{company_id}/assumptions`
+    - `GET /api/companies/{company_id}/financial-model`
+- **Add internal async functions** (for orchestrator to call):
+    - `async def calculate_historical_data_task(company_id, db)`: Callable version of `get_company_historical_calculations`.
+    - `async def update_assumptions_task(company_id, db)`: Callable version of `get_financial_assumptions`.
+    - `async def calculate_intrinsic_value_task(company_id, db)`: Callable version of `get_financial_model`.
+
+#### 5. `app/services/extraction_orchestrator.py` (New Service)
+**Contains the actual extraction pipeline logic.**
+- **Responsibility**: Coordinates the full extraction workflow (calls agents, saves to DB, updates progress).
+- **Key Functions**:
+    - `async def run_ingestion_pipeline(document_id, db)`: Runs Phase 1 (Classify → Index).
+        - **Pre-requisite**: File is already uploaded and `Document` created by destruction `documents.py` router.
+        - Calls `classify_document(extracted_text)`
+        - Calls `index_document(document_id)`
+        - Triggers `run_full_extraction_pipeline` upon success.
+    - `async def run_full_extraction_pipeline(document_id, db)`: Runs Phases 2-3 sequentially.
+        - Calls `extract_balance_sheet_task(document_id, db)`
+        - Calls `extract_income_statement_task(document_id, db)`
+        - Calls `extract_additional_items_task(document_id, db)` (which internally calls shares, organic growth, etc.)
+        - Calls `classify_non_operating_items_task(document_id, db)`
+        - Triggers `run_analysis_pipeline` upon completion (does not have to be success)
+    - `async def run_analysis_pipeline(company_id, document_id, db)`: Runs Phase 4
+        - **Document Level**: Calls `calculate_and_save_historical_calculations(document_id, db)` (from `historical_calculations.py`).
+        - **Company Level**:
+            - Calls `calculate_historical_data_task(company_id, db)` (Aggregation)
+            - Calls `update_assumptions_task(company_id, db)`
+            - Calls `calculate_intrinsic_value_task(company_id, db)`
+    - `async def retry_milestone(document_id, milestone, db)`: Retries a specific failed step.
+- **Why**: Separates business logic from HTTP handling. Easier to test, reuse, and maintain.
+
+#### 6. `app/services/classification_service.py` (New Service)
+**Handles non-operating classification logic.**
+- **Responsibility**: Classifies balance sheet and income statement line items as operating/non-operating.
+- **Key Functions**:
+    - `async def classify_non_operating_items_task(document_id, db)`: Runs the classification agent and saves results.
+- **Why**: Classification is a **post-processing step** that operates on already-extracted data. It's conceptually different from extraction and deserves its own service.
+
+### Call Chain (Clarified)
+```
+User Request (HTTP: Upload File)
+    ↓
+app/routers/documents.py (Save File, Create Document Record)
+    ↓
+app/routers/processing.py (Trigger Ingestion)
+    ↓
+app/services/extraction_orchestrator.py (Business logic)
+    ↓
+Individual Task Functions:
+    - run_ingestion_pipeline (Classify -> Index)
+    - extract_balance_sheet_task
+    - extract_income_statement_task
+    - extract_additional_items_task (shares, organic growth, etc.)
+    - classify_non_operating_items_task
+    - calculate_and_save_historical_calculations (Phase 4a: Document Level)
+    - calculate_historical_data_task (Phase 4b: Company Level Aggregation)
+    - update_assumptions_task (Phase 4b)
+    - calculate_intrinsic_value_task (Phase 4b)
+    ↓
+Agents (LLM calls)
+    ↓
+Database (Save results)
+    ↓
+Progress Tracking (Update milestones)
+```
+
+### Migration Steps
+1.  **Refactor `documents.py` (Phase 1 Separation)**:
+    - Modify `documents.py` to handle *only* file upload and initial `Document` creation.
+    - Remove direct calls to `classification` and `indexing` logic from the upload route.
+    - Ensure it returns the `document_id` so the frontend can immediately call `/ingest`.
+
+2.  **Create Service Layer**:
+    - Create `app/services/extraction_orchestrator.py`.
+    - Implement `run_ingestion_pipeline`: Moves classification/indexing logic here.
+    - Implement `run_full_extraction_pipeline`: Orchestrates Phase 2 & 3 tasks.
+    - Implement `run_analysis_pipeline`: Orchestrates Phase 4 tasks.
+    - Create `app/services/classification_service.py` and move non-operating logic there.
+
+3.  **Create `processing.py` Router**:
+    - Create `app/routers/processing.py`.
+    - Add endpoints: `/ingest`, `/extract`, `/analyze` (Phase 4), `/rerun`, `/retry/{milestone}`, `/status` (SSE).
+    - Wire endpoints to call the corresponding orchestrator functions.
+
+4.  **Refactor Existing Routers**:
+    - **`income_statement.py` & `balance_sheet.py`**: Strip out background tasks; keep CRUD.
+    - **`additional_items.py`**: Rename to `extraction_tasks.py`. Add missing GET endpoints (`/shares`, `/gaap-reconciliation`).
+    - **`companies.py`**: Expose internal async functions for Historical/Assumptions/Intrinsic Value for the orchestrator to call.
+
+5.  **Update `app/main.py`**:
+    - Add `processing.router` with prefix `/api/processing`.
+
+6.  **Frontend Updates**:
+    - **API Client**: Add methods for `/ingest`, `/extract`, `/analyze`, `retry`.
+    - **Upload Flow**: Change to 2-step process: Upload File -> (Success) -> Call `/ingest`.
+    - **Check Updates View**: Stream from `/api/processing/status` (SSE).
+    - **Document View**: Rewire "Re-run Extraction" button to call `/api/processing/documents/{id}/rerun`
+
+7.  **Cleanup**:
+7.  **Cleanup**:
+    - **Remove Legacy Functions**:
+        - `app/routers/balance_sheet.py`: `process_balance_sheet_async`
+        - `app/routers/income_statement.py`: `process_income_statement_async`
+        - `app/routers/documents.py`: Legacy progress checking logic (e.g., `_active_progress_milestone`).
+    - **Remove/Update Tests**:
+        - `tests/test_earnings_announcement_extractors.py`: Update to call orchestrator instead of direct router functions.
+        - `tests/test_filing_extractors.py`: Update similarly.
+    - **Documentation**:
+        - Update ARCHITECTURE.md

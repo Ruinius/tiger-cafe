@@ -190,6 +190,7 @@ async def get_company_historical_calculations(
         .options(
             selectinload(Document.historical_calculation),
             selectinload(Document.organic_growth),
+            selectinload(Document.shares_outstanding),
             selectinload(Document.income_statement).selectinload(IncomeStatement.line_items),
         )
         .all()
@@ -233,11 +234,11 @@ async def get_company_historical_calculations(
             if document.organic_growth
             else None,
             "calculated_at": calc.calculated_at,
-            "diluted_shares_outstanding": document.income_statement.diluted_shares_outstanding
-            if document.income_statement
+            "diluted_shares_outstanding": document.shares_outstanding.diluted_shares_outstanding
+            if document.shares_outstanding
             else None,
-            "basic_shares_outstanding": document.income_statement.basic_shares_outstanding
-            if document.income_statement
+            "basic_shares_outstanding": document.shares_outstanding.basic_shares_outstanding
+            if document.shares_outstanding
             else None,
             "interest_expense": get_interest_expense(document.income_statement)
             if document.income_statement
@@ -252,9 +253,10 @@ async def get_company_historical_calculations(
         if calc.unit:
             unit_values.add(calc.unit)
 
-        existing = entries_by_period.get(time_period)
+        period_key = document.period_end_date or time_period
+        existing = entries_by_period.get(period_key)
         if existing is None or entry["calculated_at"] > existing["calculated_at"]:
-            entries_by_period[time_period] = entry
+            entries_by_period[period_key] = entry
 
     # Sort by period_end_date (most reliable), fallback to time_period_sort_key
     def sort_key(item):

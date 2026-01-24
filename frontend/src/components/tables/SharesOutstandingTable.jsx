@@ -1,11 +1,11 @@
 import React from 'react'
 import '../views/document/Document.css'
 
-export default function SharesOutstandingTable({ incomeStatement }) {
-    if (!incomeStatement) return null
+export default function SharesOutstandingTable({ shares }) {
+    if (!shares) return null
 
-    const basic = incomeStatement.basic_shares_outstanding
-    const diluted = incomeStatement.diluted_shares_outstanding
+    const basic = shares.basic_shares_outstanding
+    const diluted = shares.diluted_shares_outstanding
 
     const hasShares = (basic !== null && basic !== undefined) || (diluted !== null && diluted !== undefined)
 
@@ -23,7 +23,7 @@ export default function SharesOutstandingTable({ incomeStatement }) {
     }
 
     // Determine unit from shares data
-    const unit = incomeStatement.basic_shares_outstanding_unit || incomeStatement.diluted_shares_outstanding_unit || 'shares'
+    const unit = shares.basic_shares_outstanding_unit || shares.diluted_shares_outstanding_unit || 'shares'
 
     return (
         <div className="table-container">

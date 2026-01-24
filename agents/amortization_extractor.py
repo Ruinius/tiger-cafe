@@ -8,6 +8,10 @@ from __future__ import annotations
 
 from agents.extractor_utils import call_llm_and_parse_json
 from app.utils.document_section_finder import collect_top_chunk_texts
+from app.utils.financial_statement_progress import (
+    FinancialStatementMilestone,
+    add_log,
+)
 from app.utils.line_item_utils import normalize_line_name
 
 
@@ -144,6 +148,13 @@ def extract_amortization(
         rerank_top_k=3,
         top_k=3,
         score_threshold=0.25,
+        context_name="Amortization",
+    )
+
+    add_log(
+        document_id,
+        FinancialStatementMilestone.AMORTIZATION,
+        "I'm looking for details on amortization and depreciation in the footnotes.",
     )
 
     if not text:
@@ -155,8 +166,25 @@ def extract_amortization(
         }
 
     validation_errors: list[str] = []
+    add_log(
+        document_id,
+        FinancialStatementMilestone.AMORTIZATION,
+        f"I'm asking Gemini to find all amortization and depreciation line items for {time_period}.",
+    )
     extraction = extract_amortization_llm(text, time_period)
     line_items = extraction.get("line_items", []) if isinstance(extraction, dict) else []
+    add_log(
+        document_id,
+        FinancialStatementMilestone.AMORTIZATION,
+        f"Gemini has finished its search and found {len(line_items)} matching line items.",
+    )
+
+    if line_items:
+        add_log(
+            document_id,
+            FinancialStatementMilestone.AMORTIZATION,
+            f"I've identified {len(line_items)} amortization line items.",
+        )
 
     line_items, dedup_warnings = _deduplicate_line_items(line_items)
     validation_errors.extend(dedup_warnings)
@@ -164,8 +192,18 @@ def extract_amortization(
     retries = 0
     while retries < max_retries and not line_items:
         retries += 1
+        add_log(
+            document_id,
+            FinancialStatementMilestone.AMORTIZATION,
+            "I'm asking Gemini to refine its extraction based on the validation warnings.",
+        )
         retry_extraction = extract_amortization_llm_with_feedback(
             text, time_period, validation_errors
+        )
+        add_log(
+            document_id,
+            FinancialStatementMilestone.AMORTIZATION,
+            "Gemini has provided an updated list of line items.",
         )
         line_items = (
             retry_extraction.get("line_items", []) if isinstance(retry_extraction, dict) else []
@@ -176,6 +214,10 @@ def extract_amortization(
     is_valid = bool(line_items)
     if not line_items:
         validation_errors.append("No amortization line items extracted")
+
+    # Assign line_order
+    for i, item in enumerate(line_items):
+        item["line_order"] = i
 
     return {
         "line_items": line_items,

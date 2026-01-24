@@ -83,7 +83,7 @@ def test_reset_balance_and_income_milestones():
         )
         update_milestone(
             document_id,
-            FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS,
+            FinancialStatementMilestone.SHARES_OUTSTANDING,
             MilestoneStatus.COMPLETED,
             message="Done",
         )
@@ -95,28 +95,28 @@ def test_reset_balance_and_income_milestones():
         income_milestone = progress["milestones"][
             FinancialStatementMilestone.INCOME_STATEMENT.value
         ]
-        additional_milestone = progress["milestones"][
-            FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS.value
+        shares_milestone = progress["milestones"][
+            FinancialStatementMilestone.SHARES_OUTSTANDING.value
         ]
 
         assert balance_milestone["status"] == MilestoneStatus.PENDING.value
         assert income_milestone["status"] == MilestoneStatus.ERROR.value
-        assert additional_milestone["status"] == MilestoneStatus.COMPLETED.value
+        assert shares_milestone["status"] == MilestoneStatus.COMPLETED.value
 
         reset_income_statement_milestones(document_id)
         progress = get_progress(document_id)
         income_milestone = progress["milestones"][
             FinancialStatementMilestone.INCOME_STATEMENT.value
         ]
-        additional_milestone = progress["milestones"][
-            FinancialStatementMilestone.EXTRACTING_ADDITIONAL_ITEMS.value
+        shares_milestone = progress["milestones"][
+            FinancialStatementMilestone.SHARES_OUTSTANDING.value
         ]
         non_operating_milestone = progress["milestones"][
             FinancialStatementMilestone.CLASSIFYING_NON_OPERATING_ITEMS.value
         ]
 
         assert income_milestone["status"] == MilestoneStatus.PENDING.value
-        assert additional_milestone["status"] == MilestoneStatus.PENDING.value
+        assert shares_milestone["status"] == MilestoneStatus.PENDING.value
         assert non_operating_milestone["status"] == MilestoneStatus.PENDING.value
     finally:
         clear_progress(document_id)

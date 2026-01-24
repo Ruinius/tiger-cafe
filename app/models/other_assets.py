@@ -16,6 +16,7 @@ class OtherAssets(Base):
     document_id = Column(String, ForeignKey("documents.id"), nullable=False, index=True)
 
     time_period = Column(String, nullable=True)
+    period_end_date = Column(String, nullable=True)
     currency = Column(String, nullable=True)
     chunk_index = Column(Integer, nullable=True)
     is_valid = Column(Boolean, default=False)

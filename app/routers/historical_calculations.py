@@ -12,6 +12,7 @@ from app.database import get_db
 from app.models.amortization import Amortization
 from app.models.balance_sheet import BalanceSheet
 from app.models.document import Document
+from app.models.gaap_reconciliation import GAAPReconciliation
 from app.models.historical_calculation import HistoricalCalculation
 from app.models.income_statement import IncomeStatement
 from app.models.user import User
@@ -45,10 +46,23 @@ def calculate_and_save_historical_calculations(
     if not income_statement:
         raise HTTPException(status_code=404, detail="Income statement not found for this document")
 
+    # Get non-GAAP items from Amortization and GAAP Reconciliation
+    non_gaap_items = []
+
     amortization = db.query(Amortization).filter(Amortization.document_id == document_id).first()
-    non_gaap_items = None
     if amortization and amortization.line_items:
-        non_gaap_items = amortization.line_items
+        non_gaap_items.extend(amortization.line_items)
+
+    gaap_recon = (
+        db.query(GAAPReconciliation).filter(GAAPReconciliation.document_id == document_id).first()
+    )
+    if gaap_recon and gaap_recon.line_items:
+        # Avoid duplicates if they happen to overlap, but usually they are different extractions
+        # For now, just extend. calculate_ebita handles filtering
+        non_gaap_items.extend(gaap_recon.line_items)
+
+    if not non_gaap_items:
+        non_gaap_items = None
 
     # Calculate all metrics
     results = calculate_all_historical_metrics(
@@ -125,6 +139,7 @@ def calculate_and_save_historical_calculations(
         existing_calc.roic = results["roic"]
         existing_calc.calculation_notes = calculation_notes_json
         existing_calc.time_period = document.time_period
+        existing_calc.period_end_date = document.period_end_date
         existing_calc.currency = balance_sheet.currency or income_statement.currency
         existing_calc.unit = balance_sheet.unit or income_statement.unit
         db.commit()
@@ -151,6 +166,7 @@ def calculate_and_save_historical_calculations(
             roic=results["roic"],
             calculation_notes=calculation_notes_json,
             time_period=document.time_period,
+            period_end_date=document.period_end_date,
             currency=balance_sheet.currency or income_statement.currency,
             unit=balance_sheet.unit or income_statement.unit,
         )

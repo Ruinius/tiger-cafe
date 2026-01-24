@@ -37,13 +37,10 @@ def _get_cached_value(cache_key: str):
         expiry_time = cached_time + timedelta(hours=CACHE_EXPIRY_HOURS)
 
         if datetime.now() < expiry_time:
-            print(f"[CACHE HIT] {cache_key}")
             return cache_data["value"]
         else:
-            print(f"[CACHE EXPIRED] {cache_key}")
             return None
-    except Exception as e:
-        print(f"[CACHE ERROR] Failed to read cache for {cache_key}: {e}")
+    except Exception:
         return None
 
 
@@ -57,9 +54,8 @@ def _set_cached_value(cache_key: str, value):
         cache_data = {"timestamp": datetime.now().isoformat(), "value": value}
         with open(cache_path, "w") as f:
             json.dump(cache_data, f, indent=2)
-        print(f"[CACHE SET] {cache_key}")
-    except Exception as e:
-        print(f"[CACHE ERROR] Failed to write cache for {cache_key}: {e}")
+    except Exception:
+        pass
 
 
 def get_latest_share_price(ticker: str) -> Decimal:
@@ -96,8 +92,7 @@ def get_latest_share_price(ticker: str) -> Decimal:
             return Decimal(str(price))
 
         return Decimal("0")
-    except Exception as e:
-        print(f"Error fetching share price for {ticker}: {e}")
+    except Exception:
         return Decimal("0")
 
 
@@ -129,8 +124,7 @@ def get_beta(ticker: str) -> Decimal:
             return Decimal(str(beta))
 
         return Decimal("1.0")  # Default to market beta
-    except Exception as e:
-        print(f"Error fetching beta for {ticker}: {e}")
+    except Exception:
         return Decimal("1.0")
 
 
@@ -165,8 +159,7 @@ def get_market_cap(ticker: str) -> Decimal:
             return Decimal(str(mkt_cap))
 
         return Decimal("0")
-    except Exception as e:
-        print(f"Error fetching market cap for {ticker}: {e}")
+    except Exception:
         return Decimal("0")
 
 
@@ -176,12 +169,7 @@ def get_currency_rate(from_currency: str, to_currency: str = "USD") -> Decimal:
     e.g. from_currency="CNY", to_currency="USD" -> Ticker "CNYUSD=X"
     Returns Decimal("1.0") if failed or if currencies match.
     """
-    print(
-        f"[get_currency_rate] Called with from_currency={from_currency}, to_currency={to_currency}"
-    )
-
     if not from_currency or from_currency.upper() == to_currency.upper():
-        print("[get_currency_rate] Currencies match or from_currency is empty, returning 1.0")
         return Decimal("1.0")
 
     # Map common currency aliases to Yahoo Finance codes
@@ -193,51 +181,33 @@ def get_currency_rate(from_currency: str, to_currency: str = "USD") -> Decimal:
     from_curr = currency_aliases.get(from_currency.upper(), from_currency.upper())
     to_curr = currency_aliases.get(to_currency.upper(), to_currency.upper())
 
-    print(
-        f"[get_currency_rate] Normalized: {from_currency} -> {from_curr}, {to_currency} -> {to_curr}"
-    )
-
     # Check cache first
     cache_key = f"currency_{from_curr}_{to_curr}"
     cached = _get_cached_value(cache_key)
     if cached is not None:
-        print(f"[get_currency_rate] Returning cached rate: {cached}")
         return Decimal(str(cached))
 
     try:
         # Ticker format usually "EURUSD=X"
         ticker = f"{from_curr}{to_curr}=X"
-        print(f"[get_currency_rate] Fetching ticker: {ticker}")
 
         data = yf.Ticker(ticker)
 
         # Try fast_info first
         price = getattr(data.fast_info, "last_price", None)
-        print(f"[get_currency_rate] fast_info.last_price = {price}")
 
         if price is None:
             # Fallback to history
-            print("[get_currency_rate] fast_info failed, trying history...")
             hist = data.history(period="1d")
-            print(f"[get_currency_rate] History data: {hist}")
             if not hist.empty:
                 price = hist["Close"].iloc[-1]
-                print(f"[get_currency_rate] Got price from history: {price}")
 
         if price:
             # Cache the result
             _set_cached_value(cache_key, float(price))
             result = Decimal(str(price))
-            print(f"[get_currency_rate] Successfully fetched rate: {result}")
             return result
 
-        print("[get_currency_rate] No price found, returning default 1.0")
         return Decimal("1.0")
-    except Exception as e:
-        print(
-            f"[get_currency_rate] ERROR fetching currency rate for {from_currency}/{to_currency}: {e}"
-        )
-        import traceback
-
-        traceback.print_exc()
+    except Exception:
         return Decimal("1.0")

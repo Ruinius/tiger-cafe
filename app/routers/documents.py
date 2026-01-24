@@ -288,6 +288,12 @@ if DEBUG:
             db.commit()
             db.refresh(test_user)
 
+        # Initialize progress tracking for test uploads as well
+        str(uuid.uuid4())  # Note: logic in internal func generates ID too
+        # To avoid double generation or mismatched IDs, we rely on upload_document_internal
+        # But we can't easily hook in there if we want test-specific behavior unless we pass a flag.
+        # Actually, upload_document_internal now handles init/update, so we just call it.
+
         # Use the same logic as the authenticated endpoint
         return await upload_document_internal(file, db, test_user)
 
@@ -349,6 +355,22 @@ async def upload_document_internal(file: UploadFile, db: Session, current_user: 
 
     # Enqueue for processing
     from app.services.queue_service import queue_service
+
+    # Initialize progress tracking (shadowing status)
+    from app.utils.financial_statement_progress import (
+        FinancialStatementMilestone,
+        MilestoneStatus,
+        initialize_progress,
+        update_milestone,
+    )
+
+    initialize_progress(document_id)
+    update_milestone(
+        document_id,
+        FinancialStatementMilestone.UPLOAD,
+        MilestoneStatus.COMPLETED,
+        message="File uploaded successfully",
+    )
 
     queue_service.add_document(document_id)
 
@@ -1047,12 +1069,15 @@ def _build_financial_statement_progress(document_id: str, db: Session) -> dict:
     from app.utils.financial_statement_progress import get_progress
 
     progress = get_progress(document_id)
+    if progress:
+        return progress
 
     def _active_progress_milestone(key: str) -> dict | None:
         if not progress:
             return None
         milestone = progress.get("milestones", {}).get(key)
-        if milestone and milestone.get("status") in ["pending", "in_progress", "error"]:
+        # Return milestone regardless of status (completed, warning, etc.)
+        if milestone:
             return milestone
         return None
 
@@ -1208,40 +1233,11 @@ def _build_financial_statement_progress(document_id: str, db: Session) -> dict:
         else:
             additional_item_missing.append("other liabilities")
 
-    if _active_progress_milestone("extracting_additional_items"):
-        milestones["extracting_additional_items"] = _active_progress_milestone(
-            "extracting_additional_items"
-        )
-    elif not income_statement:
-        milestones["extracting_additional_items"] = {
-            "status": "not_found",
-            "message": "Additional items not found",
-            "updated_at": None,
-        }
-    elif not additional_item_missing and not additional_item_errors:
-        milestones["extracting_additional_items"] = {
-            "status": "completed",
-            "message": "Additional items extracted",
-            "updated_at": income_statement.extraction_date.isoformat()
-            if income_statement and income_statement.extraction_date
-            else None,
-        }
-    elif not additional_item_missing and additional_item_errors:
-        milestones["extracting_additional_items"] = {
-            "status": "error",
-            "message": f"Validation errors for: {', '.join(additional_item_errors)}",
-            "updated_at": income_statement.extraction_date.isoformat()
-            if income_statement and income_statement.extraction_date
-            else None,
-        }
-    else:
-        milestones["extracting_additional_items"] = {
-            "status": "error",
-            "message": f"Missing: {', '.join(additional_item_missing)}",
-            "updated_at": income_statement.extraction_date.isoformat()
-            if income_statement and income_statement.extraction_date
-            else None,
-        }
+    # Legacy 'extracting_additional_items' block removed.
+    # We now strictly use granular milestones (amortization, organic_growth, etc).
+    # If in-memory progress is lost (e.g. server restart), we do not attempt
+    # to reconstruct a fake aggregate status.
+    pass
 
     # Non-operating classification milestone
     if _active_progress_milestone("classifying_non_operating_items"):

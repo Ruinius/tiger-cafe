@@ -96,6 +96,11 @@
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    user-select: none;
+}
+
+.milestone-header:hover {
+    opacity: 0.8;
 }
 
 .milestone-icon {
@@ -167,6 +172,72 @@
 .milestone-status.warning {
     background-color: rgba(245, 158, 11, 0.1);
     color: #f59e0b;
+}
+
+.milestone-status.skipped {
+    background-color: rgba(156, 163, 175, 0.1);
+    color: var(--text-secondary);
+}
+
+.milestone-item.skipped {
+    border-left: 3px solid var(--text-tertiary);
+    opacity: 0.6;
+}
+
+.milestone-icon.skipped {
+    color: var(--text-secondary);
+}
+
+.milestone-expand-icon {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    margin-left: 0.5rem;
+}
+
+.milestone-message {
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background: rgba(99, 102, 241, 0.05);
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.milestone-logs {
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    background: var(--bg-surface);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--primary);
+}
+
+.log-entry {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    padding: 0.25rem 0;
+    font-family: 'Courier New', monospace;
+}
+
+.log-entry:not(:last-child) {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.sse-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.sse-status.connected {
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.1);
 }
 
 /* Spinner animation */

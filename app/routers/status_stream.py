@@ -16,6 +16,7 @@ from sse_starlette.sse import EventSourceResponse
 from app.database import SessionLocal, get_db
 from app.models.document import Document, DocumentStatus
 from app.models.user import User
+from app.utils.financial_statement_progress import get_progress_with_db_fallback
 from config.config import ALGORITHM, SECRET_KEY
 
 router = APIRouter()
@@ -92,7 +93,9 @@ async def status_stream(
 
                 # Use a fresh session for each poll to ensure data is fresh and session is healthy
                 with SessionLocal() as stream_db:
-                    # Query active documents (not in terminal states)
+                    # Query active documents AND recently completed ones (for UI retention)
+                    from datetime import datetime, timedelta
+
                     terminal_statuses = [
                         DocumentStatus.PROCESSING_COMPLETE,
                         DocumentStatus.CLASSIFIED,
@@ -102,15 +105,29 @@ async def status_stream(
                         DocumentStatus.UPLOAD_FAILED,
                     ]
 
-                    query = stream_db.query(Document).filter(
+                    # Get active (non-terminal) documents
+                    active_query = stream_db.query(Document).filter(
                         ~Document.status.in_(terminal_statuses)
+                    )
+
+                    # Get recently completed documents (within last 60 seconds)
+                    recent_cutoff = datetime.utcnow() - timedelta(seconds=60)
+                    completed_query = stream_db.query(Document).filter(
+                        Document.status.in_(terminal_statuses),
+                        Document.processed_at >= recent_cutoff,
                     )
 
                     # Filter by user if authenticated
                     if current_user_id:
-                        query = query.filter(Document.user_id == current_user_id)
+                        active_query = active_query.filter(Document.user_id == current_user_id)
+                        completed_query = completed_query.filter(
+                            Document.user_id == current_user_id
+                        )
 
-                    documents = query.all()
+                    # Combine active and recently completed
+                    active_docs = active_query.all()
+                    completed_docs = completed_query.all()
+                    documents = active_docs + completed_docs
 
                     if documents:
                         data = []
@@ -126,6 +143,9 @@ async def status_stream(
                                     "duplicate_detected": doc.duplicate_detected,
                                     "existing_document_id": doc.existing_document_id,
                                     "updated_at": str(doc.processed_at or doc.uploaded_at),
+                                    "financial_statement_progress": get_progress_with_db_fallback(
+                                        doc.id, stream_db
+                                    ),
                                 }
                             )
 

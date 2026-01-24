@@ -84,20 +84,30 @@ def extract_income_statement(
     )
 
     # Step 1: Find top-10 chunks by number density
-    top_numeric_chunks = find_top_numeric_chunks(document_id, file_path, top_k=10)
+    top_numeric_chunks = find_top_numeric_chunks(
+        document_id, file_path, top_k=10, context_name="Income Statement"
+    )
 
     # Step 2: Rank those top-10 chunks by query similarity
     query_texts = ["Revenue", "Profit", "Income", "Tax", "Cost"]
-    candidate_chunks = rank_chunks_by_query(document_id, file_path, top_numeric_chunks, query_texts)
+    candidate_chunks = rank_chunks_by_query(
+        document_id, file_path, top_numeric_chunks, query_texts, context_name="Income Statement"
+    )
 
     if not candidate_chunks:
-        print("No chunks found with numbers, falling back to legacy search")
+        add_log(
+            document_id,
+            FinancialStatementMilestone.INCOME_STATEMENT,
+            "I couldn't find any sections with clear financial figures for the income statement. This is unusual, but I'll keep trying.",
+        )
 
     for attempt_idx, chunk_index in enumerate(candidate_chunks):
         try:
-            section_msg = f"Stage 1: Finding income statement section (attempt {attempt_idx + 1}, chunk {chunk_index})"
-            print(section_msg)
-            add_log(document_id, FinancialStatementMilestone.INCOME_STATEMENT, section_msg)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.INCOME_STATEMENT,
+                f"I'm looking for the income statement section (attempt {attempt_idx + 1}).",
+            )
 
             # Get text for this chunk with padding
             # Default padding of 2500 characters before/after
@@ -105,32 +115,45 @@ def extract_income_statement(
                 document_id, file_path, chunk_index, chars_before=2500, chars_after=2500
             )
 
-            chunk_msg = f"Checking chunk {chunk_index} (chars {log_info['chunk_start_char']}-{log_info['chunk_end_char']})"
-            print(chunk_msg)
-            add_log(document_id, FinancialStatementMilestone.INCOME_STATEMENT, chunk_msg)
-
-            # Stage 1 validation: Check completeness of chunk text using LLM (before extraction)
-            completeness_check_msg = (
-                "Stage 1: Checking if chunk contains complete income statement using LLM"
-            )
-            print(completeness_check_msg)
             add_log(
                 document_id,
                 FinancialStatementMilestone.INCOME_STATEMENT,
-                completeness_check_msg,
+                f"I'm checking a promising piece of the document (chars {log_info['chunk_start_char']}-{log_info['chunk_end_char']}).",
             )
 
+            # Stage 1 validation: Check completeness of chunk text using LLM (before extraction)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.INCOME_STATEMENT,
+                "I'm verifying if this section has everything we need for a complete income statement.",
+            )
+
+            add_log(
+                document_id,
+                FinancialStatementMilestone.INCOME_STATEMENT,
+                f"I'm asking Gemini to verify if this section contains a complete income statement for {time_period}.",
+            )
             is_complete, reason = check_income_statement_completeness_llm(
                 income_statement_text, time_period, period_end_date
             )
-
-            if not is_complete:
-                section_failed_msg = f"Stage 1 validation failed: {reason}"
-                print(section_failed_msg)
+            if is_complete:
                 add_log(
                     document_id,
                     FinancialStatementMilestone.INCOME_STATEMENT,
-                    section_failed_msg,
+                    "Gemini confirmed this section is complete and ready for extraction.",
+                )
+            else:
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.INCOME_STATEMENT,
+                    f"Gemini thinks this section is incomplete because: {reason}.",
+                )
+
+            if not is_complete:
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.INCOME_STATEMENT,
+                    f"This section isn't quite right because: {reason}. I'll look for a better one.",
                 )
                 if attempt_idx < len(candidate_chunks) - 1:
                     continue  # Try next candidate
@@ -140,43 +163,50 @@ def extract_income_statement(
                     pass
             else:
                 # Extract income statement using LLM (only if chunk is complete)
-                extraction_msg = "Extracting income statement from complete chunk"
-                print(extraction_msg)
                 add_log(
                     document_id,
                     FinancialStatementMilestone.INCOME_STATEMENT,
-                    extraction_msg,
+                    "Found it! Extracting the income statement data now.",
                 )
 
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.INCOME_STATEMENT,
+                    "I'm now asking Gemini to extract all the income statement line items.",
+                )
                 extracted_data = extract_income_statement_llm(
                     income_statement_text,
                     time_period,
                     currency=None,
                     period_end_date=period_end_date,
                 )
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.INCOME_STATEMENT,
+                    f"Gemini has finished extracting {len(extracted_data.get('line_items', []))} line items.",
+                )
 
                 # Classification is now handled by TigerTransformerClient in post_process_income_statement_line_items
 
-                extracted_count_msg = (
-                    f"Extracted {len(extracted_data.get('line_items', []))} line items"
-                )
-                print(extracted_count_msg)
                 add_log(
                     document_id,
                     FinancialStatementMilestone.INCOME_STATEMENT,
-                    extracted_count_msg,
+                    f"I've successfully identified {len(extracted_data.get('line_items', []))} line items from the income statement.",
                 )
 
-                section_valid_msg = "Stage 1 validation passed (complete income statement chunk found and extracted)"
-                print(section_valid_msg)
                 add_log(
                     document_id,
                     FinancialStatementMilestone.INCOME_STATEMENT,
-                    section_valid_msg,
+                    "The income statement chunk looks great. Moving forward with validation.",
                 )
                 # Store successful chunk index
                 successful_chunk_index = chunk_index
                 extracted_data["chunk_index"] = chunk_index
+
+                # Assign line_order to extracted items
+                for i, item in enumerate(extracted_data.get("line_items", [])):
+                    item["line_order"] = i
+
                 break  # Section found and validated, proceed to Stage 2
 
         except Exception as e:
@@ -193,13 +223,15 @@ def extract_income_statement(
     # Stage 2: Post-process and validate extraction
     try:
         # Step 0: Initial Post-processing & Validation
-        extraction_msg = "Stage 2: Post-processing and validating extraction"
-        print(extraction_msg)
         add_log(
             document_id,
             FinancialStatementMilestone.INCOME_STATEMENT,
-            extraction_msg,
+            "I'm now double-checking the figures and standardizing the line item names.",
         )
+
+        # Inject document_id
+        for item in extracted_data["line_items"]:
+            item["document_id"] = document_id
 
         processed_line_items, normalization_errors = post_process_income_statement_line_items(
             extracted_data.get("line_items", [])
@@ -210,31 +242,59 @@ def extract_income_statement(
 
         # Step 1: If validation fails, check time periods and remove out-of-place items
         if not is_valid:
-            validation_error_str = "; ".join(normalization_errors)
-            time_check_msg = f"Validation failed ({validation_error_str}). Checking for out-of-period line items."
-            print(time_check_msg)
-            add_log(document_id, FinancialStatementMilestone.INCOME_STATEMENT, time_check_msg)
+            add_log(
+                document_id,
+                FinancialStatementMilestone.INCOME_STATEMENT,
+                "I noticed some numbers don't add up correctly. I'll check if some items belong to a different period.",
+            )
 
+            add_log(
+                document_id,
+                FinancialStatementMilestone.INCOME_STATEMENT,
+                "I'm asking Gemini to check if any of these line items belong to a different time period.",
+            )
             time_check_result = check_line_item_time_periods_income_statement(
                 extracted_data["line_items"], time_period
             )
             mismatched_items = time_check_result.get("mismatched_items", [])
+            if mismatched_items:
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.INCOME_STATEMENT,
+                    f"Gemini flagged {len(mismatched_items)} items from the wrong period.",
+                )
+            else:
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.INCOME_STATEMENT,
+                    "Gemini confirmed all items belong to the correct period.",
+                )
 
             if mismatched_items:
                 # Remove out-of-place items
                 mismatched_names = {item["line_name"] for item in mismatched_items}
-                original_count = len(extracted_data["line_items"])
+                len(extracted_data["line_items"])
                 extracted_data["line_items"] = [
                     item
                     for item in extracted_data["line_items"]
                     if item["line_name"] not in mismatched_names
                 ]
 
-                removed_msg = f"Removed {len(mismatched_items)} out-of-period items from {original_count} total items. Re-validating."
-                print(removed_msg)
-                add_log(document_id, FinancialStatementMilestone.INCOME_STATEMENT, removed_msg)
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.INCOME_STATEMENT,
+                    f"I've removed {len(mismatched_items)} items that seemed out of place. Re-calculating the results now.",
+                )
+
+                # Re-assign line_order after removal
+                for i, item in enumerate(extracted_data["line_items"]):
+                    item["line_order"] = i
 
                 # Re-validate after removal
+                # Inject document_id
+                for item in extracted_data["line_items"]:
+                    item["document_id"] = document_id
+
                 processed_line_items, normalization_errors = (
                     post_process_income_statement_line_items(extracted_data.get("line_items", []))
                 )
@@ -242,17 +302,18 @@ def extract_income_statement(
                 is_valid = len(normalization_errors) == 0
 
         # Step 2: If validation still fails, try one last retry with feedback
-        retried = False
         if not is_valid:
-            retry_msg = "Validation still failed. Attempting final extraction with LLM feedback."
-            print(retry_msg)
             add_log(
                 document_id,
                 FinancialStatementMilestone.INCOME_STATEMENT,
-                retry_msg,
+                "The calculations are still a bit off. I'm asking for a more precise extraction with specific feedback.",
             )
-            retried = True
 
+            add_log(
+                document_id,
+                FinancialStatementMilestone.INCOME_STATEMENT,
+                "I'm sending the math errors back to Gemini for a corrected extraction.",
+            )
             # Re-extract with validation error feedback
             extracted_data = extract_income_statement_llm_with_feedback(
                 income_statement_text,
@@ -262,15 +323,22 @@ def extract_income_statement(
                 currency=None,
                 period_end_date=period_end_date,
             )
-
-            # Log completion of retry
-            retry_done_msg = f"Final retry extraction finished with {len(extracted_data.get('line_items', []))} items. Re-validating."
-            print(retry_done_msg)
             add_log(
                 document_id,
                 FinancialStatementMilestone.INCOME_STATEMENT,
-                retry_done_msg,
+                f"Gemini has finished the retry and provided {len(extracted_data.get('line_items', []))} updated line items.",
             )
+
+            # Log completion of retry
+            add_log(
+                document_id,
+                FinancialStatementMilestone.INCOME_STATEMENT,
+                "I've completed the refined extraction. Let's see if the numbers match up now.",
+            )
+
+            # Assign line_order to retried items
+            for i, item in enumerate(extracted_data.get("line_items", [])):
+                item["line_order"] = i
 
             # Classification is now handled by TigerTransformerClient in post_process_income_statement_line_items
 
@@ -283,64 +351,22 @@ def extract_income_statement(
 
         # Final Result Processing
         if is_valid:
-            success_msg = "Stage 2 validation passed"
-            if retried:
-                success_msg += " (after LLM retry)"
-            if normalization_errors:
-                success_msg += " (deduced valid despite warnings)"
-            print(success_msg)
             add_log(
                 document_id,
                 FinancialStatementMilestone.INCOME_STATEMENT,
-                success_msg,
+                "Success! The income statement numbers are now verified and consistent.",
             )
         else:
-            fail_msg = (
-                f"Stage 2 validation failed after retries: {', '.join(normalization_errors[:2])}"
-            )
-            print(fail_msg)
             add_log(
                 document_id,
                 FinancialStatementMilestone.INCOME_STATEMENT,
-                fail_msg,
+                "I couldn't get all the totals to match perfectly, but I've captured the most accurate data possible.",
             )
 
         extracted_data["is_valid"] = is_valid
         extracted_data["validation_errors"] = normalization_errors
 
         # Classification moved to earlier steps
-
-        # Calculate revenue growth YoY
-        current_revenue = None
-        revenue_line_name = None
-        for item in extracted_data.get("line_items", []):
-            if item.get("standardized_name") in ["total_revenue", "revenue"]:
-                current_revenue = _normalize_value(item.get("line_value"))
-                revenue_line_name = item.get("line_name")
-                if current_revenue is not None:
-                    break
-
-        # Extract prior year revenue using separate LLM call
-        if current_revenue is not None:
-            prior_revenue_value, prior_revenue_unit = extract_prior_year_revenue(
-                income_statement_text,
-                time_period,
-                current_revenue,
-                revenue_line_name,
-                extracted_data.get("unit"),
-            )
-
-            if prior_revenue_value is not None:
-                # Normalize the prior year revenue to match current period unit
-                extracted_data["revenue_prior_year"] = prior_revenue_value
-                extracted_data["revenue_prior_year_unit"] = prior_revenue_unit
-
-                # Calculate YoY growth
-                if prior_revenue_value > 0:
-                    revenue_growth = (
-                        (current_revenue - prior_revenue_value) / prior_revenue_value
-                    ) * 100
-                    extracted_data["revenue_growth_yoy"] = revenue_growth
 
         # Store chunk index for persistence
         if successful_chunk_index is not None:
@@ -370,11 +396,15 @@ def check_income_statement_completeness_llm(
     Returns:
         Tuple of (is_complete, reason)
     """
-    validation_criteria = """- Start with revenue or sales
-- Include cost of revenue, cost of sales, or cost of goods sold
-- Include operating expenses (R&D, SG&A, etc.)
-- Include tax expense
-- End with net income or net earnings"""
+    validation_criteria = """
+    - The title of the income statement or statement of operations needs to be visible
+    - The table must have time header at the top, such as "Three Months Ended in..."
+    - The statement itself starts with revenue header, revenue or sales
+    - Include cost of revenue, cost of sales, or cost of goods sold
+    - Include operating expenses (R&D, SG&A, etc.)
+    - Include tax expense
+    - End with net income or net earnings
+    """
 
     return check_section_completeness_llm(
         text, time_period, "consolidated income statement", validation_criteria, period_end_date
@@ -570,91 +600,6 @@ Return only valid JSON, no additional text."""
         raise Exception(f"Error extracting income statement: {str(e)}")
 
 
-def extract_prior_year_revenue(
-    text: str,
-    time_period: str,
-    current_revenue: float | None = None,
-    revenue_line_name: str | None = None,
-    unit: str | None = None,
-) -> tuple[float | None, str | None]:
-    """
-    Extract prior year revenue using LLM with rich context.
-
-    Args:
-        text: Text containing income statement
-        time_period: Current time period (e.g., "Q3 2023")
-        current_revenue: Current period revenue value for context
-        revenue_line_name: Raw line item name from the income statement (e.g., "Total Net Revenues")
-        unit: Unit of measurement from current period extraction
-
-    Returns:
-        Tuple of (revenue_prior_year, revenue_prior_year_unit)
-    """
-    # Determine the prior year period
-    # e.g., "Q3 2023" -> "Q3 2022", "FY 2023" -> "FY 2022"
-    import re
-
-    year_match = re.search(r"(\d{4})", time_period)
-    if not year_match:
-        print(f"Could not parse year from time_period: {time_period}")
-        return None, None
-
-    current_year = int(year_match.group(1))
-    prior_year = current_year - 1
-    prior_period = time_period.replace(str(current_year), str(prior_year))
-
-    # Build context information
-    context_info = ""
-    if current_revenue is not None:
-        context_info = (
-            f"\n\nCONTEXT: The current period ({time_period}) revenue is {current_revenue}."
-        )
-        if revenue_line_name:
-            context_info += f' This value is from the line item: "{revenue_line_name}".'
-        context_info += f" You are looking for the {prior_period} value from the SAME ROW in the comparative financial statement."
-
-    extraction_prompt = f"""Extract the revenue (or total revenue, or net revenue) for {prior_period} from the following document text.{context_info}
-
-CRITICAL ANTI-HALLUCINATION RULES:
-- ONLY extract the value if it is EXPLICITLY shown in the document text below
-- DO NOT invent, infer, calculate, estimate, or approximate any values
-- Look for revenue line items in comparative columns (prior year columns)
-- The value must be from the SAME ROW as the current period revenue in the financial statement table
-- The value must be clearly labeled as being for {prior_period}
-- If you cannot find the value explicitly stated, return null
-
-Return a JSON object:
-{{
-    "revenue_prior_year": numeric value for {prior_period} revenue (null if not found),
-    "revenue_prior_year_unit": unit - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (null if not found),
-    "explanation": "brief explanation of where you found this value in the document (mention the row/line item name)"
-}}
-
-Document text:
-{text[:30000]}
-
-Return only valid JSON, no additional text."""
-
-    try:
-        result = call_llm_and_parse_json(extraction_prompt, temperature=0.0)
-
-        revenue_value = result.get("revenue_prior_year")
-        revenue_unit = result.get("revenue_prior_year_unit")
-        explanation = result.get("explanation", "")
-
-        if revenue_value is None:
-            print(f"Prior year revenue not found for {prior_period}")
-            return None, None
-
-        print(f"Prior year revenue extracted: {revenue_value} ({revenue_unit}) for {prior_period}")
-        print(f"Explanation: {explanation}")
-        return revenue_value, revenue_unit
-
-    except Exception as e:
-        print(f"Error extracting prior year revenue: {str(e)}")
-        return None, None
-
-
 def post_process_income_statement_line_items(
     line_items: list[dict],
 ) -> tuple[list[dict], list[str]]:
@@ -671,8 +616,18 @@ def post_process_income_statement_line_items(
         return line_items, []
 
     # Step 1: Call TigerTransformerClient for inference and enrichment
+    add_log(
+        line_items[0].get("document_id") if line_items and line_items[0].get("document_id") else "",
+        FinancialStatementMilestone.INCOME_STATEMENT,
+        "I'm sending the line items to the tiger-transformer model to standardize the names.",
+    )
     client = TigerTransformerClient()
     processed_items = client.predict_income_statement(line_items)
+    add_log(
+        line_items[0].get("document_id") if line_items and line_items[0].get("document_id") else "",
+        FinancialStatementMilestone.INCOME_STATEMENT,
+        "The tiger-transformer model has finished standardizing the line items.",
+    )
 
     # Step 2: Normalize signs based on is_expense
     # Confirmed expenses (is_expense=True) should be negative
@@ -710,10 +665,7 @@ def post_process_income_statement_line_items(
         revenue = totals["total_revenue"]
         income_before_taxes = totals["income_before_taxes"]
 
-        # DEBUGGING: Print all totals
-        print(
-            f"DEBUG: Found totals - Revenue: {revenue}, Income Before Taxes: {income_before_taxes}"
-        )
+        pass
 
         # Calculate costs sum
         costs_items = [
@@ -737,19 +689,12 @@ def post_process_income_statement_line_items(
         ]
 
         costs_sum = sum(item["line_value"] for item in costs_items)
-        print(f"DEBUG: Costs Sum calculated: {costs_sum}")
-        print("DEBUG: Items included in costs sum:")
-        for item in costs_items:
-            print(
-                f" - {item.get('line_name')} ({item.get('standardized_name')}): {item.get('line_value')}"
-            )
+        pass
 
         calculated_gp = revenue + costs_sum  # costs are negative
         diff = abs(calculated_gp - income_before_taxes)
 
-        print(
-            f"DEBUG: Calculated Income ({calculated_gp}) vs Reported ({income_before_taxes}) - Diff: {diff}"
-        )
+        pass
 
         if diff > 0.01:
             # Try residual solver for ambiguous items

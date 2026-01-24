@@ -163,29 +163,31 @@ class DocumentQueue:
             db.close()
 
     def _process_financials(self, document_id: str, db: Session):
-        """Sequential financial statement extraction."""
+        """Sequential financial statement extraction using the new orchestrator."""
 
         print(f"[Queue] _process_financials called for document {document_id}")
 
-        # A. Balance Sheet
-        print("[Queue] Starting balance sheet extraction...")
-        self._update_status_by_id(db, document_id, DocumentStatus.EXTRACTING_BALANCE_SHEET)
-        from app.routers.balance_sheet import process_balance_sheet_async
+        # Use the new extraction orchestrator instead of calling router functions directly
+        try:
+            import asyncio
 
-        process_balance_sheet_async(document_id, db)
-        print("[Queue] Balance sheet extraction completed")
+            from app.services.extraction_orchestrator import run_full_extraction_pipeline
 
-        # B. Income Statement (Includes Additional Items & Non-Operating Classification)
-        print("[Queue] Starting income statement extraction...")
-        self._update_status_by_id(db, document_id, DocumentStatus.EXTRACTING_INCOME_STATEMENT)
-        from app.routers.income_statement import process_income_statement_async
+            # Update status to extracting
+            self._update_status_by_id(db, document_id, DocumentStatus.EXTRACTING_BALANCE_SHEET)
 
-        process_income_statement_async(document_id, db)
-        print("[Queue] Income statement extraction completed")
+            # Run the full extraction pipeline (Balance Sheet → Income Statement → Additional Items → Classification → Analysis)
+            # The orchestrator handles all milestone tracking internally
+            asyncio.run(run_full_extraction_pipeline(document_id, db))
 
-        # E. Finish
-        print("[Queue] All extractions complete, marking as PROCESSING_COMPLETE")
-        self._update_status_by_id(db, document_id, DocumentStatus.PROCESSING_COMPLETE)
+            # Mark as complete
+            print("[Queue] All extractions complete, marking as PROCESSING_COMPLETE")
+            self._update_status_by_id(db, document_id, DocumentStatus.PROCESSING_COMPLETE)
+
+        except Exception as e:
+            print(f"[Queue] Error in financial extraction: {e}")
+            traceback.print_exc()
+            self._update_status_by_id(db, document_id, DocumentStatus.EXTRACTION_FAILED, str(e))
 
     def _update_status(
         self, db: Session, document: Document, status: DocumentStatus, error_msg: str = None

@@ -16,6 +16,7 @@ class OrganicGrowth(Base):
     document_id = Column(String, ForeignKey("documents.id"), nullable=False, index=True)
 
     time_period = Column(String, nullable=True)
+    period_end_date = Column(String, nullable=True)
     currency = Column(String, nullable=True)
     prior_period_revenue = Column(Numeric(20, 2), nullable=True)
     prior_period_revenue_unit = Column(String, nullable=True)

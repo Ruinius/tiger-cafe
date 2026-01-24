@@ -5,6 +5,7 @@ import {
     ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     ReferenceLine, Cell, Legend
 } from 'recharts'
+import { formatDate } from '../../../utils/formatting'
 import './Dashboard.css'
 
 // Generate vibrant colors that work in both light and dark mode
@@ -23,7 +24,6 @@ const stringToColor = (str) => {
 }
 
 const formatPercent = (value) => `${(value).toFixed(1)}%`;
-const formatDate = (tick) => new Date(tick).toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
 
 const getValuationColor = (percent) => {
     if (percent > 0.30) return '#10b981'; // Green (Undervalued)
@@ -92,7 +92,7 @@ function WelcomeView() {
                                         dataKey="x"
                                         name="Date"
                                         domain={['auto', 'auto']}
-                                        tickFormatter={formatDate}
+                                        tickFormatter={(val) => formatDate(val, true)}
                                         stroke="var(--text-secondary)"
                                         style={{ fontSize: '0.8rem' }}
                                     />
@@ -112,7 +112,7 @@ function WelcomeView() {
                                                 return (
                                                     <div className="custom-tooltip" style={{ background: 'var(--bg-overlay)', padding: '0.5rem', border: '1px solid var(--border)', borderRadius: '4px' }}>
                                                         <p className="label" style={{ fontWeight: 600 }}>{pt.name} ({pt.ticker})</p>
-                                                        <p>{new Date(pt.x).toLocaleDateString()}</p>
+                                                        <p>{formatDate(pt.x, true)}</p>
                                                         <p style={{ color: getValuationColor(pt.percent_undervalued) }}>
                                                             {Math.abs(pt.y).toFixed(1)}% {pt.y >= 0 ? 'Undervalued' : 'Overvalued'}
                                                         </p>
@@ -169,7 +169,7 @@ function WelcomeView() {
                                                 return (
                                                     <div className="custom-tooltip" style={{ background: 'var(--bg-overlay)', padding: '0.5rem', border: '1px solid var(--border)', borderRadius: '4px' }}>
                                                         <p className="label" style={{ fontWeight: 600 }}>{pt.name} ({pt.ticker})</p>
-                                                        {pt.period && <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: '0.25rem' }}>{pt.period}</p>}
+                                                        {pt.period && <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: '0.25rem' }}>{formatDate(pt.period)}</p>}
                                                         <p>Growth: {formatPercent(pt.growth)}</p>
                                                         <p>Margin: {formatPercent(pt.margin)}</p>
                                                         <p>Score: {formatPercent(pt.growth + pt.margin)}</p>

@@ -40,3 +40,8 @@ indent-style = "space"
 exclude_dirs = ["tests", "test_", "migrations", ".venv", "venv", "node_modules", ".conda", "conda"]
 skips = ["B101"]  # Skip assert_used check (common in tests)
 
+
+
+
+
+

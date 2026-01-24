@@ -9,6 +9,9 @@ import pdfplumber
 
 logger = logging.getLogger(__name__)
 
+# Suppress pdfminer FontBBox warnings
+logging.getLogger("pdfminer").setLevel(logging.ERROR)
+
 
 class PDFExtractionError(Exception):
     """Custom exception for PDF extraction errors"""

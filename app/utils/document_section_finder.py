@@ -94,6 +94,7 @@ def _find_document_section_legacy(
     min_numbers: int = 0,
     penalize_edges: bool = False,
     exclude_chunks: set[int] | None = None,
+    context_name: str | None = None,
 ) -> tuple[str | None, int | None, dict | None]:
     """
     Use document embeddings to locate relevant sections for the provided queries.
@@ -113,9 +114,6 @@ def _find_document_section_legacy(
     try:
         chunk_metadata = get_chunk_metadata(document_id)
         if not chunk_metadata:
-            print(
-                f"No chunk metadata found for document {document_id}, falling back to full document extraction"
-            )
             return None, None
 
         resolved_chunk_size = chunk_size or chunk_metadata.get("chunk_size", 5000)
@@ -123,7 +121,6 @@ def _find_document_section_legacy(
         num_chunks = chunk_metadata.get("num_chunks", 0)
 
         if num_chunks == 0:
-            print(f"No chunks found for document {document_id}")
             return None, None
 
         # No need to get total pages for character-based chunking
@@ -161,7 +158,6 @@ def _find_document_section_legacy(
             chunk_embedding = load_chunk_embedding(document_id, chunk_index)
 
             if not chunk_embedding:
-                print(f"Chunk {chunk_index} embedding not found, generating...")
                 chunk_embedding = generate_embedding_safe(
                     chunk_text[:20000], max_chars=20000, task_type="retrieval_document"
                 )
@@ -305,11 +301,7 @@ def _find_document_section_legacy(
                 log_info["rerank_top_k"] = rerank_top_k
                 log_info["rerank_details"] = rerank_details
 
-            rank_text = f" (rank {chunk_rank + 1})" if chunk_rank > 0 else ""
-            print(
-                f"Best match{rank_text}: chunk {best_chunk_index} (chars {chunk_start_char}-{chunk_end_char - 1}), "
-                f"similarity={best_score:.3f}, extracting chars {start_extract_char}-{end_extract_char - 1}"
-            )
+            f" (rank {chunk_rank + 1})" if chunk_rank > 0 else ""
 
             # Load full text from cache
             from app.utils.document_indexer import load_full_document_text
@@ -319,11 +311,9 @@ def _find_document_section_legacy(
 
             return extracted_text, start_extract_char, log_info
 
-        print(f"No match found above threshold {score_threshold}. Best score: {best_score:.3f}")
         return None, None, None
 
-    except Exception as e:
-        print(f"Error finding document section: {str(e)}")
+    except Exception:
         import traceback
 
         traceback.print_exc()
@@ -385,6 +375,7 @@ def find_top_numeric_chunks(
     file_path: str,
     top_k: int = 5,
     chunk_size: int | None = None,
+    context_name: str | None = None,
 ) -> list[int]:
     """
     Find the chunks with the highest density of numbers.
@@ -392,7 +383,6 @@ def find_top_numeric_chunks(
     """
     chunk_metadata = get_chunk_metadata(document_id)
     if not chunk_metadata:
-        print(f"No chunk metadata found for document {document_id}")
         return []
 
     resolved_chunk_size = chunk_size or chunk_metadata.get("chunk_size", 2)
@@ -425,6 +415,7 @@ def rank_chunks_by_query(
     chunk_indices: list[int],
     query_texts: list[str],
     chunk_size: int | None = None,
+    context_name: str | None = None,
 ) -> list[int]:
     """
     Rank a list of chunk indices by their similarity to query texts.
@@ -444,8 +435,7 @@ def rank_chunks_by_query(
 
     chunk_metadata = get_chunk_metadata(document_id)
     if not chunk_metadata:
-        print(f"No chunk metadata found for document {document_id}")
-        return chunk_indices  # Return original order if no metadata
+        return chunk_indices
 
     resolved_chunk_size = chunk_size or chunk_metadata.get("chunk_size", 5000)
 

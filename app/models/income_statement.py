@@ -29,6 +29,7 @@ class IncomeStatement(Base):
 
     # Metadata
     time_period = Column(String, nullable=True)  # e.g., "Q3 2023", "FY 2023"
+    period_end_date = Column(String, nullable=True)  # e.g., "2024-03-31" (YYYY-MM-DD)
     currency = Column(String, nullable=True)  # Local currency code (e.g., "USD", "EUR")
     unit = Column(
         String, nullable=True
@@ -43,17 +44,6 @@ class IncomeStatement(Base):
     revenue_growth_yoy = Column(
         Numeric(10, 4), nullable=True
     )  # Year-over-year revenue growth percentage
-    basic_shares_outstanding = Column(Numeric(20, 2), nullable=True)
-    basic_shares_outstanding_unit = Column(
-        String, nullable=True
-    )  # Unit for basic_shares_outstanding (usually "ones")
-    diluted_shares_outstanding = Column(Numeric(20, 2), nullable=True)
-    diluted_shares_outstanding_unit = Column(
-        String, nullable=True
-    )  # Unit for diluted_shares_outstanding (usually "ones")
-    amortization = Column(Numeric(20, 2), nullable=True)
-    amortization_unit = Column(String, nullable=True)  # Unit for amortization
-
     # Validation flags
     is_valid = Column(Boolean, default=False)  # Whether all validations passed
     validation_errors = Column(Text, nullable=True)  # JSON string of validation errors

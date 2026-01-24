@@ -98,3 +98,7 @@ class Document(Base):
     non_operating_classification = relationship(
         "NonOperatingClassification", back_populates="document", uselist=False
     )
+    shares_outstanding = relationship("SharesOutstanding", back_populates="document", uselist=False)
+    gaap_reconciliation = relationship(
+        "GAAPReconciliation", back_populates="document", uselist=False
+    )

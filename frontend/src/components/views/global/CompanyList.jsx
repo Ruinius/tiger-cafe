@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useUploadManager } from '../../../hooks/useUploadManager'
+import { formatDate } from '../../../utils/formatting'
 import './Dashboard.css'
 
 function CompanyList({ onCompanySelect, onOpenUploadModal, onShowUploadProgress }) {
@@ -24,18 +25,7 @@ function CompanyList({ onCompanySelect, onOpenUploadModal, onShowUploadProgress 
         loadCompanies()
     }, [loadCompanies])
 
-    const formatDate = (val) => {
-        if (!val) return 'N/A';
-        // If it looks like YYYY-MM-DD (length 10), parse as local date
-        if (typeof val === 'string' && val.length === 10 && val.includes('-')) {
-            const [y, m, d] = val.split('-').map(Number);
-            const date = new Date(y, m - 1, d);
-            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        }
-        // Else assume ISO / Date object
-        const date = new Date(val);
-        return isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    }
+
 
     const sortedCompanies = useMemo(() => {
         if (!filteredCompanies) return [];

@@ -49,13 +49,7 @@ class IncomeStatement(IncomeStatementBase):
     revenue_prior_year: Decimal | None = None
     revenue_prior_year_unit: str | None = None
     revenue_growth_yoy: Decimal | None = None
-    basic_shares_outstanding: Decimal | None = None
-    basic_shares_outstanding_unit: str | None = None
-    diluted_shares_outstanding: Decimal | None = None
-    diluted_shares_outstanding_unit: str | None = None
-    amortization: Decimal | None = None
-    amortization_unit: str | None = None
     is_valid: bool
     validation_errors: str | None = None
-    extraction_date: datetime
+    extraction_date: datetime | None = None
     line_items: list[IncomeStatementLineItem] = []

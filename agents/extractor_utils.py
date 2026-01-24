@@ -1,5 +1,5 @@
 import json
-import time
+import time  # Added import for time.sleep
 from typing import Any
 
 from app.utils.gemini_client import generate_content_safe
@@ -59,9 +59,6 @@ def call_llm_with_retry(
 
             if is_api_error and attempt < max_retries - 1:
                 wait_time = 2**attempt
-                print(
-                    f"API error (attempt {attempt + 1}/{max_retries}): {str(e)}. Retrying in {wait_time}s..."
-                )
                 time.sleep(wait_time)
                 continue
 
@@ -110,7 +107,6 @@ Return only valid JSON, no additional text."""
         result = call_llm_with_retry(prompt)
         return result.get("is_complete", False), result.get("reason", "")
     except Exception as e:
-        print(f"Error checking {statement_name} completeness: {str(e)}")
         return False, str(e)
 
 

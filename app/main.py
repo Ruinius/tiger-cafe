@@ -7,14 +7,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine
 from app.routers import (
-    additional_items,
     auth,
     balance_sheet,
     companies,
     dashboard,
     documents,
+    extraction_tasks,
     historical_calculations,
     income_statement,
+    processing,
     status_stream,
 )
 from app.utils.cleanup_scheduler import get_cleanup_scheduler
@@ -41,13 +42,14 @@ app.include_router(companies.router, prefix="/api/companies", tags=["companies"]
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
 # Specific routers must effectively precede generic /{document_id} routes
 app.include_router(status_stream.router, prefix="/api/documents", tags=["status-stream"])
-app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
+app.include_router(processing.router, prefix="/api/processing", tags=["processing"])
 app.include_router(balance_sheet.router, prefix="/api/documents", tags=["balance-sheet"])
 app.include_router(income_statement.router, prefix="/api/documents", tags=["income-statement"])
-app.include_router(additional_items.router, prefix="/api/documents", tags=["additional-items"])
+app.include_router(extraction_tasks.router, prefix="/api/documents", tags=["extraction-tasks"])
 app.include_router(
     historical_calculations.router, prefix="/api/documents", tags=["historical-calculations"]
 )
+app.include_router(documents.router, prefix="/api/documents", tags=["documents"])
 
 
 @app.get("/")

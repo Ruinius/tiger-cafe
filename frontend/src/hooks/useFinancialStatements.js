@@ -12,6 +12,7 @@ export function useFinancialStatements(selectedDocument, isEligibleForFinancialS
     const [amortization, setAmortization] = useState(null)
     const [otherAssets, setOtherAssets] = useState(null)
     const [otherLiabilities, setOtherLiabilities] = useState(null)
+    const [shares, setShares] = useState(null)
     const [nonOperatingClassification, setNonOperatingClassification] = useState(null)
 
     // Loading states
@@ -38,11 +39,13 @@ export function useFinancialStatements(selectedDocument, isEligibleForFinancialS
                 `${API_BASE_URL}/documents/${selectedDocument.id}/balance-sheet`,
                 { headers }
             )
+            console.log('[useFinancialStatements] loadBalanceSheet response:', response.data)
             if (response.data && response.data.status === 'exists') {
                 setBalanceSheet(response.data.data)
                 balanceSheetAttemptsRef.current = 0
                 setBalanceSheetLoadAttempts(0)
             } else {
+                console.log('[useFinancialStatements] Balance sheet status is not exists:', response.data?.status)
                 setBalanceSheet(null)
                 balanceSheetAttemptsRef.current += 1
                 setBalanceSheetLoadAttempts(prev => prev + 1)
@@ -68,11 +71,13 @@ export function useFinancialStatements(selectedDocument, isEligibleForFinancialS
                 `${API_BASE_URL}/documents/${selectedDocument.id}/income-statement`,
                 { headers }
             )
+            console.log('[useFinancialStatements] loadIncomeStatement response:', response.data)
             if (response.data && response.data.status === 'exists') {
                 setIncomeStatement(response.data.data)
                 incomeStatementAttemptsRef.current = 0
                 setIncomeStatementLoadAttempts(0)
             } else {
+                console.log('[useFinancialStatements] Income statement status is not exists:', response.data?.status)
                 setIncomeStatement(null)
                 incomeStatementAttemptsRef.current += 1
                 setIncomeStatementLoadAttempts(prev => prev + 1)
@@ -88,19 +93,26 @@ export function useFinancialStatements(selectedDocument, isEligibleForFinancialS
 
     const loadAdditionalItems = useCallback(async () => {
         if (!selectedDocument?.id || !isEligibleForFinancialStatements) return
+        console.log(`[useFinancialStatements] Triggering loadAdditionalItems for ${selectedDocument.id}`)
+
         const headers = isAuthenticated && token ? { 'Authorization': `Bearer ${token}` } : {}
         const isEarningsAnnouncement = selectedDocument.document_type === 'earnings_announcement' ||
             selectedDocument.document_type === 'EARNINGS_ANNOUNCEMENT'
 
         const endpoints = {
             organicGrowth: 'organic-growth',
-            amortization: 'amortization',
-            ...(isEarningsAnnouncement ? {} : {
+            shares: 'shares',
+            ...(isEarningsAnnouncement ? {
+                gaapReconciliation: 'gaap-reconciliation'
+            } : {
+                amortization: 'amortization',
                 otherAssets: 'other-assets',
                 otherLiabilities: 'other-liabilities',
             }),
             nonOperatingClassification: 'non-operating-classification'
         }
+
+        console.log('[useFinancialStatements] Endpoints to fetch:', endpoints)
 
         const results = await Promise.allSettled(
             Object.entries(endpoints).map(([key, endpoint]) =>
@@ -109,11 +121,14 @@ export function useFinancialStatements(selectedDocument, isEligibleForFinancialS
             )
         )
 
+        console.log('[useFinancialStatements] loadAdditionalItems results:', results)
+
         results.forEach(result => {
             if (result.status === 'fulfilled') {
                 const { key, data } = result.value
                 if (key === 'organicGrowth') setOrganicGrowth(data)
-                if (key === 'amortization') setAmortization(data)
+                if (key === 'shares') setShares(data)
+                if (key === 'amortization' || key === 'gaapReconciliation') setAmortization(data)
                 if (key === 'otherAssets') setOtherAssets(data)
                 if (key === 'otherLiabilities') setOtherLiabilities(data)
                 if (key === 'nonOperatingClassification') setNonOperatingClassification(data)
@@ -125,6 +140,7 @@ export function useFinancialStatements(selectedDocument, isEligibleForFinancialS
         setBalanceSheet(null)
         setIncomeStatement(null)
         setOrganicGrowth(null)
+        setShares(null)
         setAmortization(null)
         setOtherAssets(null)
         setOtherLiabilities(null)
@@ -142,6 +158,7 @@ export function useFinancialStatements(selectedDocument, isEligibleForFinancialS
         balanceSheet,
         incomeStatement,
         organicGrowth,
+        shares,
         amortization,
         otherAssets,
         otherLiabilities,

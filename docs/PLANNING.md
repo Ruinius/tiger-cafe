@@ -29,20 +29,20 @@ The system currently supports:
 *See `docs/COMPLETED_TASKS.md` for detailed history.*
 
 ### Phase 16: Company and Document View feature enhancements
-- [ ] Refactor Progress Tracking UI/UX
+- [x] Refactor Progress Tracking UI/UX
     - [x] Revisit and improve the full list of milestones / logging (See docs/PROGRESS_TRACKING_REFACTOR.md)
     - [x] Remove the processing tracker from the Document Extraction View. Just leave a list of errors/warnings at the top of the page if there are any
     - [x] The Document List View should ONLY pull and show documents that are finished processing
     - Because all processing is now tracked in the check updates page, SSE only needs to work there.
     - Revisit the total number of phases (currently it's 3 in check uploads and 4 in progress tracking)
     - [x] Update the Check Update UI/UX to feel like how modern AI agents are showing how it is thinking (Phase-based milestone view created, SSE integration pending)
+- [x] Refactor the routers to be more maintainable. Right now everything is in income_statement.py, which does not make sense. Need to clarify what should be in balance_sheet, income_statement, additional_items, historical_calculations, and documents
 - [ ] Improve the Document list
 - [ ] Uploading a duplicate document still processed instead of deleting, ending in an error
 - [ ] Enable editing extracted values in Document Extraction View
 - [ ] In the Document View, add where the Balance Sheet, Income Statement, and Non-GAAP Reconciliation were extracted from
 - [ ] Revenue Growth and Margin Sensitivity
-- [ ] Improve the order in which content is loaded in Document Extraction View for better UX
-- [ ] Improve the order in which content is loaded in Company Analysis View for better UX
+- [ ] Fix Time Period to be: Quarter ending in MMM DD, YYYY instead of the ambiguous Q1, Q2, Q3
 
 
 ### Phase 17: Further agent enhancements
@@ -60,30 +60,20 @@ The system currently supports:
 - [ ] Create a field for document date, which will have many uses. First use is to organize the list of documents (current logic is not great)
 
 
-### Phase 18: Company-Centric Data Model Refactor
-- [ ] Refactor app to focus on company → time period → documents
-- [ ] Enable incorporating multiple document types per period
-- [ ] Historical trend analysis across periods
-
-
-### Phase 19: Transcripts, news, and Gemini copy & paste
+### Phase 18: Transcripts, news, and Gemini copy & paste
 - [ ] Growth, margin, and capital efficiency assumptions
 
 
-### Phase 10: 10-K and 10-Q
-- [ ] Improve the chunk query logic. For example, filter for top 10 number dense chunks, then check for similarity
+### Phase 19: 10-K and 10-Q
+- [ ] Refactor app to focus on company → period_end_date → documents
+- [ ] Enable incorporating multiple document types per period
 - [ ] Extract financial statements more consistently
 - [ ] Improved organic growth analysis
-- [ ] Extract details on other assets and other liabilities
+- [ ] Extract details on amortization, other assets, and other liabilities
 
 
 ## Ongoing List of UI Improvements and Bugs
-- [x] In the Global Dashboard view
-    - Change Global Analysis Dashboard to just "Dashboard"
-    - Remove the excess top padding in the Valuation History and Rule of 40 cells. Make sure this is just specific to these two tables, and not an edit to global component.
-    - For Valuation History, add X: datetime; Y: Over/under-valuation %; Color indicates which company.
-    - For Rule of 40, edit "X: EBITA Margin (%), Y: Revenue Growth (%). Color indicates Valuation status." to be "X: EBITA Margin %; Y: Revenue Growth %; Color indicates Over/under-valuation."
-    - Change Rule of 40 (Growth vs Profitability) to just "Rule of 40"
+
 
 
 ## Backlog and Notes of Bigger Outstanding Issues - DO NOT CODE

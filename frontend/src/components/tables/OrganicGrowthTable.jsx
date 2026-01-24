@@ -6,7 +6,7 @@ export default function OrganicGrowthTable({ data, formatNumber }) {
 
     // Determine currency and unit from data
     const currency = data.currency || 'N/A'
-    const unit = data.prior_period_revenue_unit || data.current_period_revenue_unit || 'N/A'
+    const unit = data.current_period_revenue_unit || 'N/A'
 
     return (
         <div className="table-container">

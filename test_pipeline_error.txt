@@ -1,0 +1,81 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.11.9, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\tiger\AppData\Local\Programs\Python\Python311\python.exe
+cachedir: .pytest_cache
+rootdir: F:\AIML projects\tiger-cafe
+configfile: pyproject.toml
+plugins: anyio-4.12.0, asyncio-1.3.0, base-url-2.1.0, playwright-0.7.2
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 1 item
+
+tests/test_extraction_orchestrator.py::test_run_full_extraction_pipeline_orchestration FAILED [100%]
+
+================================== FAILURES ===================================
+_______________ test_run_full_extraction_pipeline_orchestration _______________
+
+db_session = <sqlalchemy.orm.session.Session object at 0x000001F9E56491D0>
+test_document = <app.models.document.Document object at 0x000001F9E6D36450>
+
+    @pytest.mark.asyncio
+    async def test_run_full_extraction_pipeline_orchestration(db_session, test_document):
+        """Test that the full extraction pipeline calls all extraction tasks."""
+        mock_bs_data = {
+            "line_items": [],
+            "is_valid": True,
+            "validation_errors": [],
+            "currency": "USD",
+            "unit": "millions"
+        }
+    
+        mock_is_data = {
+            "line_items": [],
+            "is_valid": True,
+            "validation_errors": [],
+            "currency": "USD",
+            "unit": "millions"
+        }
+    
+        with patch("agents.balance_sheet_extractor.extract_balance_sheet", return_value=mock_bs_data), \
+             patch("agents.income_statement_extractor.extract_income_statement", return_value=mock_is_data), \
+             patch("agents.shares_outstanding_extractor.extract_shares_outstanding", return_value={}), \
+             patch("agents.organic_growth_extractor.extract_organic_growth", return_value={}), \
+             patch("agents.non_operating_classifier.classify_non_operating_items", return_value={}):
+    
+            await run_full_extraction_pipeline(test_document.id, db_session)
+    
+        # Verify both balance sheet and income statement were created
+        from app.models.balance_sheet import BalanceSheet
+        from app.models.income_statement import IncomeStatement
+    
+        bs = db_session.query(BalanceSheet).filter(
+            BalanceSheet.document_id == test_document.id
+        ).first()
+    
+        income_stmt = db_session.query(IncomeStatement).filter(
+            IncomeStatement.document_id == test_document.id
+        ).first()
+    
+>       assert bs is not None
+E       assert None is not None
+
+tests\test_extraction_orchestrator.py:235: AssertionError
+---------------------------- Captured stdout call -----------------------------
+[balance_sheet] Starting balance sheet extraction
+[balance_sheet] Started balance sheet extraction
+[balance_sheet] Balance sheet extraction returned no line items
+[income_statement] Starting income statement extraction
+[income_statement] Started income statement extraction
+[income_statement] Income statement extraction returned no line items
+[shares_outstanding] Starting additional items extraction
+[shares_outstanding] Started shares extraction
+No chunk metadata found for document b1e1ca00-ca71-40d3-a18b-0f11c9cfa121
+No chunks found with numbers, falling back to legacy search
+No complete GAAP to non-GAAP reconciliation table found after checking top dense chunks
+[gaap_reconciliation] No complete GAAP to non-GAAP reconciliation table found after checking top dense chunks
+[gaap_reconciliation] Additional items extraction completed
+[classifying_non_operating_items] Starting classification
+[calculate_value_metrics] Calculating value metrics
+[calculate_value_metrics] Historical calculations failed: 404: Balance sheet not found for this document
+[calculate_intrinsic_value] Pipeline completed - document status updated
+=========================== short test summary info ===========================
+FAILED tests/test_extraction_orchestrator.py::test_run_full_extraction_pipeline_orchestration
+============================== 1 failed in 6.60s ==============================

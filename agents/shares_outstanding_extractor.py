@@ -7,6 +7,10 @@ from __future__ import annotations
 import json
 
 from app.utils.document_section_finder import find_document_section
+from app.utils.financial_statement_progress import (
+    FinancialStatementMilestone,
+    add_log,
+)
 from app.utils.gemini_client import generate_content_safe
 
 
@@ -70,13 +74,39 @@ def extract_shares_outstanding(
             rerank_top_k=3,
             score_threshold=0.25,
             chunk_rank=rank,
+            context_name="Shares Outstanding",
+        )
+
+        add_log(
+            document_id,
+            FinancialStatementMilestone.SHARES_OUTSTANDING,
+            f"I'm searching for basic and diluted shares outstanding figures (attempt {rank + 1}).",
         )
 
         if not text:
             continue
 
         # Try extraction from this chunk
+        add_log(
+            document_id,
+            FinancialStatementMilestone.SHARES_OUTSTANDING,
+            f"I'm asking Gemini to find the weighted average shares (basic and diluted) for {time_period}.",
+        )
         extraction = extract_shares_outstanding_llm(text, time_period)
+        if extraction.get("basic_shares_outstanding") or extraction.get(
+            "diluted_shares_outstanding"
+        ):
+            add_log(
+                document_id,
+                FinancialStatementMilestone.SHARES_OUTSTANDING,
+                "Gemini successfully extracted the share counts from this section.",
+            )
+        else:
+            add_log(
+                document_id,
+                FinancialStatementMilestone.SHARES_OUTSTANDING,
+                "Gemini did not find any clear share counts in this piece of the document.",
+            )
         retries = 0
         while retries < max_retries and not extraction:
             retries += 1
@@ -89,6 +119,11 @@ def extract_shares_outstanding(
 
         # If extraction was successful, return the result
         if is_valid:
+            add_log(
+                document_id,
+                FinancialStatementMilestone.SHARES_OUTSTANDING,
+                f"Found it! Basic shares: {extraction.get('basic_shares_outstanding')}, Diluted: {extraction.get('diluted_shares_outstanding')}.",
+            )
             return {
                 "basic_shares_outstanding": extraction.get("basic_shares_outstanding"),
                 "basic_shares_outstanding_unit": extraction.get("basic_shares_outstanding_unit"),

@@ -14,6 +14,7 @@ function DocumentList({ selectedCompany, onDocumentSelect, onBack, onOpenUploadM
         uploadingDocuments,
     } = useUploadManager()
 
+    // TODO: Re-enable filtering once all documents have proper status values
     // Filter to only show completed documents (PROCESSED or ERROR)
     // Exclude documents that are still in progress
     const completedDocuments = documents.filter(doc => {

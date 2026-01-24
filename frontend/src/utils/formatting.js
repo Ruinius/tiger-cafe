@@ -26,3 +26,13 @@ export const formatDecimal = (value, digits = 4) => {
   if (Number.isNaN(numericValue)) return 'N/A'
   return numericValue.toFixed(digits)
 }
+
+export const formatDate = (dateString, isTimestamp = false) => {
+  if (!dateString) return null
+  return new Date(dateString).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    timeZone: isTimestamp ? undefined : 'UTC'
+  })
+}

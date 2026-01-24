@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { useAuth } from '../../../contexts/AuthContext'
 import { API_BASE_URL } from '../../../config'
+import { formatDate } from '../../../utils/formatting'
 import FinancialModel from './FinancialModel'
 import './Company.css'
 
@@ -64,11 +65,7 @@ function CompanyAnalysisView({ selectedCompany }) {
         return formatPercent(val, 100)
     }
 
-    const formatDate = (val) => {
-        if (!val) return 'N/A';
-        const date = new Date(val);
-        return isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    }
+
 
     const hasCompanyData = companyHistoricalCalculations?.entries && companyHistoricalCalculations.entries.length > 0
 

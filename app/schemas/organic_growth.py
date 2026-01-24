@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict
 
 class OrganicGrowthBase(BaseModel):
     time_period: str | None = None
+    period_end_date: str | None = None
     currency: str | None = None
     prior_period_revenue: Decimal | None = None
     prior_period_revenue_unit: str | None = None
@@ -35,4 +36,4 @@ class OrganicGrowth(OrganicGrowthBase):
 
     id: str
     document_id: str
-    extraction_date: datetime
+    extraction_date: datetime | None = None

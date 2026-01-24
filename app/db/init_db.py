@@ -14,6 +14,7 @@ from app.models.company import Company
 from app.models.document import Document, DocumentType, ProcessingStatus
 from app.models.document_status import DocumentStatus
 from app.models.financial_assumption import FinancialAssumption
+from app.models.gaap_reconciliation import GAAPReconciliation, GAAPReconciliationLineItem
 from app.models.historical_calculation import HistoricalCalculation
 from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
 from app.models.non_operating_classification import (
@@ -21,6 +22,7 @@ from app.models.non_operating_classification import (
     NonOperatingClassificationItem,
 )
 from app.models.organic_growth import OrganicGrowth
+from app.models.shares_outstanding import SharesOutstanding
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
@@ -106,6 +108,7 @@ def init_db(db: Session):
                 id=bs_id,
                 document_id=doc_id,
                 time_period="Q4 2024",
+                period_end_date="2024-12-31",
                 currency="USD",
                 unit="millions",
                 is_valid=True,
@@ -193,15 +196,12 @@ def init_db(db: Session):
                 id=is_id,
                 document_id=doc_id,
                 time_period="Q4 2024",
+                period_end_date="2024-12-31",
                 currency="$",
                 unit="millions",
                 revenue_prior_year=5801.0,
                 revenue_prior_year_unit="millions",
                 revenue_growth_yoy=5.5163,
-                basic_shares_outstanding=604.2,
-                basic_shares_outstanding_unit="millions",
-                diluted_shares_outstanding=605.2,
-                diluted_shares_outstanding_unit="millions",
                 is_valid=True,
                 chunk_index=2,
             )
@@ -261,6 +261,7 @@ def init_db(db: Session):
                 id=str(uuid.uuid4()),
                 document_id=doc_id,
                 time_period="Q4 2024",
+                period_end_date="2024-12-31",
                 currency="USD",
                 unit="millions",
                 calculated_at=datetime.utcnow(),
@@ -286,6 +287,7 @@ def init_db(db: Session):
                 id=str(uuid.uuid4()),
                 document_id=doc_id,
                 time_period="Q4 2024",
+                period_end_date="2024-12-31",
                 currency="$",
                 prior_period_revenue=5801.0,
                 prior_period_revenue_unit="millions",
@@ -308,6 +310,7 @@ def init_db(db: Session):
                 id=noc_id,
                 document_id=doc_id,
                 time_period="Q4 2024",
+                period_end_date="2024-12-31",
                 extraction_date=datetime.utcnow(),
             )
             db.add(noc)
@@ -386,10 +389,54 @@ def init_db(db: Session):
                 )
                 db.add(noc_item)
 
+            # 2.9 Shares Outstanding
+            shares = SharesOutstanding(
+                id=str(uuid.uuid4()),
+                document_id=doc_id,
+                time_period="Q4 2024",
+                period_end_date="2024-12-31",
+                basic_shares_outstanding=604.2,
+                basic_shares_outstanding_unit="millions",
+                diluted_shares_outstanding=605.2,
+                diluted_shares_outstanding_unit="millions",
+            )
+            db.add(shares)
+
+            # 2.10 GAAP Reconciliation
+            gaap_id = str(uuid.uuid4())
+            gaap = GAAPReconciliation(
+                id=gaap_id,
+                document_id=doc_id,
+                time_period="Q4 2024",
+                period_end_date="2024-12-31",
+                currency="$",
+                unit="millions",
+                is_valid=True,
+            )
+            db.add(gaap)
+
+            gaap_items = [
+                ("Operating income (GAAP)", 2525.0, "Operating Income", 0),
+                ("Restructuring charges", 45.0, "Adjustment", 1),
+                ("Gain on sale of assets", -12.0, "Adjustment", 2),
+                ("Adjusted Operating Income (Non-GAAP)", 2558.0, "Adjusted Total", 3),
+            ]
+
+            for line_name, value, line_type, order in gaap_items:
+                gaap_item = GAAPReconciliationLineItem(
+                    id=str(uuid.uuid4()),
+                    gaap_reconciliation_id=gaap_id,
+                    line_name=line_name,
+                    line_value=value,
+                    line_type=line_type,
+                    line_order=order,
+                )
+                db.add(gaap_item)
+
             db.commit()
             logger.info(f"Successfully seeded Fake Railroad Company data for: {company.name}")
 
-            # 2.9 Create Fake PDF file on disk
+            # 2.11 Create Fake PDF file on disk
             os.makedirs(os.path.dirname(doc_path), exist_ok=True)
             if not os.path.exists(doc_path):
                 with open(doc_path, "wb") as f:

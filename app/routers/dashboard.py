@@ -108,7 +108,7 @@ async def get_dashboard_charts(db: Session = Depends(get_db)):
 
         for i, (doc, og, hc) in enumerate(data_rows):
             if i == 0:
-                latest_period_label = doc.time_period or ""
+                latest_period_label = doc.period_end_date or doc.time_period or ""
 
             is_fy = _is_annual_period(doc)
 
@@ -123,7 +123,7 @@ async def get_dashboard_charts(db: Session = Depends(get_db)):
                         growths.append(growth)
 
                     using_fy = True
-                    latest_period_label = doc.time_period
+                    latest_period_label = doc.period_end_date or doc.time_period
                     break
                 else:
                     # Don't mix FY with quarterly data

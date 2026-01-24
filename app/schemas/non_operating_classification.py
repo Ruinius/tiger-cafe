@@ -27,6 +27,7 @@ class NonOperatingClassificationItem(NonOperatingClassificationItemBase):
 
 class NonOperatingClassificationBase(BaseModel):
     time_period: str | None = None
+    period_end_date: str | None = None
 
 
 class NonOperatingClassificationCreate(NonOperatingClassificationBase):
@@ -39,5 +40,5 @@ class NonOperatingClassification(NonOperatingClassificationBase):
 
     id: str
     document_id: str
-    extraction_date: datetime
+    extraction_date: datetime | None = None
     line_items: list[NonOperatingClassificationItem] = []

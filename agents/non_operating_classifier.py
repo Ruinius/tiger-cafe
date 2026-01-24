@@ -37,32 +37,47 @@ def load_nonoperating_category_mapping() -> dict[str, str]:
     return mapping
 
 
-def classify_non_operating_items(items: list[dict]) -> list[dict]:
+def classify_non_operating_items(
+    document_id: str,
+    file_path: str,
+    balance_sheet_data: dict,
+    time_period: str | None = None,
+    **kwargs,
+) -> dict:
     """
     Classify non-operating items using CSV lookup.
 
     Args:
-        items: List of items with line_name, line_value, unit, source,
-               standardized_name, and is_calculated fields
+        document_id: Document ID
+        file_path: Path to PDF file
+        balance_sheet_data: Dictionary containing balance sheet items
+        time_period: Current time period
+        **kwargs: Catch-all for extra arguments
 
     Returns:
-        List of classified items (only non-operating, non-calculated items)
+        Dictionary with 'line_items' key containing list of classified items
     """
+    items = balance_sheet_data.get("line_items", [])
     if not items:
-        return []
+        return {"line_items": []}
 
     # Load the category mapping
     category_mapping = load_nonoperating_category_mapping()
 
     # Filter to only include non-operating, non-calculated items
+    # Note: In the new pipeline, these flags should have been set during extraction/standardization
     filtered_items = []
     for item in items:
-        # Only include if is_operating is explicitly False
-        if item.get("is_operating") is not False:
-            continue
+        # If is_operating or is_calculated is not in the item, we include it for lookup
+        # to be safe, as it might be a new item that needs classification.
+        # However, if they ARE present and True, we skip them.
 
-        # Only include if is_calculated is explicitly False (not True or None)
-        if item.get("is_calculated") is not False:
+        is_operating = item.get("is_operating")
+        is_calculated = item.get("is_calculated")
+
+        if is_operating is True:
+            continue
+        if is_calculated is True:
             continue
 
         filtered_items.append(item)
@@ -83,4 +98,4 @@ def classify_non_operating_items(items: list[dict]) -> list[dict]:
             }
         )
 
-    return results
+    return {"line_items": results}

@@ -142,6 +142,7 @@ function Dashboard() {
           selectedDocument={viewState.data.document}
           selectedCompany={viewState.data.company}
           onBack={handleBackToCompany}
+          onShowUpdates={() => setViewState({ type: 'CHECK_UPDATES', data: { company: null, document: null } })}
         />
       )
       rightPanelContent = (

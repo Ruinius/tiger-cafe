@@ -16,6 +16,7 @@ class NonOperatingClassification(Base):
     document_id = Column(String, ForeignKey("documents.id"), nullable=False, index=True)
 
     time_period = Column(String, nullable=True)
+    period_end_date = Column(String, nullable=True)
     extraction_date = Column(DateTime(timezone=True), server_default=func.now())
 
     document = relationship("Document", back_populates="non_operating_classification")

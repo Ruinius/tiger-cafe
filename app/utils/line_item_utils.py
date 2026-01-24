@@ -21,6 +21,36 @@ def extract_original_name_from_standardized(line_name: str) -> str | None:
     return None
 
 
+def convert_to_ones(value: float, unit: str | None) -> float:
+    """Convert a value with a given unit to ones."""
+    if not unit:
+        return value
+
+    unit_lower = unit.lower().strip()
+    if "thousand" in unit_lower:
+        return value * 1000
+    elif "million" in unit_lower:
+        return value * 1_000_000
+    elif "billion" in unit_lower:
+        return value * 1_000_000_000
+    return value
+
+
+def convert_from_ones(value: float, target_unit: str | None) -> float:
+    """Convert a value from ones to target unit."""
+    if not target_unit:
+        return value
+
+    unit_lower = target_unit.lower().strip()
+    if "thousand" in unit_lower:
+        return value / 1000
+    elif "million" in unit_lower:
+        return value / 1_000_000
+    elif "billion" in unit_lower:
+        return value / 1_000_000_000
+    return value
+
+
 def deduplicate_non_operating_items(items: list[dict]) -> list[dict]:
     seen: dict[tuple, dict] = {}
     for item in items:

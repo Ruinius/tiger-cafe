@@ -47,5 +47,5 @@ class BalanceSheet(BalanceSheetBase):
     document_id: str
     is_valid: bool
     validation_errors: str | None = None
-    extraction_date: datetime
+    extraction_date: datetime | None = None
     line_items: list[BalanceSheetLineItem] = []

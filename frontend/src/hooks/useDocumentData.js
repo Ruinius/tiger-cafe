@@ -273,25 +273,30 @@ export function useDocumentData(selectedCompany, selectedDocument) {
 
       switch (actionType) {
         case 'rerun-indexing':
-          endpoint = isAuthenticated ? 'rerun-indexing' : 'rerun-indexing-test'
+          // Phase 1: Ingestion
+          endpoint = `processing/documents/${documentId}/ingest`
           break
         case 'rerun-extraction':
+          // Phase 2-3: Extraction
           console.log('[performAction] Starting rerun-extraction for document:', documentId)
-          endpoint = isAuthenticated ? 'rerun-financial-statements' : 'rerun-financial-statements/test'
+          endpoint = `processing/documents/${documentId}/rerun`
           // Trigger UI events
           window.dispatchEvent(new CustomEvent('resetProgressToPending', { detail: { documentId } }))
           window.dispatchEvent(new CustomEvent('clearFinancialStatements'))
           console.log('[performAction] Dispatched UI events for rerun-extraction')
           break
         case 'rerun-historical':
-          endpoint = isAuthenticated ? 'historical-calculations/recalculate' : 'historical-calculations/recalculate/test'
+          // Phase 4: Analysis
+          endpoint = `processing/documents/${documentId}/analyze`
           break
         case 'delete-statements':
-          endpoint = isAuthenticated ? 'financial-statements' : 'financial-statements/test'
+          // Legacy balance_sheet router (mounted at /api/documents)
+          endpoint = `documents/${documentId}/financial-statements`
           method = 'delete'
           break
         case 'delete-document':
-          endpoint = isAuthenticated ? 'permanent' : 'permanent/test'
+          // Legacy documents router (permanent delete)
+          endpoint = isAuthenticated ? `documents/${documentId}/permanent` : `documents/${documentId}/permanent/test`
           method = 'delete'
           break
         default:
@@ -299,10 +304,10 @@ export function useDocumentData(selectedCompany, selectedDocument) {
       }
 
       if (method === 'delete') {
-        await axios.delete(`${API_BASE_URL}/documents/${documentId}/${endpoint}`, { headers })
+        await axios.delete(`${API_BASE_URL}/${endpoint}`, { headers })
       } else {
-        console.log(`[performAction] Calling POST ${API_BASE_URL}/documents/${documentId}/${endpoint}`)
-        await axios.post(`${API_BASE_URL}/documents/${documentId}/${endpoint}`, {}, { headers })
+        console.log(`[performAction] Calling POST ${API_BASE_URL}/${endpoint}`)
+        await axios.post(`${API_BASE_URL}/${endpoint}`, {}, { headers })
         console.log('[performAction] POST request completed successfully')
       }
 
