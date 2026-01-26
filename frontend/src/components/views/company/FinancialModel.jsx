@@ -196,7 +196,7 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
 
 
     // New component for formatted input handling
-    const FormattedInput = ({ value, onChange, isPercentage, decimalPlaces = 1, useSeparators = false }) => {
+    const FormattedInput = ({ value, onChange, isPercentage, decimalPlaces = 1, useSeparators = false, ...props }) => {
         const [localValue, setLocalValue] = useState('')
         const [isEditing, setIsEditing] = useState(false)
 
@@ -271,6 +271,7 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
 
         return (
             <input
+                {...props}
                 type="text"
                 value={localValue}
                 onChange={handleChange}
@@ -854,17 +855,11 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                                                 <tr>
                                                     <td>ADR Conversion Factor (Shares per ADR)</td>
                                                     <td className="text-right" style={{ padding: '0.75rem 1.5rem' }}>
-                                                        <input
-                                                            type="number"
-                                                            step="0.0001"
-                                                            value={assumptions.adr_conversion_factor || ''}
-                                                            onChange={(e) => handleAssumptionChange('adr_conversion_factor', parseFloat(e.target.value) || 0)}
-                                                            onBlur={(e) => {
-                                                                const val = parseFloat(e.target.value)
-                                                                if (!isNaN(val)) {
-                                                                    handleAssumptionChange('adr_conversion_factor', val)
-                                                                }
-                                                            }}
+                                                        <FormattedInput
+                                                            value={assumptions.adr_conversion_factor}
+                                                            onChange={(val) => handleAssumptionChange('adr_conversion_factor', val)}
+                                                            isPercentage={false}
+                                                            decimalPlaces={2}
                                                             style={{
                                                                 width: '100px',
                                                                 padding: '0.25rem 0.5rem',

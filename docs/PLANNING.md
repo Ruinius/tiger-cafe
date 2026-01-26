@@ -33,8 +33,6 @@ The system currently supports:
     - [x] Revisit and improve the full list of milestones / logging (See docs/PROGRESS_TRACKING_REFACTOR.md)
     - [x] Remove the processing tracker from the Document Extraction View. Just leave a list of errors/warnings at the top of the page if there are any
     - [x] The Document List View should ONLY pull and show documents that are finished processing
-    - Because all processing is now tracked in the check updates page, SSE only needs to work there.
-    - Revisit the total number of phases (currently it's 3 in check uploads and 4 in progress tracking)
     - [x] Update the Check Update UI/UX to feel like how modern AI agents are showing how it is thinking (Phase-based milestone view created, SSE integration pending)
 - [x] Refactor the routers to be more maintainable. Right now everything is in income_statement.py, which does not make sense. Need to clarify what should be in balance_sheet, income_statement, additional_items, historical_calculations, and documents
 - [ ] Improve the Document list
