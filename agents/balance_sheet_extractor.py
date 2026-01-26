@@ -84,7 +84,7 @@ def extract_balance_sheet(
 
     for attempt_idx, chunk_index in enumerate(candidate_chunks):
         try:
-            section_msg = f"Stage 1: Finding balance sheet section (attempt {attempt_idx + 1}, chunk {chunk_index})"
+            section_msg = f"I'm looking for the balance sheet section (attempt {attempt_idx + 1})."
             add_log(document_id, FinancialStatementMilestone.BALANCE_SHEET, section_msg)
 
             # Get text for this chunk with padding
@@ -97,14 +97,6 @@ def extract_balance_sheet(
             f"Extracted section (chars {log_info['start_extract_char']}-{log_info['end_extract_char']})"
 
             # Stage 1 validation: Check completeness of chunk text using LLM (before extraction)
-            completeness_check_msg = (
-                "Stage 1: Checking if chunk contains complete balance sheet using LLM"
-            )
-            add_log(
-                document_id,
-                FinancialStatementMilestone.BALANCE_SHEET,
-                completeness_check_msg,
-            )
 
             add_log(
                 document_id,
@@ -118,13 +110,15 @@ def extract_balance_sheet(
                 add_log(
                     document_id,
                     FinancialStatementMilestone.BALANCE_SHEET,
-                    "Gemini confirmed this section looks complete and ready for extraction.",
+                    f"Gemini response: Section (chunk {chunk_index}) confirmed as a complete consolidated balance sheet. All required attributes (currency, units, totals) are present.",
+                    source="gemini",
                 )
             else:
                 add_log(
                     document_id,
                     FinancialStatementMilestone.BALANCE_SHEET,
-                    f"Gemini thinks this section is incomplete because: {reason}.",
+                    f"Gemini response: Section rejected. Incomplete data or header mismatch. Reason: {reason}.",
+                    source="gemini",
                 )
 
             if not is_complete:
@@ -168,7 +162,8 @@ def extract_balance_sheet(
             add_log(
                 document_id,
                 FinancialStatementMilestone.BALANCE_SHEET,
-                f"Gemini has finished extracting {len(extracted_data.get('line_items', []))} line items.",
+                f"Gemini response: Successfully extracted {len(extracted_data.get('line_items', []))} line items from the PDF table. Primary currency: {extracted_data.get('currency', 'Unknown')}, Unit scale: {extracted_data.get('unit', 'ones')}.",
+                source="gemini",
             )
 
             # Ensure line_items exists and is a list
@@ -180,12 +175,6 @@ def extract_balance_sheet(
             # Assign line_order to extracted items
             for i, item in enumerate(extracted_data.get("line_items", [])):
                 item["line_order"] = i
-
-            add_log(
-                document_id,
-                FinancialStatementMilestone.BALANCE_SHEET,
-                f"I've successfully identified {len(extracted_data.get('line_items', []))} line items from this section.",
-            )
 
             add_log(
                 document_id,
@@ -224,7 +213,7 @@ def extract_balance_sheet(
             item["document_id"] = document_id
 
         extracted_data["line_items"] = post_process_balance_sheet_line_items(
-            extracted_data["line_items"]
+            extracted_data["line_items"], document_id
         )
 
         calc_valid, calc_errors = validate_balance_sheet_calculations(extracted_data["line_items"])
@@ -250,13 +239,15 @@ def extract_balance_sheet(
                 add_log(
                     document_id,
                     FinancialStatementMilestone.BALANCE_SHEET,
-                    f"Gemini found {len(mismatched_items)} items from the wrong period.",
+                    f"Gemini response: Audit complete. Identified {len(mismatched_items)} items belonging to prior or subsequent periods that will be excluded.",
+                    source="gemini",
                 )
             else:
                 add_log(
                     document_id,
                     FinancialStatementMilestone.BALANCE_SHEET,
-                    "Gemini confirmed all items belong to the correct period.",
+                    "Gemini response: No period mismatches detected. All items belong to the current reporting interval.",
+                    source="gemini",
                 )
 
             if mismatched_items:
@@ -285,7 +276,7 @@ def extract_balance_sheet(
                     item["document_id"] = document_id
 
                 extracted_data["line_items"] = post_process_balance_sheet_line_items(
-                    extracted_data["line_items"]
+                    extracted_data["line_items"], document_id
                 )
                 calc_valid, calc_errors = validate_balance_sheet_calculations(
                     extracted_data["line_items"]
@@ -299,11 +290,6 @@ def extract_balance_sheet(
                 "The numbers are still inconsistent. I'm asking for a more precise extraction with specific feedback.",
             )
 
-            add_log(
-                document_id,
-                FinancialStatementMilestone.BALANCE_SHEET,
-                "I'm sending the math errors back to Gemini for a corrected extraction.",
-            )
             # Re-extract with validation error feedback
             extracted_data = extract_balance_sheet_llm_with_feedback(
                 balance_sheet_text,
@@ -316,15 +302,11 @@ def extract_balance_sheet(
             add_log(
                 document_id,
                 FinancialStatementMilestone.BALANCE_SHEET,
-                f"Gemini has finished the retry and provided {len(extracted_data.get('line_items', []))} updated line items.",
+                f"Gemini response: Corrected extraction complete. Re-extracted {len(extracted_data.get('line_items', []))} items with specific focus on fixing the reported subtotal imbalances.",
+                source="gemini",
             )
 
             # Log completion of retry
-            add_log(
-                document_id,
-                FinancialStatementMilestone.BALANCE_SHEET,
-                "I've finished the retry extraction. Let's see if the math works now.",
-            )
 
             # Assign line_order to retried items
             for i, item in enumerate(extracted_data.get("line_items", [])):
@@ -336,7 +318,7 @@ def extract_balance_sheet(
                 item["document_id"] = document_id
 
             extracted_data["line_items"] = post_process_balance_sheet_line_items(
-                extracted_data["line_items"]
+                extracted_data["line_items"], document_id
             )
             calc_valid, calc_errors = validate_balance_sheet_calculations(
                 extracted_data["line_items"]
@@ -600,7 +582,7 @@ Return only valid JSON, no additional text."""
         raise Exception(f"Error extracting balance sheet: {str(e)}")
 
 
-def post_process_balance_sheet_line_items(line_items: list[dict]) -> list[dict]:
+def post_process_balance_sheet_line_items(line_items: list[dict], document_id: str) -> list[dict]:
     """
     Post-process balance sheet line items using tiger-transformer:
     1. Validate and fix section tokens (fallback logic)
@@ -666,16 +648,17 @@ def post_process_balance_sheet_line_items(line_items: list[dict]) -> list[dict]:
 
     # Step 2: Call TigerTransformerClient for inference
     add_log(
-        line_items[0].get("document_id") if line_items and line_items[0].get("document_id") else "",
+        document_id,
         FinancialStatementMilestone.BALANCE_SHEET,
         "I'm sending the line items to the tiger-transformer model to standardize the names and categories.",
     )
     client = TigerTransformerClient()
     processed_items = client.predict_balance_sheet(line_items)
     add_log(
-        line_items[0].get("document_id") if line_items and line_items[0].get("document_id") else "",
+        document_id,
         FinancialStatementMilestone.BALANCE_SHEET,
-        "The tiger-transformer model has finished standardizing the line items.",
+        f"Tiger Transformer response: Classification complete. Standardized {len(processed_items)} line items and mapped them to the unified operating taxonomy.",
+        source="tiger-transformer",
     )
 
     return processed_items

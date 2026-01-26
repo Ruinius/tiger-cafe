@@ -99,13 +99,15 @@ def extract_shares_outstanding(
             add_log(
                 document_id,
                 FinancialStatementMilestone.SHARES_OUTSTANDING,
-                "Gemini successfully extracted the share counts from this section.",
+                f"Gemini response: Shares found. Basic: {extraction.get('basic_shares_outstanding')} {extraction.get('basic_shares_outstanding_unit', '')}, Diluted: {extraction.get('diluted_shares_outstanding')} {extraction.get('diluted_shares_outstanding_unit', '')}.",
+                source="gemini",
             )
         else:
             add_log(
                 document_id,
                 FinancialStatementMilestone.SHARES_OUTSTANDING,
-                "Gemini did not find any clear share counts in this piece of the document.",
+                "Gemini response: No clear share counts identified in this document segment.",
+                source="gemini",
             )
         retries = 0
         while retries < max_retries and not extraction:
@@ -117,13 +119,7 @@ def extract_shares_outstanding(
             for field in ("basic_shares_outstanding", "diluted_shares_outstanding")
         )
 
-        # If extraction was successful, return the result
         if is_valid:
-            add_log(
-                document_id,
-                FinancialStatementMilestone.SHARES_OUTSTANDING,
-                f"Found it! Basic shares: {extraction.get('basic_shares_outstanding')}, Diluted: {extraction.get('diluted_shares_outstanding')}.",
-            )
             return {
                 "basic_shares_outstanding": extraction.get("basic_shares_outstanding"),
                 "basic_shares_outstanding_unit": extraction.get("basic_shares_outstanding_unit"),

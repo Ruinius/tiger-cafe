@@ -19,12 +19,12 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session  # noqa: E402
 
-from app.database import SessionLocal
-from app.models.balance_sheet import BalanceSheet, BalanceSheetLineItem
-from app.models.company import Company
-from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
+from app.database import SessionLocal  # noqa: E402
+from app.models.balance_sheet import BalanceSheet, BalanceSheetLineItem  # noqa: E402
+from app.models.company import Company  # noqa: E402
+from app.models.income_statement import IncomeStatement, IncomeStatementLineItem  # noqa: E402
 
 
 def export_balance_sheet(
@@ -48,9 +48,7 @@ def export_balance_sheet(
     )
 
     if not balance_sheet:
-        print(
-            f"Balance sheet for {company_ticker} {time_period} not found"
-        )
+        print(f"Balance sheet for {company_ticker} {time_period} not found")
         return
 
     # Get line items
@@ -109,9 +107,7 @@ def export_income_statement(
     )
 
     if not income_statement:
-        print(
-            f"Income statement for {company_ticker} {time_period} not found"
-        )
+        print(f"Income statement for {company_ticker} {time_period} not found")
         return
 
     # Get line items

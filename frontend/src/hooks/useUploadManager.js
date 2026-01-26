@@ -49,7 +49,25 @@ export function useUploadManager(onUploadComplete) {
     }
   }, [isAuthenticated, token, loadUploadProgress])
 
-  const hasActiveUploads = uploadingDocuments.length > 0 || isUploading
+  const hasActiveUploads = isUploading || uploadingDocuments.some(doc => {
+    const status = (doc.status || '').toLowerCase()
+    const idxStatus = (doc.indexing_status || '').toLowerCase()
+
+    // Terminal statuses that mean "I'm not actively doing heavy work anymore"
+    const terminalStatuses = [
+      'processing_complete',
+      'extraction_failed',
+      'classified',
+      'classification_failed',
+      'indexing_failed',
+      'upload_failed',
+      'error'
+    ]
+
+    // For earnings announcements, 'indexed' is NOT terminal (extraction follows)
+    // For others, 'indexed' might be. But we use processing_complete for earnings.
+    return !terminalStatuses.includes(status) && !terminalStatuses.includes(idxStatus)
+  })
 
   return {
     isUploadModalOpen,

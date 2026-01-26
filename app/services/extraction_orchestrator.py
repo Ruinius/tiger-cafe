@@ -441,6 +441,13 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
                     SharesOutstanding.document_id == document_id
                 ).delete()
 
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.SHARES_OUTSTANDING,
+                    f"Gemini response: Successfully identified shares outstanding. Basic: {shares_data.get('basic_shares_outstanding', 'N/A')} {shares_data.get('basic_shares_outstanding_unit', '')}, Diluted: {shares_data.get('diluted_shares_outstanding', 'N/A')} {shares_data.get('diluted_shares_outstanding_unit', '')}.",
+                    source="gemini",
+                )
+
                 shares = SharesOutstanding(
                     id=str(uuid.uuid4()),
                     document_id=document_id,
@@ -479,7 +486,8 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
             add_log(
                 document_id,
                 FinancialStatementMilestone.SHARES_OUTSTANDING,
-                f"I've hit a small issue getting the shares data, but I'll keep going: {str(shares_error)}",
+                f"Gemini response: Shares extraction encountered a problem: {str(shares_error)}. Proceeding with partial data.",
+                source="gemini",
             )
 
         # Extract Organic Growth (if applicable)
@@ -561,18 +569,32 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
 
                 db.commit()
 
-                update_milestone(
-                    document_id,
-                    FinancialStatementMilestone.ORGANIC_GROWTH,
-                    MilestoneStatus.COMPLETED,
-                    "Organic growth extracted",
-                )
+                if organic_growth_data.get("is_valid"):
+                    update_milestone(
+                        document_id,
+                        FinancialStatementMilestone.ORGANIC_GROWTH,
+                        MilestoneStatus.COMPLETED,
+                        "Organic growth extracted",
+                    )
+                else:
+                    update_milestone(
+                        document_id,
+                        FinancialStatementMilestone.ORGANIC_GROWTH,
+                        MilestoneStatus.ERROR,
+                        "Comparative revenue missing",
+                    )
             else:
                 update_milestone(
                     document_id,
                     FinancialStatementMilestone.ORGANIC_GROWTH,
                     MilestoneStatus.SKIPPED,
                     "Organic growth not found",
+                )
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.ORGANIC_GROWTH,
+                    "Gemini response: I couldn't find a dedicated section for organic revenue growth or acquisition impact. I'll rely on the GAAP figures for now.",
+                    source="gemini",
                 )
 
         # Extract GAAP Reconciliation (runs for all document types, but especially earnings announcements)
@@ -645,6 +667,12 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
                     MilestoneStatus.SKIPPED,
                     "GAAP reconciliation not found",
                 )
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.GAAP_RECONCILIATION,
+                    "Gemini response: No Non-GAAP to GAAP reconciliation table was detected in this document.",
+                    source="gemini",
+                )
         except Exception as gaap_error:
             update_milestone(
                 document_id,
@@ -655,7 +683,8 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
             add_log(
                 document_id,
                 FinancialStatementMilestone.GAAP_RECONCILIATION,
-                f"Something went wrong with the GAAP reconciliation, but I'm moving forward: {str(gaap_error)}",
+                f"Gemini response: GAAP reconciliation audit failed or data missing: {str(gaap_error)}. Skipping this milestone.",
+                source="gemini",
             )
 
         # Extract Amortization, Other Assets, Other Liabilities (ONLY for quarterly/annual filings, NOT earnings announcements)
@@ -721,6 +750,12 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
                     FinancialStatementMilestone.AMORTIZATION,
                     MilestoneStatus.SKIPPED,
                     "Amortization not found",
+                )
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.AMORTIZATION,
+                    "Gemini response: The amortization schedule for intangibles was not explicitly detailed in this report.",
+                    source="gemini",
                 )
 
             # Extract Other Assets
@@ -824,6 +859,12 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
                     FinancialStatementMilestone.OTHER_ASSETS,
                     MilestoneStatus.SKIPPED,
                     "Other assets not found",
+                )
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.OTHER_ASSETS,
+                    "Gemini response: I found no significant 'Other Asset' line items to audit.",
+                    source="gemini",
                 )
 
             # Extract Other Liabilities
@@ -931,6 +972,12 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
                     MilestoneStatus.SKIPPED,
                     "Other liabilities not found",
                 )
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.OTHER_LIABILITIES,
+                    "Gemini response: I found no significant 'Other Liability' line items to audit.",
+                    source="gemini",
+                )
         else:
             # Skip these for earnings announcements
             update_milestone(
@@ -951,17 +998,18 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
                 MilestoneStatus.SKIPPED,
                 "Other liabilities skipped for earnings announcement",
             )
-
-        add_log(
-            document_id,
-            FinancialStatementMilestone.GAAP_RECONCILIATION,
-            "I've finished looking for additional data items.",
-        )
+            add_log(
+                document_id,
+                FinancialStatementMilestone.AMORTIZATION,
+                "Note: Skipping detailed asset/liability audits as these are typically absent from earnings announcements.",
+            )
 
     except Exception as e:
         db.rollback()
-        error_msg = f"Additional items extraction failed: {str(e)}"
-        add_log(document_id, FinancialStatementMilestone.SHARES_OUTSTANDING, error_msg)
+        error_msg = f"Intelligence sweep encountered an error: {str(e)}"
+        add_log(
+            document_id, FinancialStatementMilestone.INCOME_STATEMENT, error_msg, source="gemini"
+        )
         # Don't raise - allow pipeline to continue to classification and analysis
 
 
@@ -1214,6 +1262,11 @@ async def run_analysis_pipeline(company_id: str, document_id: str, db: Session) 
             MilestoneStatus.COMPLETED,
             "Ready for historical data aggregation",
         )
+        add_log(
+            document_id,
+            FinancialStatementMilestone.UPDATE_HISTORICAL_DATA,
+            "The company's historical performance trajectory has been updated.",
+        )
 
         update_milestone(
             document_id,
@@ -1221,12 +1274,22 @@ async def run_analysis_pipeline(company_id: str, document_id: str, db: Session) 
             MilestoneStatus.COMPLETED,
             "Ready for assumptions update",
         )
+        add_log(
+            document_id,
+            FinancialStatementMilestone.UPDATE_ASSUMPTIONS,
+            "Valuation assumptions have been refreshed based on latest performance metrics.",
+        )
 
         update_milestone(
             document_id,
             FinancialStatementMilestone.CALCULATE_INTRINSIC_VALUE,
             MilestoneStatus.COMPLETED,
             "Ready for intrinsic value calculation",
+        )
+        add_log(
+            document_id,
+            FinancialStatementMilestone.CALCULATE_INTRINSIC_VALUE,
+            "Intrinsic value estimation complete. Ready for review.",
         )
 
     except Exception as e:

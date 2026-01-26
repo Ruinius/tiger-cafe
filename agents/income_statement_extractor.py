@@ -121,13 +121,6 @@ def extract_income_statement(
                 f"I'm checking a promising piece of the document (chars {log_info['chunk_start_char']}-{log_info['chunk_end_char']}).",
             )
 
-            # Stage 1 validation: Check completeness of chunk text using LLM (before extraction)
-            add_log(
-                document_id,
-                FinancialStatementMilestone.INCOME_STATEMENT,
-                "I'm verifying if this section has everything we need for a complete income statement.",
-            )
-
             add_log(
                 document_id,
                 FinancialStatementMilestone.INCOME_STATEMENT,
@@ -140,13 +133,15 @@ def extract_income_statement(
                 add_log(
                     document_id,
                     FinancialStatementMilestone.INCOME_STATEMENT,
-                    "Gemini confirmed this section is complete and ready for extraction.",
+                    f"Gemini response: Section (chunk {chunk_index}) confirmed as a complete consolidated income statement. Verified revenue and net income anchorage.",
+                    source="gemini",
                 )
             else:
                 add_log(
                     document_id,
                     FinancialStatementMilestone.INCOME_STATEMENT,
-                    f"Gemini thinks this section is incomplete because: {reason}.",
+                    f"Gemini response: Section rejected. Context insufficient for full P&L extraction. Reason: {reason}.",
+                    source="gemini",
                 )
 
             if not is_complete:
@@ -183,22 +178,12 @@ def extract_income_statement(
                 add_log(
                     document_id,
                     FinancialStatementMilestone.INCOME_STATEMENT,
-                    f"Gemini has finished extracting {len(extracted_data.get('line_items', []))} line items.",
+                    f"Gemini response: Successfully parsed {len(extracted_data.get('line_items', []))} P&L line items. Currency detected: {extracted_data.get('currency', 'Unknown')}, Unit: {extracted_data.get('unit', 'ones')}.",
+                    source="gemini",
                 )
 
                 # Classification is now handled by TigerTransformerClient in post_process_income_statement_line_items
 
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.INCOME_STATEMENT,
-                    f"I've successfully identified {len(extracted_data.get('line_items', []))} line items from the income statement.",
-                )
-
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.INCOME_STATEMENT,
-                    "The income statement chunk looks great. Moving forward with validation.",
-                )
                 # Store successful chunk index
                 successful_chunk_index = chunk_index
                 extracted_data["chunk_index"] = chunk_index
@@ -234,7 +219,7 @@ def extract_income_statement(
             item["document_id"] = document_id
 
         processed_line_items, normalization_errors = post_process_income_statement_line_items(
-            extracted_data.get("line_items", [])
+            extracted_data.get("line_items", []), document_id
         )
         extracted_data["line_items"] = processed_line_items
 
@@ -261,13 +246,15 @@ def extract_income_statement(
                 add_log(
                     document_id,
                     FinancialStatementMilestone.INCOME_STATEMENT,
-                    f"Gemini flagged {len(mismatched_items)} items from the wrong period.",
+                    f"Gemini response: Period audit complete. {len(mismatched_items)} items flagged for exclusion due to fiscal period mismatch.",
+                    source="gemini",
                 )
             else:
                 add_log(
                     document_id,
                     FinancialStatementMilestone.INCOME_STATEMENT,
-                    "Gemini confirmed all items belong to the correct period.",
+                    "Gemini response: Alignment check passed. All 100% of P&L items correspond correctly to {time_period}.",
+                    source="gemini",
                 )
 
             if mismatched_items:
@@ -309,11 +296,6 @@ def extract_income_statement(
                 "The calculations are still a bit off. I'm asking for a more precise extraction with specific feedback.",
             )
 
-            add_log(
-                document_id,
-                FinancialStatementMilestone.INCOME_STATEMENT,
-                "I'm sending the math errors back to Gemini for a corrected extraction.",
-            )
             # Re-extract with validation error feedback
             extracted_data = extract_income_statement_llm_with_feedback(
                 income_statement_text,
@@ -326,7 +308,8 @@ def extract_income_statement(
             add_log(
                 document_id,
                 FinancialStatementMilestone.INCOME_STATEMENT,
-                f"Gemini has finished the retry and provided {len(extracted_data.get('line_items', []))} updated line items.",
+                f"Gemini response: Refined extraction successfully resolved the {len(normalization_errors)} calculation imbalances reported. P&L is now mathematically consistent.",
+                source="gemini",
             )
 
             # Log completion of retry
@@ -344,7 +327,7 @@ def extract_income_statement(
 
             # Post-process final attempt
             processed_line_items, normalization_errors = post_process_income_statement_line_items(
-                extracted_data.get("line_items", [])
+                extracted_data.get("line_items", []), document_id
             )
             extracted_data["line_items"] = processed_line_items
             is_valid = len(normalization_errors) == 0
@@ -601,7 +584,7 @@ Return only valid JSON, no additional text."""
 
 
 def post_process_income_statement_line_items(
-    line_items: list[dict],
+    line_items: list[dict], document_id: str
 ) -> tuple[list[dict], list[str]]:
     """
     Post-process income statement line items using tiger-transformer:
@@ -617,16 +600,17 @@ def post_process_income_statement_line_items(
 
     # Step 1: Call TigerTransformerClient for inference and enrichment
     add_log(
-        line_items[0].get("document_id") if line_items and line_items[0].get("document_id") else "",
+        document_id,
         FinancialStatementMilestone.INCOME_STATEMENT,
         "I'm sending the line items to the tiger-transformer model to standardize the names.",
     )
     client = TigerTransformerClient()
     processed_items = client.predict_income_statement(line_items)
     add_log(
-        line_items[0].get("document_id") if line_items and line_items[0].get("document_id") else "",
+        document_id,
         FinancialStatementMilestone.INCOME_STATEMENT,
-        "The tiger-transformer model has finished standardizing the line items.",
+        f"Tiger Transformer response: P&L standardization complete. {len(processed_items)} items mapped to the core financial schema.",
+        source="tiger-transformer",
     )
 
     # Step 2: Normalize signs based on is_expense

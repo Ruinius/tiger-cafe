@@ -27,6 +27,17 @@ These migration files are kept for historical reference only. All changes from t
 14. **migrate_add_nopat_roic.py** - Added NOPAT and ROIC to historical_calculations table
 15. **migrate_add_financial_assumptions.py** - Added financial_assumptions table for DCF modeling
 
+### Intelligence & Taxonomy Migrations (Archived 2026-01-26)
+16. **add_currency_fields.py** - Added currency and unit fields across all statements
+17. **add_transformer_columns.py** - Added transformer columns (standardized_name, categories)
+18. **add_unified_status_fields.py** - Integrated unified status and progress tracking
+19. **add_unique_constraints_manual.py** - Enforced unique constraints for line item ordering
+20. **add_wacc_and_other_assumptions.py** - Extended DCF assumptions (WACC, tax rates)
+21. **migrate_add_period_end_date.py** - Added period_end_date for calendar synchronicity
+22. **migrate_ticker_uniqueness.py** - Enforced UNIQUE ticker constraint on companies
+23. **migrate_v3_shares_gaap_period.py** - Added detailed share count and GAAP period fields
+24. **remove_nonop_redundant_fields.py** - Pruned redundant fields after taxonomy unification
+
 ## Why Archived
 
 All of these incremental migrations have been consolidated into `migrate_baseline_schema.py`, which creates the complete schema from SQLAlchemy models. This ensures:

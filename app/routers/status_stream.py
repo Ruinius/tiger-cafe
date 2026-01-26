@@ -110,8 +110,8 @@ async def status_stream(
                         ~Document.status.in_(terminal_statuses)
                     )
 
-                    # Get recently completed documents (within last 60 seconds)
-                    recent_cutoff = datetime.utcnow() - timedelta(seconds=60)
+                    # Get recently completed documents (within last 600 seconds / 10 minutes)
+                    recent_cutoff = datetime.utcnow() - timedelta(seconds=600)
                     completed_query = stream_db.query(Document).filter(
                         Document.status.in_(terminal_statuses),
                         Document.processed_at >= recent_cutoff,

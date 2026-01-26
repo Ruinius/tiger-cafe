@@ -139,7 +139,8 @@ def process_document(
         add_log(
             document.id,
             FinancialStatementMilestone.CLASSIFICATION,
-            f"Gemini has identified this as a {classification_data.get('document_type')} for {classification_data.get('company_name')} ({classification_data.get('ticker')}).",
+            f"Gemini response: I've analyzed the section headers and identified this as a {classification_data.get('document_type')} for {classification_data.get('company_name')} ({classification_data.get('ticker')}). Confidence: {classification_data.get('confidence', 'N/A')}.",
+            source="gemini",
         )
 
     ticker = (
@@ -289,7 +290,8 @@ def process_document(
             add_log(
                 document.id,
                 FinancialStatementMilestone.INDEX,
-                "Gemini has finished generating the document summary.",
+                f"Gemini response: I've synthesized a {len(summary.split())}-word summary highlighting the core performance metrics and strategic outlook for {company_name or 'the company'}.",
+                source="gemini",
             )
     except Exception as exc:
         print(f"Warning: Failed to generate summary: {exc}")
@@ -311,7 +313,7 @@ def process_document(
         document.id,
         FinancialStatementMilestone.INDEX,
         MilestoneStatus.IN_PROGRESS,
-        message="I'm preparing the document for deep search by indexing its contents...",
+        message="Indexing document contents...",
     )
 
     document.indexing_status = ProcessingStatus.INDEXING
@@ -319,7 +321,9 @@ def process_document(
 
     try:
         add_log(
-            document.id, FinancialStatementMilestone.INDEX, "I'm starting the indexing process now."
+            document.id,
+            FinancialStatementMilestone.INDEX,
+            "I'm preparing the document for deep search by indexing its contents...",
         )
         index_document_chunks(resolved_file_path, document.id, chunk_size=chunk_size)
         add_log(

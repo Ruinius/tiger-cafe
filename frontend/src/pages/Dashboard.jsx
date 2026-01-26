@@ -13,7 +13,8 @@ import DocumentList from '../components/views/company/DocumentList'
 import CompanyAnalysisView from '../components/views/company/CompanyAnalysisView'
 import DocumentView from '../components/views/document/DocumentView'
 import DocumentExtractionView from '../components/views/document/DocumentExtractionView'
-import CheckUpdatesView from '../components/views/global/CheckUpdatesView'
+import MissionControlDashboard from '../components/views/upload/MissionControlDashboard'
+import MissionControlLog from '../components/views/upload/MissionControlLog'
 
 import '../styles/layout.css'
 import '../styles/components.css'
@@ -25,6 +26,7 @@ function Dashboard() {
     type: 'GLOBAL', // 'GLOBAL' | 'COMPANY' | 'DOCUMENT' | 'CHECK_UPDATES'
     data: { company: null, document: null }
   })
+  const [focusedDocumentId, setFocusedDocumentId] = useState(null)
 
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -45,7 +47,7 @@ function Dashboard() {
     GLOBAL: 0.5,
     COMPANY: 0.5,
     DOCUMENT: 0.5,
-    CHECK_UPDATES: 1.0, // Full width for check updates
+    CHECK_UPDATES: 0.5, // Even 50/50 split for mission control
   }
 
   // Manage split ratios per view type
@@ -154,11 +156,17 @@ function Dashboard() {
 
     case 'CHECK_UPDATES':
       leftPanelContent = (
-        <CheckUpdatesView
+        <MissionControlDashboard
           onBack={handleBackToGlobal}
+          focusedDocumentId={focusedDocumentId}
+          setFocusedDocumentId={setFocusedDocumentId}
         />
       )
-      rightPanelContent = <WelcomeView />
+      rightPanelContent = (
+        <MissionControlLog
+          focusedDocumentId={focusedDocumentId}
+        />
+      )
       break
 
     default:

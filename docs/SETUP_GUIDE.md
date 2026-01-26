@@ -67,10 +67,22 @@ Optional settings (defaults are defined in `config/config.py`):
 ### 4) Create Required Directories
 
 ```bash
-mkdir -p data/cache data/storage data/uploads logs
+mkdir -p data/cache data/storage data/uploads logs tiger-transformer/models
 ```
 
-### 5) Initialize the Database
+### 5) Tiger-Transformer Setup (Local LLM)
+
+Tiger-Cafe uses a local, fine-tuned FinnBERT model for standardizing financial line items.
+
+1. Ensure you have the `tiger-transformer` directory in your workspace root.
+   - **Repository**: [github.com/Ruinius/tiger-transformer](https://github.com/Ruinius/tiger-transformer)
+   - **Model Hub**: [huggingface.co/Ruinius/tiger-transformer](https://huggingface.co/Ruinius/tiger-transformer)
+2. The model weights should be placed in: `tiger-transformer/models/financial_transformer`.
+3. The label mapping file should be at: `tiger-transformer/models/label_map.json`.
+
+*Note: If the local files are missing, the client will attempt to fall back to the HuggingFace model hub, though local is preferred for speed and privacy.*
+
+### 6) Initialize the Database
 
 The database schema is created automatically on app start. To reset or bootstrap explicitly:
 

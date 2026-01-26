@@ -14,6 +14,15 @@ This baseline includes all changes from the following migration files:
 6. migrate_add_adjusted_tax_rate_breakdown.py - Added adjusted tax rate breakdown fields
 7. migrate_add_nopat_roic.py - Added NOPAT and ROIC to historical calculations
 8. migrate_add_financial_assumptions.py - Added financial_assumptions table
+9. add_currency_fields.py - Added currency and unit fields across all statements
+10. add_transformer_columns.py - Added transformer columns (standardized_name, categories)
+11. add_unified_status_fields.py - Integrated unified status and progress tracking
+12. add_unique_constraints_manual.py - Enforced unique constraints for line item ordering
+13. add_wacc_and_other_assumptions.py - Extended DCF assumptions (WACC, tax rates)
+14. migrate_add_period_end_date.py - Added period_end_date for calendar synchronicity
+15. migrate_ticker_uniqueness.py - Enforced UNIQUE ticker constraint on companies
+16. migrate_v3_shares_gaap_period.py - Added detailed share count and GAAP period fields
+17. remove_nonop_redundant_fields.py - Pruned redundant fields after taxonomy unification
 
 All of these changes are now part of the baseline schema defined in the SQLAlchemy models.
 The individual migration files have been archived to migrations_archive/.
@@ -27,29 +36,14 @@ import sys
 # Ensure we can import from app
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app.database import Base, engine
-
 # Import all models to ensure they're registered with Base.metadata
+from app import models  # noqa: F401, E402
+from app.database import Base, engine  # noqa: E402
 
 
 def migrate():
     """
     Create all database tables from SQLAlchemy models.
-
-    This creates:
-    - users
-    - companies
-    - documents (with chunk indexing fields)
-    - balance_sheets
-    - balance_sheet_line_items
-    - income_statements
-    - income_statement_line_items
-    - historical_calculations (with all breakdown fields, NOPAT, ROIC, adjusted tax rate)
-    - financial_metrics
-    - analysis_results
-    - financial_assumptions (for DCF modeling)
-
-    All tables include the complete schema with all fields from previous migrations.
     """
     print("Creating baseline database schema...")
     print("=" * 60)
@@ -105,6 +99,18 @@ def verify_schema():
         "historical_calculations",
         "financial_metrics",
         "analysis_results",
+        "financial_assumptions",
+        "organic_growth",
+        "amortization",
+        "amortization_line_items",
+        "other_assets",
+        "other_assets_line_items",
+        "other_liabilities",
+        "other_liabilities_line_items",
+        "gaap_reconciliation",
+        "gaap_reconciliation_line_items",
+        "shares_outstanding",
+        "valuations",
     }
 
     existing_tables = set(inspector.get_table_names())
@@ -116,7 +122,7 @@ def verify_schema():
 
     extra_tables = existing_tables - expected_tables
     if extra_tables:
-        print(f"ℹ️  Info: Extra tables found (may be from other migrations): {extra_tables}")
+        print(f"ℹ️  Info: Extra tables found: {extra_tables}")
 
     print("✓ All expected tables exist")
 
@@ -144,55 +150,31 @@ def verify_schema():
         doc_cols = {col["name"] for col in inspector.get_columns("documents")}
         expected_doc_cols = {
             "id",
-            "user_id",
-            "company_id",
-            "filename",
-            "file_path",
             "document_type",
             "time_period",
-            "unique_id",
             "indexing_status",
             "analysis_status",
             "duplicate_detected",
-            "existing_document_id",
-            "summary",
             "page_count",
             "character_count",
             "uploaded_at",
-            "indexed_at",
-            "processed_at",
         }
         if not expected_doc_cols.issubset(doc_cols):
             print(f"⚠️  Warning: documents table missing columns: {expected_doc_cols - doc_cols}")
             verification_passed = False
 
-    # Verify balance_sheets has unit column
-    if "balance_sheets" in existing_tables:
-        bs_cols = {col["name"] for col in inspector.get_columns("balance_sheets")}
-        if "unit" not in bs_cols:
-            print("⚠️  Warning: balance_sheets table missing 'unit' column")
+    # Verify company ticker uniqueness index
+    if "companies" in existing_tables:
+        company_cols = {col["name"] for col in inspector.get_columns("companies")}
+        if "ticker" not in company_cols:
+            print("⚠️  Warning: companies table missing 'ticker' column")
             verification_passed = False
 
-    # Verify income_statements has all unit columns
-    if "income_statements" in existing_tables:
-        is_cols = {col["name"] for col in inspector.get_columns("income_statements")}
-        expected_unit_cols = {
-            "unit",
-            "revenue_prior_year_unit",
-            "basic_shares_outstanding_unit",
-            "diluted_shares_outstanding_unit",
-            "amortization_unit",
-        }
-        missing_unit_cols = expected_unit_cols - is_cols
-        if missing_unit_cols:
-            print(f"⚠️  Warning: income_statements table missing unit columns: {missing_unit_cols}")
-            verification_passed = False
-
-    # Verify historical_calculations has unit column
-    if "historical_calculations" in existing_tables:
-        hc_cols = {col["name"] for col in inspector.get_columns("historical_calculations")}
-        if "unit" not in hc_cols:
-            print("⚠️  Warning: historical_calculations table missing 'unit' column")
+    # Verify standardization columns in line items
+    if "balance_sheet_line_items" in existing_tables:
+        bs_item_cols = {col["name"] for col in inspector.get_columns("balance_sheet_line_items")}
+        if "standardized_name" not in bs_item_cols:
+            print("⚠️  Warning: balance_sheet_line_items missing 'standardized_name'")
             verification_passed = False
 
     if verification_passed:

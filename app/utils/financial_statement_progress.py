@@ -49,6 +49,7 @@ def update_milestone(
     milestone: FinancialStatementMilestone,
     status: MilestoneStatus,
     message: str | None = None,
+    source: str = "system",
 ):
     """Update the status of a specific milestone"""
     with _progress_lock:
@@ -68,6 +69,7 @@ def update_milestone(
             logs.append(
                 {
                     "message": message,
+                    "source": source,
                     "timestamp": datetime.utcnow().isoformat(),
                 }
             )
@@ -87,6 +89,7 @@ def add_log(
     document_id: str,
     milestone: FinancialStatementMilestone,
     log_message: str,
+    source: str = "system",
 ):
     """Add a log message to a milestone without changing its status"""
     # Print to terminal for visibility
@@ -113,6 +116,7 @@ def add_log(
         logs.append(
             {
                 "message": log_message,
+                "source": source,
                 "timestamp": datetime.utcnow().isoformat(),
             }
         )

@@ -55,6 +55,8 @@ The system currently supports:
 - [ ] BKNG case - pulled value from a different column despite the reflection step. The LLM struggles with the value is zero, especially if it is represented by "—"
 - [ ] TOL case - the balance sheet and income statement does not label important totals for some reason - will need robust reflection step
 - [ ] CSCO case - the interest and other expense line is actually a subtotal line. Looking at the csv file, I may have copy & pasted a different company. Need to double check
+- [ ] SBD case - the agent cannot find the prior period revenue and current period revenue is screwed up
+- [ ] CSCO, KO case - the ticker was not identified. Need a reflection step. How do I update the company ticker if missing?
 - [ ] Create a field for document date, which will have many uses. First use is to organize the list of documents (current logic is not great)
 
 

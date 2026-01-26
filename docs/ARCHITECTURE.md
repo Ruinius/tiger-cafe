@@ -108,49 +108,33 @@ This approach optimizes processing costs and focuses detailed extraction on docu
 7. **Disk-Based Text Caching**: Full document text is extracted once and saved to disk (`data/storage/{doc_id}_full_text.txt`) to allow 10x faster access during subsequent extraction steps.
 8. **Real-time Updates**: Document status is pushed to the frontend via Server-Sent Events (SSE) instead of polling.
 
-### 2) Financial Statement Extraction
+### 2) The Multi-Stage Extraction Pipeline
 
-**Eligible Document Types:**
-- Earnings Announcements
-- Quarterly Filings (10-Q)
-- Annual Filings (10-K)
+Tiger-Cafe uses a robust, tiered approach to ensure high data integrity from financial documents.
 
-**Processing Differences by Document Type:**
+#### 1. Stage 1: Finding & Completeness Audit
+- **Section Search**: Uses Two-Step Filtering (Number Density + Semantic Rank) to find candidate chunks by reading from the disk-based cache.
+- **Completeness Audit**: Gemini scans the chunk text to confirm it contains a *complete* financial statement (e.g., verifying it has both Cash and Total Liabilities). This prevents "hallucinating" values from partial overflow tables.
 
-1. **Earnings Announcements:**
-   - Full balance sheet and income statement extraction
-   - Other assets and other liabilities extraction is **completely skipped** (no data is created)
-   - Progress tracker correctly handles this and does not report missing other assets/liabilities
+#### 2. Extraction & Refinement
+- **Raw Extraction**: Gemini extracts line items exactly as they appear in the source text.
+- **Ticker Reflection**: A specialized reflection step captures context around exchanges (NASDAQ/NYSE) to accurately identify tickers in microscopic sections.
 
-2. **Quarterly Filings & Annual Filings:**
-   - Full balance sheet and income statement extraction
-   - Other assets and other liabilities use **LLM-based extraction** with detailed line item classification
+#### 3. Classification & Standardization (Tiger-Transformer)
+- **Unified Taxonomy**: Raw items are sent to the local **Tiger-Transformer** (FinnBERT) to map ad-hoc names to unified operating categories.
+- **Mapping**: The model identifies `is_calculated`, `is_operating`, and `is_expense` flags for each item.
 
-**Extraction Process:**
-1. **Section Location**:
-   - **Character-Based Chunking**: Documents are split into 5000-character chunks with 2500-character context overlap (replacing page-based chunking).
-   - **Two-Step Filtering**:
-     1. Find top-10 chunks by **Number Density** (count of digits).
-     2. Rank those chunks by **Semantic Similarity** to the target query (e.g., "Balance Sheet").
-   - **Disk Cache Access**: Extractors read raw text from the disk-based cache, avoiding expensive PDF re-parsing.
-2. **Raw Extraction**: Extract line items exactly as they appear in the document (names and values) using LLM.
-3. **Standardization & Classification (Tiger-Transformer)**:
-   - Pass raw line items to a fine-tuned FINBERT model (`TigerTransformerClient`).
-   - Model outputs **Standardized Names** (e.g., `cash_and_equivalents`, `total_net_revenue`) based on item name and context (neighbors).
-   - Use lookup tables to map standardized names to properties:
-     - `is_calculated`: Is this a subtotal/total?
-     - `is_operating`: Is this an operating item?
-     - `is_expense`: Is this an expense (for Income Statement)?
-4. **Validation & Normalization**:
-   - **Normalization**: Enforce negative signs for expenses.
-   - **Validation**: Check if `Standardized Totals` match `Sum(Standardized Components)`.
-   - **Retry Logic**: If validation fails, use Residual Solvers (checking sign ambiguities) or LLM-based feedback loops.
-5. **Additional Items Extraction**:
-   - Dedicated agents run after main financial statements:
-     - `Organic Growth`: M&A impact analysis
-     - `Amortization`: Operating vs Non-operating split
-     - `Shares Outstanding`: Basic/Diluted extraction
-     - `Other Assets/Liabilities`: Detailed breakdown
+#### 4. Stage 2: Validation & Self-Correction
+- **Mathematical Validation**: Checks if subtotals and totals match the sum of their components.
+- **Reflection & Retry**: If a calculation imbalance is detected, the system sends the *exact error* back to Gemini for a "Precise Extraction" retry, effectively self-correcting previous mistakes.
+
+#### 5. Additional Items Extraction
+Dedicated agents run after main financial statements to identify "missing link" data:
+- `Organic Growth`: M&A impact analysis
+- `Amortization`: Operating vs Non-operating split
+- `Shares Outstanding`: Basic/Diluted extraction
+- `Other Assets/Liabilities`: Detailed breakdown for filings
+
 
 ### 3) Historical Calculation Subsystem
 

@@ -288,4 +288,3 @@ class TestIncomeStatementValidation:
         # Verify no changes
         assert items[0]["line_value"] == 50
         assert items[1]["line_value"] == -30
-

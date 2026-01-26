@@ -122,3 +122,87 @@ This section details the proposed unified 12-step milestone structure, including
 1.  **Manual Verification**: Perform a batch upload and trigger a full extraction re-run.
 2.  **Log Validation**: Confirm that "App Activities" and "AI Thoughts" are correctly categorized and colored.
 3.  **Responsiveness**: Test the `SplitScreen` divider to ensure the 4x4 grid handles narrower widths gracefully.
+
+
+## Section 4: REFINING LOGS
+
+| Source | Milestone | Message String |
+| :--- | :--- | :--- |
+| **System** | `CLASSIFICATION` | "I'm identifying the document type and company..." |
+| **System** | `CLASSIFICATION` | "I've read the first few pages (X) to get a sense of the document." |
+| **System** | `CLASSIFICATION` | "I'm asking Gemini to identify the company name, ticker, and document type from the extracted text." |
+| **Gemini** | `CLASSIFICATION` | "Gemini response: I've analyzed the section headers and identified this as a {type} for {name} ({ticker}). Confidence: {conf}." |
+| **System** | `INDEX` | "I'm asking Gemini to generate a concise summary of the entire document." |
+| **Gemini** | `INDEX` | "Gemini response: I've synthesized a {count}-word summary highlighting the core performance metrics and strategic outlook for {name}." |
+| **System** | `INDEX` | "I'm preparing the document for deep search by indexing its contents..." |
+| **System** | `INDEX` | "The indexing process finished successfully." |
+
+---
+
+#### Balance Sheet
+| Source | Milestone | Message String |
+| :--- | :--- | :--- |
+| **System** | `BALANCE_SHEET` | "I'm starting the hunt for the balance sheet in your document." |
+| **System** | `BALANCE_SHEET` | "I'm looking for the balance sheet section (attempt X)." |
+| **System** | `BALANCE_SHEET` | "I'm asking Gemini to check if this section (chunk X) has a complete balance sheet for {period}." |
+| **Gemini** | `BALANCE_SHEET` | "Gemini response: Section (chunk X) confirmed as a complete consolidated balance sheet. All required attributes... are present." |
+| **System** | `BALANCE_SHEET` | "I'm now asking Gemini to extract all the detailed line items from this section." |
+| **Gemini** | `BALANCE_SHEET` | "Gemini response: Successfully extracted {count} line items from the PDF table. Primary currency: {CCY}, Unit scale: {unit}." |
+| **System** | `BALANCE_SHEET` | "I'm now double-checking the math to make sure everything adds up correctly." |
+| **System** | `BALANCE_SHEET` | "I'm asking Gemini to check if any of these balance sheet items belong to a different time period." |
+| **Gemini** | `BALANCE_SHEET` | "Gemini response: Audit complete. Identified {count} items belonging to prior or subsequent periods that will be excluded." |
+| **System** | `BALANCE_SHEET` | "The numbers are still inconsistent. I'm asking for a more precise extraction with specific feedback." |
+| **Gemini** | `BALANCE_SHEET` | "Gemini response: Corrected extraction complete. Re-extracted {count} items with specific focus on fixing the reported subtotal imbalances." |
+| **System** | `BALANCE_SHEET` | "I'm sending the line items to the tiger-transformer model to standardize the names and categories." |
+| **Tiger** | `BALANCE_SHEET` | "Tiger Transformer response: Classification complete. Standardized {count} line items and mapped them to the unified operating taxonomy." |
+| **System** | `BALANCE_SHEET` | "Great! All the numbers in the balance sheet are now verified and consistent." |
+
+#### Income Statement (P&L)
+| Source | Milestone | Message String |
+| :--- | :--- | :--- |
+| **System** | `INCOME_STATEMENT` | "Next, I'm analyzing the income statement to track financial performance." |
+| **System** | `INCOME_STATEMENT` | "I'm looking for the income statement section (attempt X)." |
+| **System** | `INCOME_STATEMENT` | "I'm asking Gemini to verify if this section contains a complete income statement for {period}." |
+| **Gemini** | `INCOME_STATEMENT` | "Gemini response: Section (chunk X) confirmed as a complete consolidated income statement. Verified revenue and net income anchorage." |
+| **System** | `INCOME_STATEMENT` | "I'm now asking Gemini to extract all the income statement line items." |
+| **Gemini** | `INCOME_STATEMENT` | "Gemini response: Successfully parsed {count} P&L line items. Currency detected: {CCY}, Unit: {unit}." |
+| **System** | `INCOME_STATEMENT` | "I'm now double-checking the figures and standardizing the line item names." |
+| **System** | `INCOME_STATEMENT` | "The calculations are still a bit off. I'm asking for a more precise extraction with specific feedback." |
+| **Gemini** | `INCOME_STATEMENT` | "Gemini response: Refined extraction successfully resolved the {count} calculation imbalances reported. P&L is now mathematically consistent." |
+| **System** | `INCOME_STATEMENT` | "I've completed the refined extraction. Let's see if the numbers match up now." |
+| **System** | `INCOME_STATEMENT` | "I'm sending the line items to the tiger-transformer model to standardize the names." |
+| **Tiger** | `INCOME_STATEMENT` | "Tiger Transformer response: P&L standardization complete. {count} items mapped to the core financial schema." |
+
+---
+
+| Source | Milestone | Message String |
+| :--- | :--- | :--- |
+| **System** | `SHARES_OUTSTANDING` | "I'm looking for the shares outstanding data to help with valuation." |
+| **Gemini** | `SHARES_OUTSTANDING` | "Gemini response: Successfully identified shares outstanding. Basic: {X}, Diluted: {Y}." |
+| **System** | `ORGANIC_GROWTH` | "I'm asking Gemini to analyze the section for any acquisition impacts on revenue for {period}." |
+| **Gemini** | `ORGANIC_GROWTH` | "Gemini response: Acquisition detected with a revenue impact of {val}. This will be used to calculate the organic growth rate." |
+| **System** | `ORGANIC_GROWTH` | "I'm looking for the prior period revenue in the income statement to calculate growth rates." |
+| **Gemini** | `ORGANIC_GROWTH` | "Gemini response: Found the comparative revenue figure for the prior year: {val}. Comparative analysis can now proceed." |
+| **Gemini** | `GAAP_RECONCILIATION`| "Gemini response: No Non-GAAP to GAAP reconciliation table was detected in this document." |
+| **Gemini** | `AMORTIZATION` | "Gemini response: The amortization schedule for intangibles was not explicitly detailed in this report." |
+
+---
+
+| Source | Milestone | Message String |
+| :--- | :--- | :--- |
+| **System** | `CALC_METRICS` | "I'm calculating key metrics like RoIC and EBITA now." |
+| **System** | `CALC_METRICS` | "I've successfully calculated metrics: RoIC={X}%, EBITA={Y}" |
+| **System** | `HISTORICAL_DATA` | "The company's historical performance trajectory has been updated." |
+| **System** | `ASSUMPTIONS` | "Valuation assumptions have been refreshed based on latest performance metrics." |
+| **System** | `INTRINSIC_VALUE` | "Intrinsic value estimation complete. Ready for review." |
+
+
+| Source | Milestone | Message String |
+| :--- | :--- | :--- |
+
+---
+
+**Key for UI Tags:**
+*   **[SYSTEM]**: Grey tags. Internal orchestration events.
+*   **[GEMINI]**: Indigo/Purple gradient bubbles. Raw AI extraction and logic feedback.
+*   **[TIGER TRANSFORMER]**: Indigo/Purple gradient bubbles. Technical mapping and FinnBERT standardization.

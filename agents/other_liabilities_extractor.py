@@ -211,15 +211,12 @@ def extract_other_liabilities(
     add_log(
         document_id,
         FinancialStatementMilestone.OTHER_LIABILITIES,
-        f"Gemini has finished extracting {len(line_items)} specific items from the notes.",
+        f"Gemini response: Footnote extraction complete. Identified {len(line_items)} detailed liability components, including accrued expenses and deferred obligations.",
+        source="gemini",
     )
 
     if line_items:
-        add_log(
-            document_id,
-            FinancialStatementMilestone.OTHER_LIABILITIES,
-            f"I've successfully identified {len(line_items)} detailed liability items from the notes.",
-        )
+        pass
 
     line_items, dedup_warnings = _deduplicate_line_items(line_items)
     validation_errors = dedup_warnings
@@ -254,7 +251,8 @@ def extract_other_liabilities(
         add_log(
             document_id,
             FinancialStatementMilestone.OTHER_LIABILITIES,
-            "Gemini has provided a refined list of other liability items.",
+            f"Gemini response: Refined search successful. Re-balanced {len(extraction.get('line_items', []))} liability line items to align with reporting totals.",
+            source="gemini",
         )
         line_items = extraction.get("line_items", []) if isinstance(extraction, dict) else []
         line_items, dedup_warnings = _deduplicate_line_items(line_items)

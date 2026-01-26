@@ -1,2 +1,16 @@
 formatted_input
-[<START>] [<START>] [income_statement] [Total net revenue] [<END>] [<END>]
+[<START>] [<START>] [income_statement] [Net Operating Revenues] [Cost of goods sold] [Gross Profit]
+"[<START>] [Net Operating Revenues] [income_statement] [Cost of goods sold] [Gross Profit] [Selling, general and administrative expenses]"
+"[Net Operating Revenues] [Cost of goods sold] [income_statement] [Gross Profit] [Selling, general and administrative expenses] [Other operating charges]"
+"[Cost of goods sold] [Gross Profit] [income_statement] [Selling, general and administrative expenses] [Other operating charges] [Operating Income]"
+"[Gross Profit] [Selling, general and administrative expenses] [income_statement] [Other operating charges] [Operating Income] [Interest income]"
+"[Selling, general and administrative expenses] [Other operating charges] [income_statement] [Operating Income] [Interest income] [Interest expense]"
+[Other operating charges] [Operating Income] [income_statement] [Interest income] [Interest expense] [Equity income (loss) — net]
+[Operating Income] [Interest income] [income_statement] [Interest expense] [Equity income (loss) — net] [Other income (loss) — net]
+[Interest income] [Interest expense] [income_statement] [Equity income (loss) — net] [Other income (loss) — net] [Income Before Income Taxes]
+[Interest expense] [Equity income (loss) — net] [income_statement] [Other income (loss) — net] [Income Before Income Taxes] [Income taxes]
+[Equity income (loss) — net] [Other income (loss) — net] [income_statement] [Income Before Income Taxes] [Income taxes] [Consolidated Net Income]
+[Other income (loss) — net] [Income Before Income Taxes] [income_statement] [Income taxes] [Consolidated Net Income] [Less: Net income (loss) attributable to noncontrolling interests]
+[Income Before Income Taxes] [Income taxes] [income_statement] [Consolidated Net Income] [Less: Net income (loss) attributable to noncontrolling interests] [Net Income Attributable to Shareowners of The Coca-Cola Company]
+[Income taxes] [Consolidated Net Income] [income_statement] [Less: Net income (loss) attributable to noncontrolling interests] [Net Income Attributable to Shareowners of The Coca-Cola Company] [<END>]
+[Consolidated Net Income] [Less: Net income (loss) attributable to noncontrolling interests] [income_statement] [Net Income Attributable to Shareowners of The Coca-Cola Company] [<END>] [<END>]

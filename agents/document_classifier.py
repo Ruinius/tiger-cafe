@@ -35,6 +35,29 @@ TIME_PERIOD_REQUIREMENTS = (
 )
 TIME_PERIOD_EXAMPLES = '["Q3 2024", "FY 2023", "Q1 2025"]'
 
+TICKER_REQUIREMENTS = "Must be uppercase, 1-5 alphabetic characters. Look for symbols near exchange names (NASDAQ, NYSE)."
+TICKER_EXAMPLES = '["AAPL", "MSFT", "KO", "CSCO", "BKNG"]'
+
+
+def _get_ticker_context(text: str) -> str:
+    """Gather context around exchange names to help identify the ticker."""
+    contexts = []
+    # Use case-insensitive search for popular exchanges
+    for exchange in ["NASDAQ", "NYSE"]:
+        # Find all occurrences of the exchange name
+        for m in re.finditer(re.escape(exchange), text, re.IGNORECASE):
+            start = max(0, m.start() - 100)
+            end = min(len(text), m.end() + 100)
+            snippet = text[start:end].strip().replace("\n", " ").replace("  ", " ")
+            contexts.append(snippet)
+
+    if not contexts:
+        return ""
+
+    # Unique and joined snippets
+    unique_contexts = list(dict.fromkeys(contexts))
+    return "\n... ".join(unique_contexts[:10])  # Limit to top 10 to keep prompt size reasonable
+
 
 def _clean_json_response(response_text: str) -> str:
     """
@@ -80,8 +103,11 @@ Field: {item["field"]}
 Current Value: "{item["current_value"]}"
 Requirements: {item["requirements"]}
 Valid Examples: {item["examples"]}
-
 """
+        if item.get("context"):
+            prompt += f"Specific Context Found: ... {item['context']} ...\n"
+
+        prompt += "\n"
 
     prompt += """
 Return a JSON object with corrected values. Only include fields that need correction.
@@ -98,12 +124,13 @@ Return only valid JSON, no additional text."""
     return prompt
 
 
-def _get_reflection_items(result: dict[str, Any]) -> list[dict[str, str]]:
+def _get_reflection_items(result: dict[str, Any], text: str) -> list[dict[str, str]]:
     """
     Build list of fields that need reflection/validation.
 
     Args:
         result: Initial extraction result
+        text: Original document text for context gathering
 
     Returns:
         List of reflection item configurations
@@ -121,15 +148,30 @@ def _get_reflection_items(result: dict[str, Any]) -> list[dict[str, str]]:
             }
         )
 
-    # Add more reflection items here as needed
-    # Example:
-    # if result.get("ticker"):
-    #     reflection_items.append({
-    #         "field": "ticker",
-    #         "current_value": result["ticker"],
-    #         "requirements": "Must be uppercase, 1-5 characters",
-    #         "examples": '["AAPL", "MSFT", "GOOGL"]',
-    #     })
+    # Reflect on ticker - always reflect if it might be missing or to verify
+    ticker_val = result.get("ticker", "null")
+    if not ticker_val or ticker_val == "null":
+        # Even if null, we want to look for it specifically via reflection context
+        reflection_items.append(
+            {
+                "field": "ticker",
+                "current_value": "null",
+                "requirements": TICKER_REQUIREMENTS,
+                "examples": TICKER_EXAMPLES,
+                "context": _get_ticker_context(text),
+            }
+        )
+    else:
+        # Verify existing ticker
+        reflection_items.append(
+            {
+                "field": "ticker",
+                "current_value": ticker_val,
+                "requirements": TICKER_REQUIREMENTS,
+                "examples": TICKER_EXAMPLES,
+                "context": _get_ticker_context(text),
+            }
+        )
 
     return reflection_items
 
@@ -149,7 +191,7 @@ def _reflect_on_extraction(result: dict[str, str | None], text: str) -> dict[str
     Returns:
         Updated result dictionary with corrected fields
     """
-    reflection_items = _get_reflection_items(result)
+    reflection_items = _get_reflection_items(result, text)
 
     # If no reflection items, return original result
     if not reflection_items:

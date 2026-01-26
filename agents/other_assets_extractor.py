@@ -211,15 +211,12 @@ def extract_other_assets(
     add_log(
         document_id,
         FinancialStatementMilestone.OTHER_ASSETS,
-        f"Gemini has finished extracting {len(line_items)} specific items from the notes.",
+        f"Gemini response: Deep dive into 'Other Assets' complete. Identified {len(line_items)} specific notes items, including prepaid expenses and other long-term assets.",
+        source="gemini",
     )
 
     if line_items:
-        add_log(
-            document_id,
-            FinancialStatementMilestone.OTHER_ASSETS,
-            f"I've successfully broken down the other assets into {len(line_items)} specific items.",
-        )
+        pass
 
     line_items, dedup_warnings = _deduplicate_line_items(line_items)
     validation_errors = dedup_warnings
@@ -254,7 +251,8 @@ def extract_other_assets(
         add_log(
             document_id,
             FinancialStatementMilestone.OTHER_ASSETS,
-            "Gemini has provided a refined list of other asset items.",
+            f"Gemini response: Refined composition breakdown. Successfully re-mapped {len(extraction.get('line_items', []))} items to reconcile with the main balance sheet totals.",
+            source="gemini",
         )
         line_items = extraction.get("line_items", []) if isinstance(extraction, dict) else []
         line_items, dedup_warnings = _deduplicate_line_items(line_items)

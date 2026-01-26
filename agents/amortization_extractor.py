@@ -176,15 +176,12 @@ def extract_amortization(
     add_log(
         document_id,
         FinancialStatementMilestone.AMORTIZATION,
-        f"Gemini has finished its search and found {len(line_items)} matching line items.",
+        f"Gemini response: Footnote analysis complete. Successfully identified {len(line_items)} amortization and depreciation components across operating and non-operating categories.",
+        source="gemini",
     )
 
     if line_items:
-        add_log(
-            document_id,
-            FinancialStatementMilestone.AMORTIZATION,
-            f"I've identified {len(line_items)} amortization line items.",
-        )
+        pass
 
     line_items, dedup_warnings = _deduplicate_line_items(line_items)
     validation_errors.extend(dedup_warnings)
@@ -203,7 +200,8 @@ def extract_amortization(
         add_log(
             document_id,
             FinancialStatementMilestone.AMORTIZATION,
-            "Gemini has provided an updated list of line items.",
+            f"Gemini response: Refined search complete. Adjusted extraction logic to ensure non-redundant line item capture. Found {len(retry_extraction.get('line_items', []))} items.",
+            source="gemini",
         )
         line_items = (
             retry_extraction.get("line_items", []) if isinstance(retry_extraction, dict) else []

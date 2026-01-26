@@ -106,14 +106,19 @@ Modals are rendered at the `Dashboard` level and are accessible across all three
 - **Behavior**: Modal dialog for file selection (drag-and-drop + file picker)
 - **Context-Aware**: Pre-selects company if triggered from Company or Document view
 
-#### Upload Progress Modal
+#### Mission Control Modal
 - **Trigger**: "Check Uploads" button (replaces "Add Document" when uploads are active)
-- **Behavior**: Modal dialog showing progress of current uploads with milestones
-- **Features**:
-  - Real-time progress tracking (Uploading → Classification → Indexing)
-  - Duplicate detection warnings
-  - "Replace & Index" or "Cancel" actions for duplicates
-- **Note**: Previously an overlay in the left panel, now a distinct modal for cleaner separation
+- **Behavior**: A high-fidelity "Command Center" dialog showing the real-time "Intelligence Stream" of all document processing missions.
+- **The Intelligence Stream**:
+  - **Real-time Logs**: Granular events that "drip" in as they happen.
+  - **Source Differentiation**: Visually identifies where info comes from:
+    - `SYSTEM`: Internal orchestration steps.
+    - `GEMINI`: AI reasoning, extraction, and validation responses.
+    - `TIGER TRANSFORMER`: Technical standardization and P&L mapping.
+  - **Milestones**: Status indicators (Uploading → Classification → Indexing → Extraction).
+  - **Features**:
+    - Duplicate detection warnings with "Replace & Index" actions.
+    - Direct "Gemini response" snippets providing transparency into AI logic.
 
 ### Context Providers
 
@@ -400,15 +405,22 @@ The login page is the landing page during development and is the gateway to the 
 
 ### Milestones & Status Indicators
 
-**Milestones**
+**Ingestion Milestones**
 1. Uploading
-2. Classification
-3. Indexing
+2. Classification (with Ticker Reflection)
+3. Indexing (with Gemini Summarization)
+
+**Extraction Milestones (Conditional)**
+1. Extracting Balance Sheet
+2. Extracting Income Statement
+3. Extracting Additional Items (Shares, Growth)
+4. Classifying Non-Operating Items
 
 **States**
 - Completed: green check
-- Active: highlighted with animation
+- Active: highlighted with pulse animation
 - Pending: muted/gray
+- Error/Warning: contextual indicators
 
 ### Duplicate Detection UX
 
@@ -421,13 +433,16 @@ The login page is the landing page during development and is the gateway to the 
 
 When a document is selected:
 
-- Progress tracker shows **4 milestones**:
-  1. Extracting & classifying balance sheet
-  2. Extracting & classifying income statement
-  3. Extracting additional items
-  4. Classifying non-operating items
-- Real-time status: `checking`, `pending`, `in_progress`, `completed`, `error`, `not_found`
-- Tables include validation status and operating/non-operating labels
+When a document is selected:
+
+- **Mission Control (Intelligence Stream)**: Accessible via the "Check Status" button.
+- **Extraction Milestones**:
+  1. Extracting & classifying balance sheet (with Stage 2 self-correction).
+  2. Extracting & classifying income statement (with Stage 2 self-correction).
+  3. Extracting additional items (Shares, Organic Growth).
+  4. Classifying non-operating items (Tiger-Transformer validation).
+- **Gemini Feedback**: Real-time extraction summaries (e.g., "Successfully parsed 42 line items. Currency detected: USD") are displayed as rich messages in the stream.
+- **Standardization**: Highlighting when the Tiger-Transformer model maps ad-hoc names to unified operating categories.
 
 ## Historical Metrics & Analysis
 

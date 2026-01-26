@@ -218,19 +218,22 @@ def extract_organic_growth(
             document_id,
             FinancialStatementMilestone.ORGANIC_GROWTH,
             f"I'm asking Gemini to analyze the section for any acquisition impacts on revenue for {time_period}.",
+            source="system",
         )
         extraction = extract_organic_growth_llm(text, time_period)
         if extraction.get("acquisition_flag"):
             add_log(
                 document_id,
                 FinancialStatementMilestone.ORGANIC_GROWTH,
-                f"Gemini found an acquisition impact of {extraction.get('acquisition_revenue_impact')} ({extraction.get('acquisition_revenue_impact_unit') or 'ones'}).",
+                f"Gemini response: Acquisition detected with a revenue impact of {extraction.get('acquisition_revenue_impact')} ({extraction.get('acquisition_revenue_impact_unit') or 'ones'}). This will be used to calculate the organic growth rate.",
+                source="gemini",
             )
         else:
             add_log(
                 document_id,
                 FinancialStatementMilestone.ORGANIC_GROWTH,
-                "Gemini confirmed there was no significant acquisition impact on revenue stated.",
+                "Gemini response: No significant revenue-impacting acquisitions or business combinations were identified in the specified period.",
+                source="gemini",
             )
 
     retries = 0
@@ -239,11 +242,14 @@ def extract_organic_growth(
         extraction = extract_organic_growth_llm(text or "", time_period)
 
     line_items = income_statement_data.get("line_items", [])
+    current_unit = income_statement_data.get("unit")
     current_revenue = find_revenue_line_value(line_items)
     prior_revenue = income_statement_data.get("revenue_prior_year")
+    prior_revenue_unit = None
+
     # If using prior_revenue from IS data, assume same unit as IS
     if prior_revenue is not None:
-        prior_revenue_unit = income_statement_data.get("unit")
+        prior_revenue_unit = current_unit
 
     # If prior revenue is missing, attempt to extract it from the income statement section
     if current_revenue is not None and prior_revenue is None:
@@ -298,23 +304,20 @@ def extract_organic_growth(
                 add_log(
                     document_id,
                     FinancialStatementMilestone.ORGANIC_GROWTH,
-                    f"Gemini successfully located the prior year revenue: {extracted_prior_val} ({extracted_prior_unit or 'ones'}).",
+                    f"Gemini response: Found the comparative revenue figure for the prior year: {extracted_prior_val} ({extracted_prior_unit or 'ones'}). Comparative analysis can now proceed.",
+                    source="gemini",
                 )
             else:
                 add_log(
                     document_id,
                     FinancialStatementMilestone.ORGANIC_GROWTH,
-                    "Gemini could not find a clearly labeled revenue figure for the prior year.",
+                    "Gemini response: Comparative revenue data for the prior fiscal interval could not be definitively located. Growth calculation will be limited.",
+                    source="gemini",
                 )
 
             if extracted_prior_val is not None:
                 prior_revenue = extracted_prior_val
                 prior_revenue_unit = extracted_prior_unit
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.ORGANIC_GROWTH,
-                    f"Found it! The prior period revenue was {prior_revenue} ({prior_revenue_unit}).",
-                )
 
     if current_revenue is None:
         validation_errors.append("Current period revenue not found in income statement")
@@ -330,9 +333,6 @@ def extract_organic_growth(
     adjusted_revenue = None
 
     if current_revenue is not None and prior_revenue:
-        # Normalize prior revenue to current revenue units if needed
-        current_unit = income_statement_data.get("unit")
-
         # Convert both to ones for safe calculation
         current_rev_ones = convert_to_ones(float(current_revenue), current_unit)
         impact_ones = convert_to_ones(
@@ -374,16 +374,12 @@ def extract_organic_growth(
         if current_revenue is not None
         else extraction.get("acquisition_revenue_impact_unit"),
         "current_period_revenue": current_revenue,
-        "current_period_revenue_unit": current_unit if "current_unit" in locals() else None,
+        "current_period_revenue_unit": current_unit,
         "prior_period_revenue": prior_revenue,
-        "prior_period_revenue_unit": prior_revenue_unit
-        if "prior_revenue_unit" in locals()
-        else None,
+        "prior_period_revenue_unit": prior_revenue_unit,
         "simple_revenue_growth": simple_growth,
         "current_period_adjusted_revenue": adjusted_revenue,
-        "current_period_adjusted_revenue_unit": current_unit
-        if "current_unit" in locals()
-        else None,
+        "current_period_adjusted_revenue_unit": current_unit,
         "organic_revenue_growth": organic_growth,
         "chunk_index": chunk_index,
         "is_valid": is_valid,

@@ -43,6 +43,27 @@
 - **Padding**: Panels (24-32px), Cards (16-24px), Items (12px).
 - **Gap**: Consistently use `gap-2` (8px), `gap-4` (16px), `gap-6` (24px).
 
+## Mission Control & Intelligence Stream
+The "Mission Control" panel provides a high-fidelity, real-time command center for document processing.
+
+- **The Intelligence Stream**:
+  - **Message Bubbles**: Rounded-md bubbles with a `2px` bottom-right radius for a distinct "log" feel.
+  - **AI Insights (Gemini & Tiger Transformer)**:
+    - **Background**: `linear-gradient(135deg, #6366f1 0%, #a855f7 100%)`.
+    - **Text**: White.
+    - **Shadow**: `0 4px 12px rgba(168, 85, 247, 0.2)`.
+  - **System Logs**:
+    - **Background**: Transparent with subtle border or light grey surface.
+    - **Text**: `var(--text-main)`.
+- **Source Tags**:
+  - Small, uppercase badges indicating the origin:
+    - `SYSTEM`: Neutral grey / text-secondary.
+    - `GEMINI`: Indigo / Purple.
+    - `TIGER TRANSFORMER`: Indigo / Purple (Unified with Gemini for visual harmony).
+- **Animations**:
+  - New logs should "drip" in with a subtle fade-and-slide up animation.
+  - Active steps should feature a soft Pulse animation on the status icon.
+
 ## Table Design ("The Gold Standard")
 *Reference Implementation: Document View (DocumentExtractionView)*
 

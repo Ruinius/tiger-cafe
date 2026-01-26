@@ -138,57 +138,25 @@ npm run dev
 
 The frontend will be available at http://localhost:3000
 
-## User Journey Overview
+1. **Document Upload and Classification**: Users upload PDFs, and the system automatically classifies, deduplicates, and indexes them. Highly resilient ticker identification is achieved via **Ticker Reflection**.
 
-Tiger-Cafe provides three main user journey epics:
+2. **Mission Control & Real-time Monitoring**: The **Mission Control** dashboard provides a high-fidelity **Intelligence Stream**, showing granular logs and "Gemini response" snippets in real-time as documents are processed.
 
-1. **Document Upload and Classification**: Users upload PDFs (earnings reports, filings, analyst reports), and the system automatically classifies, deduplicates, and indexes them.
+3. **Financial Analysis and Valuation**: Users view standardized financial statements, interact with valuation models, and perform ROIC/DCF analysis.
 
-2. **Company Document Management**: Users browse companies, view document libraries with processing status, and trigger financial analysis on selected documents.
+### Mission Control & Intelligence Stream
+- **Real-time Monitoring**: A "Command Center" dashboard featuring the **Intelligence Stream**.
+- **Source Differentiation**: Visually identifies logs from **System** (orchestrator), **Gemini** (logic), and **Tiger Transformer** (mapping).
+- **Rich AI Logs**: Direct "Gemini response" snippets provide transparency into the AI's extraction logic, confidence levels, and summary generation.
+- **Granular Milestones**: Tracks progress across 8 distinct stages (Uploading → Classification → Indexing → BS Extraction → IS Extraction → Additional Items → Non-Operating Mapping → Complete).
 
-3. **Financial Analysis and Valuation**: Users view financial metrics, interact with valuation models, review sensitivity analysis, and read LLM-generated summaries.
-
-## Current Features
-
-### Document Management
-- Multi-file drag-and-drop upload (up to 10 files)
-- Automatic document classification (earnings announcements, quarterly/annual filings, press releases, etc.)
-- **Document type-based processing:**
-  - **Earnings Announcements**: Full processing (indexing + financial statement extraction with default other assets/liabilities classifications) → Status: `INDEXED`
-  - **Quarterly Filings & Annual Filings**: Currently classification only → Status: `CLASSIFIED` (indexing and financial statement extraction not yet implemented)
-  - **Other Document Types** (press releases, analyst reports, news articles, transcripts, etc.): Classification only → Status: `CLASSIFIED` (no indexing or financial statement extraction)
-- Content-based duplicate detection
-- Real-time upload progress tracking with milestones
-- Chunk-based document indexing with Gemini embeddings (2-page chunks, persisted for reuse)
-- Priority-based processing queue (classification/indexing prioritized over financial statement extraction)
-
-### Financial Statement Processing
-- Automatic balance sheet and income statement extraction from **earnings announcements only** (quarterly/annual filings not yet implemented)
-- **Document type-specific processing:**
-  - **Earnings Announcements**: 
-    - Other assets/liabilities use default classifications (operating for assets, non-operating for liabilities) without LLM extraction
-    - GAAP/EBITDA reconciliation extraction uses dedicated extractor with chunk-based embedding search (similar to balance sheet finding workflow)
-    - **Does not use** the amortization extractor
-  - **Quarterly/Annual Filings**: 
-    - Other assets/liabilities use full LLM-based extraction with detailed line item classification
-    - Amortization extraction uses general amortization search approach
-    - **Does not use** the GAAP reconciliation extractor
-- Chunk-based embedding search using persisted 2-page chunk embeddings
-- LLM-based line-by-line extraction with currency and unit detection
-- Unit support: Extracts and displays units (ones, thousands, millions, billions, or ten_thousands) for balance sheets, income statements, and additional items
-- Two-stage validation with retry mechanism:
-  - **Stage 1 (Section Finding)**: Validates correct section found (line count + key items) with retry across different chunk ranks/positions
-  - **Stage 2 (Extraction Validation)**: Validates extraction accuracy (sum calculations) with LLM feedback loop for error correction
-  - Balance sheet: Current assets, total assets, current liabilities, total liabilities sum verification, balance sheet equation validation
-  - Income statement: Gross profit, operating income, and net income calculation verification via post-processing validation
-- Operating/non-operating classification for each line item (authoritative lookup table with LLM fallback)
-- Additional items extraction: Prior period revenue, YOY revenue growth, amortization, basic shares outstanding, diluted shares outstanding (each with unit fields)
-- Historical calculations: Automatic calculation and display of Net Working Capital, Invested Capital, EBITA, NOPAT, ROIC, and other key metrics with unit support
-  - Capital Turnover is annualized for quarterly statements (Q1-Q4) by multiplying revenue by 4
-- Real-time progress tracking with 5 milestones:
-  - Extracting balance sheet, Classifying balance sheet
-  - Extracting income statement, Extracting additional items, Classifying income statement
-- Re-run and delete functionality for financial statements
+### Robust Financial Extraction
+- **Stage 1 (Completeness Audit)**: Gemini audits document sections before extraction to confirm they contain complete financial statements, preventing hallucination.
+- **Standalone Multi-model Pipeline**: Leverages the [Tiger-Transformer](https://github.com/Ruinius/tiger-transformer) ([HF Weights](https://huggingface.co/Ruinius/tiger-transformer)) for standardized financial mapping.
+- **Ticker Reflection**: Specialized context gathering around exchange names (NASDAQ/NYSE) ensures 100% accurate ticker identification even from microscopic headers.
+- **Standardization (Tiger-Transformer)**: Raw line items are mapped to a unified taxonomy using a local **FinnBERT** model for consistent operating vs non-operating classification.
+- **Stage 2 (Validation & Self-Correction)**: Automatic mathematical validation of subtotals/totals. If imbalance is detected, the system sends exact error feedback to Gemini for a "Precise Extraction" retry.
+- **Support**: High-fidelity extraction for **Earnings Announcements**, with classification-only support for 10-K, 10-Q, and other filing types.
 
 ### Financial Modeling & Valuation (Phase 8)
 - **DCF (Discounted Cash Flow) Model** with customizable assumptions:
