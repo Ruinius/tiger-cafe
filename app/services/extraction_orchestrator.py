@@ -313,6 +313,7 @@ async def extract_income_statement_task(document_id: str, db: Session) -> None:
             period_end_date=document.period_end_date,
             currency=extracted_data.get("currency"),
             unit=extracted_data.get("unit"),
+            chunk_index=extracted_data.get("chunk_index"),
             is_valid=extracted_data.get("is_valid", False),
             validation_errors=json.dumps(extracted_data.get("validation_errors", [])),
             revenue_prior_year=extracted_data.get("revenue_prior_year"),
@@ -441,13 +442,6 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
                     SharesOutstanding.document_id == document_id
                 ).delete()
 
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.SHARES_OUTSTANDING,
-                    f"Gemini response: Successfully identified shares outstanding. Basic: {shares_data.get('basic_shares_outstanding', 'N/A')} {shares_data.get('basic_shares_outstanding_unit', '')}, Diluted: {shares_data.get('diluted_shares_outstanding', 'N/A')} {shares_data.get('diluted_shares_outstanding_unit', '')}.",
-                    source="gemini",
-                )
-
                 shares = SharesOutstanding(
                     id=str(uuid.uuid4()),
                     document_id=document_id,
@@ -502,12 +496,16 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
                 "Extracting organic growth...",
             )
 
+            # Ensure we have the latest income statement data
+            db.refresh(document)
+
             # Prepare income statement data as a dict for the agent
             income_statement_data = {"line_items": [], "revenue_prior_year": None}
             if document.income_statement:
                 income_statement_data = {
                     "unit": document.income_statement.unit,
                     "currency": document.income_statement.currency,
+                    "chunk_index": document.income_statement.chunk_index,
                     "revenue_prior_year": float(document.income_statement.revenue_prior_year)
                     if document.income_statement.revenue_prior_year
                     else None,
@@ -521,6 +519,7 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
                         }
                         for item in document.income_statement.line_items
                     ],
+                    "period_end_date": document.income_statement.period_end_date,
                 }
 
             organic_growth_data = await loop.run_in_executor(

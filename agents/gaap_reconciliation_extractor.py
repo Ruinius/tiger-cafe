@@ -135,12 +135,6 @@ def extract_gaap_reconciliation(
             text = chunk_text
             chunk_index = idx
             break
-        else:
-            add_log(
-                document_id,
-                FinancialStatementMilestone.GAAP_RECONCILIATION,
-                f"This section isn't quite right because: {explanation}. Trying another spot.",
-            )
 
     if not text:
         add_log(

@@ -8,12 +8,10 @@ import json
 import re
 from datetime import datetime
 
-from agents.extractor_utils import call_llm_and_parse_json
+from agents.extractor_utils import call_llm_and_parse_json, call_llm_with_retry
 from app.utils.document_section_finder import (
     collect_top_chunk_texts,
-    find_top_numeric_chunks,
     get_chunk_with_context,
-    rank_chunks_by_query,
 )
 from app.utils.financial_statement_progress import (
     FinancialStatementMilestone,
@@ -57,6 +55,75 @@ def _normalize_value(value: object) -> float | None:
     return None
 
 
+def _reflect_on_prior_revenue(
+    original_value: float | None,
+    original_unit: str | None,
+    current_label: str,
+    prior_label: str,
+    current_revenue: float | None,
+    text: str,  # Added text parameter
+) -> tuple[float | None, str | None, str | None]:
+    """
+    Verify the extracted prior revenue matches the duration of the current period.
+    """
+    reflection_prompt = f"""You are a QA Auditor.
+    1.  The system extracted a prior year revenue of {original_value} for: {prior_label}.
+    2.  The current period is: {current_label}.
+    3.  The current period revenue is: {current_revenue}.
+
+    YOUR JOB: Verify that the extracted value ({original_value}) comes from the column with the SAME DURATION as the current period revenue ({current_revenue}).
+
+    Common sense:
+    - {original_value} should be a reasonable increase or decrease compared to {current_revenue}
+    - {original_value} should be in the same table as {current_revenue}
+    - {original_value} should be for three months or a quarter and NOT six months, nine months, or a full year
+    - {original_value} should come from the same row as {current_revenue}
+
+    If the value {original_value} is correct (correct period, correct duration), return it.
+    If it is incorrect (wrong duration, e.g. YTD instead of Quarter), find the CORRECT value for {prior_label} with the matching duration.
+
+    Return a JSON object:
+    {{
+        "verified_value": number (the correct value to use),
+        "verified_unit": string (unit for the correct value),
+        "correction_reason": "Explanation of why you changed it or kept it the same"
+    }}
+
+    Document Text:
+    {{text[:30000]}}
+    """
+
+    print(
+        f"DEBUG: Starting reflection on prior revenue: {original_value} comparing with current: {current_revenue}"
+    )
+    try:
+        formatted_prompt = reflection_prompt.replace("{text[:30000]}", text[:30000])
+        result = call_llm_with_retry(formatted_prompt, temperature=0.0)
+        print(f"DEBUG: Called LLM with: {formatted_prompt[:10000]}")
+        print(f"DEBUG: Reflection result from LLM: {result}")
+
+        verified_val = result.get("verified_value")
+        verified_unit = result.get("verified_unit")
+        correction_reason = result.get("correction_reason")
+
+        if verified_val is not None:
+            return float(verified_val), verified_unit, correction_reason
+
+        # If LLM explicitly says it can't determine the value (verified_val is None),
+        # but provides a reason (e.g. "duration mismatch"), we should return None to signal failure.
+        if correction_reason:
+            return None, None, correction_reason
+
+        # Fallback to original if reflection returns nothing useful
+        return original_value, original_unit, None
+    except Exception as e:
+        # Fallback on error
+        print(f"DEBUG: Reflection failed with error: {e}")
+        # Raise error to prevent "green" pass-through of unverified data
+        print(f"DEBUG: Reflection failed with error: {e}")
+        raise RuntimeError(f"Reflection failed: {e}") from e
+
+
 def extract_prior_year_revenue(
     text: str,
     time_period: str,
@@ -64,7 +131,7 @@ def extract_prior_year_revenue(
     revenue_line_name: str | None = None,
     unit: str | None = None,
     period_end_date: str | None = None,
-) -> tuple[float | None, str | None]:
+) -> tuple[float | None, str | None, str | None]:
     """
     Extract prior year revenue using LLM with rich context.
     """
@@ -98,7 +165,11 @@ def extract_prior_year_revenue(
             prior_label = "Quarter ending in " + time_period.replace(str(current_yr), str(prior_yr))
         else:
             # Silently return, the caller will handle logging missing revenue
-            return None, None
+            return (
+                None,
+                None,
+                "Could not determine prior period label from time_period or period_end_date.",
+            )
 
     # Build context information
     context_info = ""
@@ -143,15 +214,21 @@ Return only valid JSON, no additional text."""
 
         if revenue_value is None:
             # Silently return
-            return None, None
+            return None, None, "LLM could not find prior year revenue explicitly."
 
-        # add_log(document_id, FinancialStatementMilestone.ORGANIC_GROWTH, f"I found the prior year revenue: {revenue_value} ({revenue_unit}).")
-        # Note: document_id is not passed to this helper yet, so we'll log in the main function
-        pass
-        return revenue_value, revenue_unit
+        # Reflection step to ensure column duration consistency
+        return _reflect_on_prior_revenue(
+            revenue_value,
+            revenue_unit,
+            current_label,
+            prior_label or time_period,
+            current_revenue,
+            text,  # Pass text to reflection
+        )
 
-    except Exception:
-        return None, None
+    except Exception as e:
+        # Re-raise to ensure the caller knows extraction failed critically
+        raise RuntimeError(f"Prior year revenue extraction failed: {e}") from e
 
 
 def extract_organic_growth_llm(text: str, time_period: str) -> dict:
@@ -259,18 +336,27 @@ def extract_organic_growth(
             "I'm looking for the prior period revenue in the income statement to calculate growth rates.",
         )
 
-        # 1. Find Income Statement section (same logic as IS extractor)
-        top_numeric_chunks = find_top_numeric_chunks(
-            document_id, file_path, top_k=10, context_name="Income Statement"
-        )
-        query_texts_is = ["Revenue", "Profit", "Income", "Tax", "Cost"]
-        candidate_chunks_is = rank_chunks_by_query(
-            document_id,
-            file_path,
-            top_numeric_chunks,
-            query_texts_is,
-            context_name="Income Statement",
-        )
+        # 1. Find Income Statement section
+        is_chunk_index = income_statement_data.get("chunk_index")
+        candidate_chunks_is = []
+
+        if is_chunk_index is not None:
+            # If we have the chunk index from the IS extraction, use it directly
+            # This ensures we are looking at the EXACT same table that IS was extracted from
+            candidate_chunks_is = [is_chunk_index]
+            add_log(
+                document_id,
+                FinancialStatementMilestone.ORGANIC_GROWTH,
+                f"Using the exact same document section (chunk {is_chunk_index}) where the Income Statement was found.",
+            )
+        else:
+            # Fallback: Search for IS section again if chunk_index is missing
+            # Fallback: Search for IS section again if chunk_index is missing
+            # Error out instead of guessing
+            raise ValueError(
+                "Income Statement chunk index is missing. "
+                "Cannot reliably locate prior year revenue context."
+            )
 
         if candidate_chunks_is:
             # We'll try the first candidate chunk for the IS
@@ -292,26 +378,34 @@ def extract_organic_growth(
                 FinancialStatementMilestone.ORGANIC_GROWTH,
                 "I'm now asking Gemini to find the revenue from the same period last year in the comparative statements.",
             )
-            extracted_prior_val, extracted_prior_unit = extract_prior_year_revenue(
-                is_text,
-                time_period,
-                current_revenue,
-                revenue_line_name,
-                income_statement_data.get("unit"),
-                income_statement_data.get("period_end_date"),
+            extracted_prior_val, extracted_prior_unit, reflection_reason = (
+                extract_prior_year_revenue(
+                    is_text,
+                    time_period,
+                    current_revenue,
+                    revenue_line_name,
+                    income_statement_data.get("unit"),
+                    income_statement_data.get("period_end_date"),
+                )
             )
             if extracted_prior_val is not None:
+                msg = f"Gemini response: Found the comparative revenue figure for the prior year: {extracted_prior_val} ({extracted_prior_unit or 'ones'}). Comparative analysis can now proceed."
+                if reflection_reason:
+                    msg += f" (QA Check: {reflection_reason})"
                 add_log(
                     document_id,
                     FinancialStatementMilestone.ORGANIC_GROWTH,
-                    f"Gemini response: Found the comparative revenue figure for the prior year: {extracted_prior_val} ({extracted_prior_unit or 'ones'}). Comparative analysis can now proceed.",
+                    msg,
                     source="gemini",
                 )
             else:
+                msg = "Gemini response: Comparative revenue data for the prior fiscal interval could not be definitively located."
+                if reflection_reason:
+                    msg += f" QA Auditor flagged issue: {reflection_reason}"
                 add_log(
                     document_id,
                     FinancialStatementMilestone.ORGANIC_GROWTH,
-                    "Gemini response: Comparative revenue data for the prior fiscal interval could not be definitively located. Growth calculation will be limited.",
+                    msg,
                     source="gemini",
                 )
 

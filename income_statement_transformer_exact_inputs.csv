@@ -1,16 +1,14 @@
 formatted_input
-[<START>] [<START>] [income_statement] [Net Operating Revenues] [Cost of goods sold] [Gross Profit]
-"[<START>] [Net Operating Revenues] [income_statement] [Cost of goods sold] [Gross Profit] [Selling, general and administrative expenses]"
-"[Net Operating Revenues] [Cost of goods sold] [income_statement] [Gross Profit] [Selling, general and administrative expenses] [Other operating charges]"
-"[Cost of goods sold] [Gross Profit] [income_statement] [Selling, general and administrative expenses] [Other operating charges] [Operating Income]"
-"[Gross Profit] [Selling, general and administrative expenses] [income_statement] [Other operating charges] [Operating Income] [Interest income]"
-"[Selling, general and administrative expenses] [Other operating charges] [income_statement] [Operating Income] [Interest income] [Interest expense]"
-[Other operating charges] [Operating Income] [income_statement] [Interest income] [Interest expense] [Equity income (loss) — net]
-[Operating Income] [Interest income] [income_statement] [Interest expense] [Equity income (loss) — net] [Other income (loss) — net]
-[Interest income] [Interest expense] [income_statement] [Equity income (loss) — net] [Other income (loss) — net] [Income Before Income Taxes]
-[Interest expense] [Equity income (loss) — net] [income_statement] [Other income (loss) — net] [Income Before Income Taxes] [Income taxes]
-[Equity income (loss) — net] [Other income (loss) — net] [income_statement] [Income Before Income Taxes] [Income taxes] [Consolidated Net Income]
-[Other income (loss) — net] [Income Before Income Taxes] [income_statement] [Income taxes] [Consolidated Net Income] [Less: Net income (loss) attributable to noncontrolling interests]
-[Income Before Income Taxes] [Income taxes] [income_statement] [Consolidated Net Income] [Less: Net income (loss) attributable to noncontrolling interests] [Net Income Attributable to Shareowners of The Coca-Cola Company]
-[Income taxes] [Consolidated Net Income] [income_statement] [Less: Net income (loss) attributable to noncontrolling interests] [Net Income Attributable to Shareowners of The Coca-Cola Company] [<END>]
-[Consolidated Net Income] [Less: Net income (loss) attributable to noncontrolling interests] [income_statement] [Net Income Attributable to Shareowners of The Coca-Cola Company] [<END>] [<END>]
+[<START>] [<START>] [income_statement] [NET SALES] [Cost of sales] [Gross profit]
+"[<START>] [NET SALES] [income_statement] [Cost of sales] [Gross profit] [Selling, general and administrative]"
+"[NET SALES] [Cost of sales] [income_statement] [Gross profit] [Selling, general and administrative] [Other - net]"
+"[Cost of sales] [Gross profit] [income_statement] [Selling, general and administrative] [Other - net] [Loss on sale of business]"
+"[Gross profit] [Selling, general and administrative] [income_statement] [Other - net] [Loss on sale of business] [Asset impairment charges]"
+"[Selling, general and administrative] [Other - net] [income_statement] [Loss on sale of business] [Asset impairment charges] [Restructuring charges]"
+[Other - net] [Loss on sale of business] [income_statement] [Asset impairment charges] [Restructuring charges] [Income from operations]
+[Loss on sale of business] [Asset impairment charges] [income_statement] [Restructuring charges] [Income from operations] [Interest - net]
+[Asset impairment charges] [Restructuring charges] [income_statement] [Income from operations] [Interest - net] [EARNINGS FROM CONTINUING OPERATIONS BEFORE INCOME TAXES]
+[Restructuring charges] [Income from operations] [income_statement] [Interest - net] [EARNINGS FROM CONTINUING OPERATIONS BEFORE INCOME TAXES] [Income taxes on continuing operations]
+[Income from operations] [Interest - net] [income_statement] [EARNINGS FROM CONTINUING OPERATIONS BEFORE INCOME TAXES] [Income taxes on continuing operations] [NET EARNINGS FROM CONTINUING OPERATIONS]
+[Interest - net] [EARNINGS FROM CONTINUING OPERATIONS BEFORE INCOME TAXES] [income_statement] [Income taxes on continuing operations] [NET EARNINGS FROM CONTINUING OPERATIONS] [<END>]
+[EARNINGS FROM CONTINUING OPERATIONS BEFORE INCOME TAXES] [Income taxes on continuing operations] [income_statement] [NET EARNINGS FROM CONTINUING OPERATIONS] [<END>] [<END>]

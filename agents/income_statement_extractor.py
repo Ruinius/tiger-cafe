@@ -145,11 +145,6 @@ def extract_income_statement(
                 )
 
             if not is_complete:
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.INCOME_STATEMENT,
-                    f"This section isn't quite right because: {reason}. I'll look for a better one.",
-                )
                 if attempt_idx < len(candidate_chunks) - 1:
                     continue  # Try next candidate
                 else:
@@ -158,12 +153,6 @@ def extract_income_statement(
                     pass
             else:
                 # Extract income statement using LLM (only if chunk is complete)
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.INCOME_STATEMENT,
-                    "Found it! Extracting the income statement data now.",
-                )
-
                 add_log(
                     document_id,
                     FinancialStatementMilestone.INCOME_STATEMENT,

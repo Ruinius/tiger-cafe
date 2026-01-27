@@ -1,33 +1,19 @@
 formatted_input
-"[<START>] [<START>] [current_assets] [Cash and cash equivalents] [Short-term investments] [Total Cash, Cash Equivalents and Short-Term Investments]"
-"[<START>] [Cash and cash equivalents] [current_assets] [Short-term investments] [Total Cash, Cash Equivalents and Short-Term Investments] [Marketable securities]"
-"[Cash and cash equivalents] [Short-term investments] [current_assets] [Total Cash, Cash Equivalents and Short-Term Investments] [Marketable securities] [Trade accounts receivable, less allowances of $520 and $506, respectively]"
-"[Short-term investments] [Total Cash, Cash Equivalents and Short-Term Investments] [current_assets] [Marketable securities] [Trade accounts receivable, less allowances of $520 and $506, respectively] [Inventories]"
-"[Total Cash, Cash Equivalents and Short-Term Investments] [Marketable securities] [current_assets] [Trade accounts receivable, less allowances of $520 and $506, respectively] [Inventories] [Prepaid expenses and other current assets]"
-"[Marketable securities] [Trade accounts receivable, less allowances of $520 and $506, respectively] [current_assets] [Inventories] [Prepaid expenses and other current assets] [Total Current Assets]"
-"[Trade accounts receivable, less allowances of $520 and $506, respectively] [Inventories] [current_assets] [Prepaid expenses and other current assets] [Total Current Assets] [Equity method investments]"
-[Inventories] [Prepaid expenses and other current assets] [current_assets] [Total Current Assets] [Equity method investments] [Deferred income tax assets]
-"[Prepaid expenses and other current assets] [Total Current Assets] [noncurrent_assets] [Equity method investments] [Deferred income tax assets] [Property, plant and equipment — net]"
-"[Total Current Assets] [Equity method investments] [noncurrent_assets] [Deferred income tax assets] [Property, plant and equipment — net] [Trademarks with indefinite lives]"
-"[Equity method investments] [Deferred income tax assets] [noncurrent_assets] [Property, plant and equipment — net] [Trademarks with indefinite lives] [Goodwill]"
-"[Deferred income tax assets] [Property, plant and equipment — net] [noncurrent_assets] [Trademarks with indefinite lives] [Goodwill] [Other noncurrent assets]"
-"[Property, plant and equipment — net] [Trademarks with indefinite lives] [noncurrent_assets] [Goodwill] [Other noncurrent assets] [Total Assets]"
-[Trademarks with indefinite lives] [Goodwill] [noncurrent_assets] [Other noncurrent assets] [Total Assets] [Accounts payable and accrued expenses]
-[Goodwill] [Other noncurrent assets] [noncurrent_assets] [Total Assets] [Accounts payable and accrued expenses] [Loans and notes payable]
-[Other noncurrent assets] [Total Assets] [current_liabilities] [Accounts payable and accrued expenses] [Loans and notes payable] [Current maturities of long-term debt]
-[Total Assets] [Accounts payable and accrued expenses] [current_liabilities] [Loans and notes payable] [Current maturities of long-term debt] [Accrued income taxes]
-[Accounts payable and accrued expenses] [Loans and notes payable] [current_liabilities] [Current maturities of long-term debt] [Accrued income taxes] [Total Current Liabilities]
-[Loans and notes payable] [Current maturities of long-term debt] [current_liabilities] [Accrued income taxes] [Total Current Liabilities] [Long-term debt]
-[Current maturities of long-term debt] [Accrued income taxes] [current_liabilities] [Total Current Liabilities] [Long-term debt] [Other noncurrent liabilities]
-[Accrued income taxes] [Total Current Liabilities] [noncurrent_liabilities] [Long-term debt] [Other noncurrent liabilities] [Deferred income tax liabilities]
-"[Total Current Liabilities] [Long-term debt] [noncurrent_liabilities] [Other noncurrent liabilities] [Deferred income tax liabilities] [Common stock, $0.25 par value; authorized — 11,200 shares; issued — 7,040 shares]"
-"[Long-term debt] [Other noncurrent liabilities] [noncurrent_liabilities] [Deferred income tax liabilities] [Common stock, $0.25 par value; authorized — 11,200 shares; issued — 7,040 shares] [Capital surplus]"
-"[Other noncurrent liabilities] [Deferred income tax liabilities] [stockholders_equity] [Common stock, $0.25 par value; authorized — 11,200 shares; issued — 7,040 shares] [Capital surplus] [Reinvested earnings]"
-"[Deferred income tax liabilities] [Common stock, $0.25 par value; authorized — 11,200 shares; issued — 7,040 shares] [stockholders_equity] [Capital surplus] [Reinvested earnings] [Accumulated other comprehensive income (loss)]"
-"[Common stock, $0.25 par value; authorized — 11,200 shares; issued — 7,040 shares] [Capital surplus] [stockholders_equity] [Reinvested earnings] [Accumulated other comprehensive income (loss)] [Treasury stock, at cost — 2,738 and 2,738 shares, respectively]"
-"[Capital surplus] [Reinvested earnings] [stockholders_equity] [Accumulated other comprehensive income (loss)] [Treasury stock, at cost — 2,738 and 2,738 shares, respectively] [Equity Attributable to Shareowners of The Coca-Cola Company]"
-"[Reinvested earnings] [Accumulated other comprehensive income (loss)] [stockholders_equity] [Treasury stock, at cost — 2,738 and 2,738 shares, respectively] [Equity Attributable to Shareowners of The Coca-Cola Company] [Equity attributable to noncontrolling interests]"
-"[Accumulated other comprehensive income (loss)] [Treasury stock, at cost — 2,738 and 2,738 shares, respectively] [stockholders_equity] [Equity Attributable to Shareowners of The Coca-Cola Company] [Equity attributable to noncontrolling interests] [Total Equity]"
-"[Treasury stock, at cost — 2,738 and 2,738 shares, respectively] [Equity Attributable to Shareowners of The Coca-Cola Company] [stockholders_equity] [Equity attributable to noncontrolling interests] [Total Equity] [Total Liabilities and Equity]"
-[Equity Attributable to Shareowners of The Coca-Cola Company] [Equity attributable to noncontrolling interests] [stockholders_equity] [Total Equity] [Total Liabilities and Equity] [<END>]
-[Equity attributable to noncontrolling interests] [Total Equity] [stockholders_equity] [Total Liabilities and Equity] [<END>] [<END>]
+"[<START>] [<START>] [current_assets] [Cash and cash equivalents] [Accounts and notes receivable, net] [Inventories, net]"
+"[<START>] [Cash and cash equivalents] [current_assets] [Accounts and notes receivable, net] [Inventories, net] [Other current assets]"
+"[Cash and cash equivalents] [Accounts and notes receivable, net] [current_assets] [Inventories, net] [Other current assets] [Total current assets]"
+"[Accounts and notes receivable, net] [Inventories, net] [current_assets] [Other current assets] [Total current assets] [Property, plant and equipment, net]"
+"[Inventories, net] [Other current assets] [current_assets] [Total current assets] [Property, plant and equipment, net] [Goodwill and other intangibles, net]"
+"[Other current assets] [Total current assets] [noncurrent_assets] [Property, plant and equipment, net] [Goodwill and other intangibles, net] [Other assets]"
+"[Total current assets] [Property, plant and equipment, net] [noncurrent_assets] [Goodwill and other intangibles, net] [Other assets] [Total assets]"
+"[Property, plant and equipment, net] [Goodwill and other intangibles, net] [noncurrent_assets] [Other assets] [Total assets] [Short-term borrowings]"
+"[Goodwill and other intangibles, net] [Other assets] [noncurrent_assets] [Total assets] [Short-term borrowings] [Current maturities of long-term debt]"
+[Other assets] [Total assets] [current_liabilities] [Short-term borrowings] [Current maturities of long-term debt] [Accounts payable]
+[Total assets] [Short-term borrowings] [current_liabilities] [Current maturities of long-term debt] [Accounts payable] [Accrued expenses]
+[Short-term borrowings] [Current maturities of long-term debt] [current_liabilities] [Accounts payable] [Accrued expenses] [Total current liabilities]
+[Current maturities of long-term debt] [Accounts payable] [current_liabilities] [Accrued expenses] [Total current liabilities] [Long-term debt]
+[Accounts payable] [Accrued expenses] [current_liabilities] [Total current liabilities] [Long-term debt] [Other long-term liabilities]
+[Accrued expenses] [Total current liabilities] [noncurrent_liabilities] [Long-term debt] [Other long-term liabilities] [Shareowners' equity]
+[Total current liabilities] [Long-term debt] [noncurrent_liabilities] [Other long-term liabilities] [Shareowners' equity] [Total liabilities and shareowners' equity]
+[Long-term debt] [Other long-term liabilities] [stockholders_equity] [Shareowners' equity] [Total liabilities and shareowners' equity] [<END>]
+[Other long-term liabilities] [Shareowners' equity] [stockholders_equity] [Total liabilities and shareowners' equity] [<END>] [<END>]

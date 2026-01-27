@@ -12,6 +12,13 @@ def clean_json_response(response_text: str) -> str:
         if response_text.startswith("json"):
             response_text = response_text[4:]
         response_text = response_text.strip()
+    elif "```" in response_text:
+        # Handle case where it's wrapped in backticks but not at the very start (e.g. whitespace)
+        # or just backticks without language identifier
+        response_text = response_text.split("```")[1]
+        if response_text.startswith("json"):
+            response_text = response_text[4:]
+        response_text = response_text.strip()
     return response_text
 
 

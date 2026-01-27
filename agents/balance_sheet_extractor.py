@@ -124,11 +124,6 @@ def extract_balance_sheet(
             if not is_complete:
                 section_failed_msg = f"Stage 1 validation failed: {reason}"
                 print(section_failed_msg)
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.BALANCE_SHEET,
-                    section_failed_msg,
-                )
                 if attempt_idx < len(candidate_chunks) - 1:
                     continue  # Try next candidate
                 else:
@@ -144,12 +139,6 @@ def extract_balance_sheet(
                         "time_period": time_period,
                     }
                     return extracted_data
-
-            add_log(
-                document_id,
-                FinancialStatementMilestone.BALANCE_SHEET,
-                f"I'm examining a promising section of the document (attempt {attempt_idx + 1}).",
-            )
 
             add_log(
                 document_id,
