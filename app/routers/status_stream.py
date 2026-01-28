@@ -127,7 +127,36 @@ async def status_stream(
                     # Combine active and recently completed
                     active_docs = active_query.all()
                     completed_docs = completed_query.all()
-                    documents = active_docs + completed_docs
+
+                    # ALSO include any document that has active milestones in the progress store
+                    # This covers "re-run" cases where the DB status is terminal but analysis is running
+                    from app.utils.financial_statement_progress import _progress_store
+
+                    active_progress_ids = []
+                    with stream_db.no_autoflush:  # Safety
+                        # We use the document_id from the progress store if it has active milestones
+                        from app.utils.financial_statement_progress import _progress_lock
+
+                        with _progress_lock:
+                            for doc_id, data in _progress_store.items():
+                                milestones = data.get("milestones", {})
+                                if any(
+                                    m.get("status") == "in_progress" for m in milestones.values()
+                                ):
+                                    active_progress_ids.append(doc_id)
+
+                    # Fetch these extra documents if not already included
+                    existing_ids = {d.id for d in active_docs + completed_docs}
+                    extra_ids = [aid for aid in active_progress_ids if aid not in existing_ids]
+
+                    if extra_ids:
+                        extra_query = stream_db.query(Document).filter(Document.id.in_(extra_ids))
+                        if current_user_id:
+                            extra_query = extra_query.filter(Document.user_id == current_user_id)
+                        extra_docs = extra_query.all()
+                        documents = active_docs + completed_docs + extra_docs
+                    else:
+                        documents = active_docs + completed_docs
 
                     if documents:
                         data = []

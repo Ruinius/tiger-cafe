@@ -20,7 +20,6 @@ def extract_balance_sheet(
     document_id: str,
     file_path: str,
     time_period: str,
-    max_retries: int = 3,
     document_type: str | None = None,
     period_end_date: str | None = None,
 ) -> dict:
@@ -34,7 +33,6 @@ def extract_balance_sheet(
         document_id: Document ID
         file_path: Path to PDF file
         time_period: Time period (e.g., "Q3 2023")
-        max_retries: Maximum number of retry attempts for section finding (3 total: rank 1, 2, 3)
         document_type: Document type (e.g., "earnings_announcement", "annual_filing", "quarterly_filing")
 
     Returns:
@@ -372,15 +370,24 @@ def check_balance_sheet_completeness_llm(
     """
     validation_criteria = """
     - The title of the balance sheet needs to be visible
-    - The table must have time header at the top signifying the date or quarter
+    - The table must have time header at the top signifying the date, quarter, or fiscal year
     - The statement itself starts with asset header or cash
     - Have multiple asset lines with a total
     - Have multiple liability lines with a total
     - Have a "Total Liabilities and Equity line
     """
 
+    # For balance sheets, Q4 and FY (Full Year) are equivalent for the same year.
+    # We update the time_period for the LLM check to be more flexible.
+    if "Q4" in time_period:
+        year = time_period.split()[-1]
+        time_period_query = f"{time_period} or FY {year}"
+        validation_criteria += f"\n    - Note: For Q4 reporting, the balance sheet may be labeled as 'FY' (Full Year) or for the year ended {year}. This is acceptable."
+    else:
+        time_period_query = time_period
+
     return check_section_completeness_llm(
-        text, time_period, "consolidated balance sheet", validation_criteria, period_end_date
+        text, time_period_query, "consolidated balance sheet", validation_criteria, period_end_date
     )
 
 
@@ -787,7 +794,16 @@ def check_line_item_time_periods_balance_sheet(
     """
     items_json = json.dumps(line_items, indent=2)
 
-    prompt = f"""Analyze the following balance sheet line items and determine if each one belongs to the time period: {expected_time_period}
+    if "Q4" in expected_time_period:
+        year = expected_time_period.split()[-1]
+        time_period_query = f"{expected_time_period} (or FY {year})"
+        q4_note = f"\n- Note: For balance sheets, {expected_time_period} and FY {year} are equivalent. Accept items from either label."
+    else:
+        time_period_query = expected_time_period
+        q4_note = ""
+
+    prompt = f"""Analyze the following balance sheet line items and determine if each one belongs to the time period: {time_period_query}
+{q4_note}
 
 Line items:
 {items_json}

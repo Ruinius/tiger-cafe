@@ -198,8 +198,8 @@ def test_company_historical_calculations_returns_sorted_entries(client, db_sessi
     payload = response.json()
     assert payload["company_id"] == company.id
     assert payload["currency"] == "Multiple"
-    assert payload["unit"] == "Multiple"
+    assert payload["unit"] == "millions"
     assert [entry["time_period"] for entry in payload["entries"]] == ["FY 2023", "Q1 2024"]
-    assert payload["entries"][0]["revenue"] == "250.00"
-    assert payload["entries"][1]["revenue"] == "100.00"
-    assert payload["entries"][1]["revenue_growth_yoy"] == "0.1200"
+    assert payload["entries"][0]["revenue"] == "0.25"
+    assert payload["entries"][1]["revenue"] == "100.0"
+    assert payload["entries"][1]["revenue_growth_yoy"] == "0.12"

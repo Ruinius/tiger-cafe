@@ -1,7 +1,3 @@
-"""
-Company routes
-"""
-
 import re
 import uuid
 
@@ -14,7 +10,6 @@ from app.models.balance_sheet import BalanceSheet
 from app.models.company import Company
 from app.models.document import Document, DocumentType
 from app.models.financial_assumption import FinancialAssumption
-from app.models.income_statement import IncomeStatement
 from app.models.non_operating_classification import (
     NonOperatingClassification,
     NonOperatingClassificationItem,
@@ -29,8 +24,9 @@ from app.schemas.financial_assumption import FinancialAssumption as FinancialAss
 from app.schemas.financial_assumption import FinancialAssumptionCreate
 from app.schemas.valuation import Valuation as ValuationSchema
 from app.schemas.valuation import ValuationCreate
+from app.services.company_service import get_company_historical_data
 from app.utils.financial_modeling import calculate_dcf
-from app.utils.historical_calculations import get_interest_expense, get_revenue
+from app.utils.line_item_utils import convert_to_ones
 from app.utils.market_data import (
     get_beta,
     get_currency_rate,
@@ -79,6 +75,7 @@ async def list_companies(
 ):
     """List all companies with document counts"""
     # Query companies with document counts
+    # Query companies with document counts
     companies = (
         db.query(Company, func.count(Document.id).label("document_count"))
         .outerjoin(Document, Company.id == Document.company_id)
@@ -104,17 +101,18 @@ async def list_companies(
             .first()
         )
 
-        # Fetch latest document date (period_end_date)
+        # Fetch latest document date
+        # We prefer document_date (published date), but fallback to period_end_date for legacy/missing data
         latest_doc_date = None
         latest_doc = (
             db.query(Document)
             .filter(Document.company_id == company.id)
-            .filter(Document.period_end_date.isnot(None))
-            .order_by(Document.period_end_date.desc())
+            .filter((Document.document_date.isnot(None)) | (Document.period_end_date.isnot(None)))
+            .order_by(func.coalesce(Document.document_date, Document.period_end_date).desc())
             .first()
         )
         if latest_doc:
-            latest_doc_date = latest_doc.period_end_date
+            latest_doc_date = latest_doc.document_date or latest_doc.period_end_date
 
         company_dict = {
             "id": company.id,
@@ -179,143 +177,11 @@ async def get_company_historical_calculations(
     current_user: User = Depends(get_current_user),
 ):
     """Get historical calculations for a company across eligible documents."""
-    company = db.query(Company).filter(Company.id == company_id).first()
-    if not company:
+    historical_data = get_company_historical_data(db, company_id)
+    if not historical_data:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    documents = (
-        db.query(Document)
-        .filter(Document.company_id == company_id)
-        .filter(Document.document_type.in_(ELIGIBLE_DOCUMENT_TYPES))
-        .options(
-            selectinload(Document.historical_calculation),
-            selectinload(Document.organic_growth),
-            selectinload(Document.shares_outstanding),
-            selectinload(Document.income_statement).selectinload(IncomeStatement.line_items),
-        )
-        .all()
-    )
-
-    entries_by_period: dict[str, dict] = {}
-    currency_values: set[str] = set()
-    unit_values: set[str] = set()
-
-    for document in documents:
-        calc = document.historical_calculation
-        if not calc:
-            continue
-
-        time_period = (
-            calc.time_period
-            or (document.income_statement.time_period if document.income_statement else None)
-            or document.time_period
-            or "Unknown"
-        )
-
-        revenue = get_revenue(document.income_statement) if document.income_statement else None
-        entry = {
-            "time_period": time_period,
-            "period_end_date": document.period_end_date,
-            "revenue": revenue,
-            "revenue_growth_yoy": document.income_statement.revenue_growth_yoy
-            if document.income_statement
-            else None,
-            "ebita": calc.ebita,
-            "ebita_margin": calc.ebita_margin,
-            "effective_tax_rate": calc.effective_tax_rate,
-            "adjusted_tax_rate": calc.adjusted_tax_rate,
-            "net_working_capital": calc.net_working_capital,
-            "net_long_term_operating_assets": calc.net_long_term_operating_assets,
-            "invested_capital": calc.invested_capital,
-            "capital_turnover": calc.capital_turnover,
-            "nopat": calc.nopat,
-            "roic": calc.roic,
-            "organic_revenue_growth": document.organic_growth.organic_revenue_growth
-            if document.organic_growth
-            else None,
-            "calculated_at": calc.calculated_at,
-            "diluted_shares_outstanding": document.shares_outstanding.diluted_shares_outstanding
-            if document.shares_outstanding
-            else None,
-            "basic_shares_outstanding": document.shares_outstanding.basic_shares_outstanding
-            if document.shares_outstanding
-            else None,
-            "interest_expense": get_interest_expense(document.income_statement)
-            if document.income_statement
-            else None,
-            "simple_revenue_growth": document.organic_growth.simple_revenue_growth
-            if document.organic_growth
-            else None,
-        }
-
-        if calc.currency:
-            currency_values.add(calc.currency)
-        if calc.unit:
-            unit_values.add(calc.unit)
-
-        period_key = document.period_end_date or time_period
-        existing = entries_by_period.get(period_key)
-        if existing is None or entry["calculated_at"] > existing["calculated_at"]:
-            entries_by_period[period_key] = entry
-
-    # Sort by period_end_date (most reliable), fallback to time_period_sort_key
-    def sort_key(item):
-        if item.get("period_end_date"):
-            # Use period_end_date as primary sort key (convert to timestamp)
-            from datetime import datetime
-
-            return (datetime.fromisoformat(str(item["period_end_date"])).timestamp(), 0, "")
-        else:
-            # Fallback to time_period parsing
-            return time_period_sort_key(item["time_period"])
-
-    sorted_entries = sorted(entries_by_period.values(), key=sort_key)
-
-    # Calculate YOY Marginal Capital Turnover
-    # Marginal Capital Turnover = Change in Revenue / Change in Invested Capital
-    for i in range(1, len(sorted_entries)):
-        current_entry = sorted_entries[i]
-        prev_entry = sorted_entries[i - 1]
-
-        # Ensure entries have necessary data and are consecutive (optional check, but logic applies regardless)
-        if (
-            current_entry["revenue"] is not None
-            and prev_entry["revenue"] is not None
-            and current_entry["invested_capital"] is not None
-            and prev_entry["invested_capital"] is not None
-        ):
-            delta_revenue = current_entry["revenue"] - prev_entry["revenue"]
-            delta_ic = current_entry["invested_capital"] - prev_entry["invested_capital"]
-
-            # Avoid division by zero
-            if delta_ic != 0:
-                current_entry["marginal_capital_turnover"] = delta_revenue / delta_ic
-            else:
-                current_entry["marginal_capital_turnover"] = None
-        else:
-            current_entry["marginal_capital_turnover"] = None
-
-    currency = None
-    unit = None
-    if len(currency_values) == 1:
-        currency = next(iter(currency_values))
-    elif len(currency_values) > 1:
-        currency = "Multiple"
-
-    if len(unit_values) == 1:
-        unit = next(iter(unit_values))
-    elif len(unit_values) > 1:
-        unit = "Multiple"
-
-    return {
-        "company_id": company_id,
-        "currency": currency,
-        "unit": unit,
-        "entries": [
-            {key: value for key, value in entry.items() if key != "calculated_at"}
-            for entry in sorted_entries
-        ],
-    }
+    return historical_data
 
 
 @router.get(
@@ -369,10 +235,12 @@ async def get_financial_assumptions(
         non_op_classification = non_op_classifications[-1]
 
     debt = 0.0
+    bs_unit = "millions"
     if non_op_classification:
         # Create lookup map from balance sheet
         bs_values = {}
         if non_op_classification.document and non_op_classification.document.balance_sheet:
+            bs_unit = non_op_classification.document.balance_sheet.unit or "millions"
             for bsi in non_op_classification.document.balance_sheet.line_items:
                 bs_values[bsi.line_name] = bsi.line_value
 
@@ -386,10 +254,8 @@ async def get_financial_assumptions(
                 val = bs_values.get(item.line_name) or 0
                 debt += float(val)
 
-    # Weight of Equity
-    # Market Cap is in absolute dollars (e.g., 135,000,000,000)
-    # Debt is in millions (e.g., 31,000 means 31,000,000,000)
-    debt_dollars = debt * 1_000_000
+    # Convert debt to absolute dollars (ones)
+    debt_dollars = convert_to_ones(debt, bs_unit)
 
     # Convert debt to USD if balance sheet is in different currency
     # Market cap from Yahoo is typically in USD for US-listed tickers
@@ -409,16 +275,19 @@ async def get_financial_assumptions(
         weight_of_equity = market_cap / (market_cap + debt_dollars)
 
     # Cost of Debt
-    interest_expense_annualized = 0.0
+    interest_expense_annualized_ones = 0.0
     if historical_entries:
         latest = historical_entries[-1]
         ie = latest.get("interest_expense")
         if ie is not None:
-            interest_expense_annualized = abs(float(ie)) * 4.0
+            # ie is in historical_data["unit"]
+            hist_unit = historical_data.get("unit")
+            ie_ones = convert_to_ones(float(ie), hist_unit)
+            interest_expense_annualized_ones = abs(ie_ones) * 4.0
 
     cost_of_debt = 0.05
-    if debt > 0:
-        calculated_cod = interest_expense_annualized / debt
+    if debt_dollars > 0:
+        calculated_cod = interest_expense_annualized_ones / debt_dollars
         cost_of_debt = max(calculated_cod, 0.05)  # Minimum 5%
 
     # Cost of Equity

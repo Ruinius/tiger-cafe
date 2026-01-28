@@ -1,11 +1,16 @@
 import { useState, useCallback } from 'react'
 import axios from 'axios'
-import { useUpload } from '../contexts/UploadContext'
+import { useUploadDispatch, useUploadState } from '../contexts/UploadContext'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE_URL } from '../config'
 
-export function useUploadManager(onUploadComplete) {
-  const { uploadingDocuments, showUploadProgress, setShowUploadProgress, loadUploadProgress } = useUpload()
+/**
+ * Hook for managing the upload modal and triggering upload actions.
+ * Does NOT subscribe to rapid status updates, so it won't trigger re-renders on log messages.
+ * Use this in layout components like Dashboard.
+ */
+export function useUploadModalLogic(onUploadComplete) {
+  const { setShowUploadProgress, loadUploadProgress } = useUploadDispatch()
   const { isAuthenticated, token } = useAuth()
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
@@ -49,7 +54,33 @@ export function useUploadManager(onUploadComplete) {
     }
   }, [isAuthenticated, token, loadUploadProgress])
 
-  const hasActiveUploads = isUploading || uploadingDocuments.some(doc => {
+  return {
+    isUploadModalOpen,
+    openUploadModal,
+    closeUploadModal,
+    handleUploadSuccess,
+    handleReplaceAndIndex,
+    handleCancelDuplicate,
+    checkDuplicates: (files) => checkDuplicates(files, token),
+    isUploading
+  }
+}
+
+/**
+ * Full upload manager that includes current upload status.
+ * WARNING: This will cause re-renders whenever upload logs/status change.
+ * Only use in components that need to display active progress (e.g. MissionControl, CompanyList).
+ */
+export function useUploadManager(onUploadComplete) {
+  // Get actions/modal state (stable-ish)
+  const modalLogic = useUploadModalLogic(onUploadComplete)
+
+  // Get volatile state
+  const { uploadingDocuments, showUploadProgress } = useUploadState()
+  const { setShowUploadProgress } = useUploadDispatch() // Need this too if not returned by modalLogic? 
+  // Actually modalLogic doesn't return setShowUploadProgress.
+
+  const hasActiveUploads = modalLogic.isUploading || uploadingDocuments.some(doc => {
     const status = (doc.status || '').toLowerCase()
     const idxStatus = (doc.indexing_status || '').toLowerCase()
 
@@ -61,22 +92,15 @@ export function useUploadManager(onUploadComplete) {
       'classification_failed',
       'indexing_failed',
       'upload_failed',
-      'error'
+      'error',
+      'duplicate_detected'
     ]
 
-    // For earnings announcements, 'indexed' is NOT terminal (extraction follows)
-    // For others, 'indexed' might be. But we use processing_complete for earnings.
     return !terminalStatuses.includes(status) && !terminalStatuses.includes(idxStatus)
   })
 
   return {
-    isUploadModalOpen,
-    openUploadModal,
-    closeUploadModal,
-    handleUploadSuccess,
-    handleReplaceAndIndex,
-    handleCancelDuplicate,
-    checkDuplicates: (files) => checkDuplicates(files, token),
+    ...modalLogic,
     hasActiveUploads,
     uploadingDocuments,
     showUploadProgress,

@@ -35,16 +35,31 @@ The system currently supports:
     - [x] The Document List View should ONLY pull and show documents that are finished processing
     - [x] Update the Check Update UI/UX to feel like how modern AI agents are showing how it is thinking (Phase-based milestone view created, SSE integration pending)
 - [x] Refactor the routers to be more maintainable. Right now everything is in income_statement.py, which does not make sense. Need to clarify what should be in balance_sheet, income_statement, additional_items, historical_calculations, and documents
+- [x] In Check Update, visually, the last document on the bottom is the first one being processed right now. We need to flip this. This should be frontend change ONLY
+- [x] A document failed to index properly and now shows up indefinitely in the MissionControlDashboard.
+    - Need to double check how can a status update for indexing fail but the rest of the pipeline still runs correctly. I suspect it is because the doc is a duplicate, so the if else checks in indexing is not throwing the correct milestone complete
+    - Need code to clean up MissionControlDashboard, effectively failing gracefully
+- [x] There is a rare case where the Company Analysis View / Historical Data ends up with "multiple" units
+    - Need to leverage the unit changing code (should be in line_item_utils.py) to make sure everything in the Historical Data table is in the predominate unit (e.g, thousands, millions)
+    - Refactored companies.py to remove complex calculations into a services layer
+- [x] Leverage the unit changing code to make sure that the shares_outstanding in DocumentExtractionView is in the same units, showing three decimal places, as the income_statement. This will likely require a backend change as well that saves the new value and new units
+- [x] DocumentExtractionView is incorrectly showing Organic Growth table with currency = N/A, and unit is missing. We should take and show the currency and unit from the current_revenue that is being passed from income_statement
+- [x] Create a field for document_date, which will have many uses.
+    - document_classifier will extract this date in addition to time_period and period_end_date in the same prompt. However, it needs to be clear that document_date and period_end_date are different dates
+    - In DocumentView, show document date after Type and before Time Period. Ensure that it is formatted correctly using the global formatter
+    - In Company List, replace period_end_date with document_date. Rename "Date Financial Cover" to "Most Recent Document"
+    - In Company List, replace "Date Financials Cover" to "Most Recent Document" in the sort
+- [x] SSE should only drive re-render on the MissionControl, but I am getting re-render in all pages, which makes editing impossible
+- [x] The system correctly detects duplicate and stops the pipeline, but the document still sits in the processing pipeline in MissionControl indefinitely
 - [ ] Improve the Document list
-- [ ] Uploading a duplicate document still processed instead of deleting, ending in an error
 - [ ] Enable editing extracted values in Document Extraction View
-- [ ] In the Document View, add where the Balance Sheet, Income Statement, and Non-GAAP Reconciliation were extracted from
+- [ ] In the DocumentExtractionView, add the chunk the Balance Sheet, Income Statement, and Non-GAAP Reconciliation were extracted from
 - [ ] Revenue Growth and Margin Sensitivity
-- [ ] Continue to fix time period and period_end_date logic. Some documents have one, some other.
 
 
 ### Phase 17: Further agent enhancements
 - [x] time_period based on quarterly is not reliable. See if can use period_end_date instead. If both are unreliable, then will require some kind of reflection step prior to extraction
+- [ ] Continue to fix time period and period_end_date logic. Some documents have one, some other.
 - [ ] EL case - LLM extracting after the net earnings / net income line
 - [ ] EL case - LLM extracting Non-GAAP table very strangely - look into the non-gaap reconciliation logic
 - [ ] EL case - add a reflection step to the Non-GAAP table on time period of line items
@@ -56,8 +71,9 @@ The system currently supports:
 - [ ] TOL case - the balance sheet and income statement does not label important totals for some reason - will need robust reflection step
 - [ ] CSCO case - the interest and other expense line is actually a subtotal line. Looking at the csv file, I may have copy & pasted a different company. Need to double check
 - [x] SWK case - the agent cannot find the prior period revenue and current period revenue is screwed up
-- [x] CSCO, KO case - the ticker was not identified. Need a reflection step. How do I update the company ticker if missing?
-- [ ] Create a field for document date, which will have many uses. First use is to organize the list of documents (current logic is not great)
+- [x] CSCO, KO case - the ticker was not identified. Need a reflection step.
+- [ ] JD case - need to fix the labeling for equity method, because they need to be treated differently for adjusted tax calculations
+- [ ] DIS case - rare case where total equity & liability is missing
 
 
 ### Phase 18: Transcripts, news, and Gemini copy & paste
@@ -78,6 +94,7 @@ The system currently supports:
 
 ## Backlog and Notes of Bigger Outstanding Issues - DO NOT CODE
 - [ ] Consolidate batch upload tests
+- [ ] Refactor all the different status (legacy and new)
 - [ ] Refactor opportunity. Send raw pdf using Files API instead of processed text to Gemini
     - Instead of the current chunking logic, use PDF splitters
     - Extract and send global context with prompt

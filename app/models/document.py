@@ -34,6 +34,7 @@ class ProcessingStatus(str, enum.Enum):
     PROCESSING = "processing"
     PROCESSED = "processed"
     ERROR = "error"
+    DUPLICATE_DETECTED = "duplicate_detected"
 
 
 class Document(Base):
@@ -50,6 +51,7 @@ class Document(Base):
     document_type = Column(Enum(DocumentType), nullable=True)
     time_period = Column(String, nullable=True)  # e.g., "Q3 2023", "FY 2023"
     period_end_date = Column(String, nullable=True)  # e.g., "2024-03-31" (YYYY-MM-DD)
+    document_date = Column(String, nullable=True)  # e.g., "2024-04-15" (YYYY-MM-DD)
     unique_id = Column(
         String, nullable=True, index=True
     )  # Unique identifier (URL, article ID, report ID, etc.)

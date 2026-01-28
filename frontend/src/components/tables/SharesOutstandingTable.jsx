@@ -45,13 +45,13 @@ export default function SharesOutstandingTable({ shares }) {
                         {(basic !== null && basic !== undefined) && (
                             <tr>
                                 <td className="col-name">Basic Shares Outstanding</td>
-                                <td className="text-right col-value">{basic.toLocaleString()}</td>
+                                <td className="text-right col-value">{basic.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</td>
                             </tr>
                         )}
                         {(diluted !== null && diluted !== undefined) && (
                             <tr>
                                 <td className="col-name">Diluted Shares Outstanding</td>
-                                <td className="text-right col-value">{diluted.toLocaleString()}</td>
+                                <td className="text-right col-value">{diluted.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</td>
                             </tr>
                         )}
                     </tbody>

@@ -38,6 +38,19 @@ TIME_PERIOD_EXAMPLES = '["Q3 2024", "FY 2023", "Q1 2025"]'
 TICKER_REQUIREMENTS = "Must be uppercase, 1-5 alphabetic characters. Look for symbols near exchange names (NASDAQ, NYSE)."
 TICKER_EXAMPLES = '["AAPL", "MSFT", "KO", "CSCO", "BKNG"]'
 
+DOCUMENT_DATE_REQUIREMENTS = (
+    "Identify the date the document was published or released. This is usually on the first page. "
+    "Must be in YYYY-MM-DD format."
+)
+DOCUMENT_DATE_EXAMPLES = '["2024-03-25", "2023-11-15"]'
+
+PERIOD_END_DATE_REQUIREMENTS = (
+    "Identify the date the financial period ended (e.g., quarter end or fiscal year end). "
+    "CRITICAL: The period_end_date is usually 15-60 days BEFORE the document_date. "
+    "Must be in YYYY-MM-DD format."
+)
+PERIOD_END_DATE_EXAMPLES = '["2024-03-31", "2023-12-31"]'
+
 
 def _get_ticker_context(text: str) -> str:
     """Gather context around exchange names to help identify the ticker."""
@@ -46,8 +59,8 @@ def _get_ticker_context(text: str) -> str:
     for exchange in ["NASDAQ", "NYSE"]:
         # Find all occurrences of the exchange name
         for m in re.finditer(re.escape(exchange), text, re.IGNORECASE):
-            start = max(0, m.start() - 100)
-            end = min(len(text), m.end() + 100)
+            start = max(0, m.start() - 200)
+            end = min(len(text), m.end() + 200)
             snippet = text[start:end].strip().replace("\n", " ").replace("  ", " ")
             contexts.append(snippet)
 
@@ -57,6 +70,34 @@ def _get_ticker_context(text: str) -> str:
     # Unique and joined snippets
     unique_contexts = list(dict.fromkeys(contexts))
     return "\n... ".join(unique_contexts[:10])  # Limit to top 10 to keep prompt size reasonable
+
+
+def _get_date_context(text: str) -> str:
+    """Gather context around date-like strings to help identify document and period dates."""
+    # Pattern for various date formats: March 31, 2024, 03/31/2024, 2024-03-31, etc.
+    date_patterns = [
+        r"\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+)\d{4}\b",
+        r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+)\d{4}\b",
+        r"\b\d{4}-\d{2}-\d{2}\b",
+        r"\b\d{1,2}/\d{1,2}/\d{2,4}\b",
+        r"\b\d{1,2}-\d{1,2}-\d{2,4}\b",
+    ]
+
+    pattern = "|".join(date_patterns)
+    contexts = []
+
+    for m in re.finditer(pattern, text, re.IGNORECASE):
+        start = max(0, m.start() - 200)
+        end = min(len(text), m.end() + 200)
+        snippet = text[start:end].strip().replace("\n", " ").replace("  ", " ")
+        contexts.append(snippet)
+
+    if not contexts:
+        return ""
+
+    # Unique and joined snippets
+    unique_contexts = list(dict.fromkeys(contexts))
+    return "\n... ".join(unique_contexts[:15])  # Limit to keep prompt size reasonable
 
 
 def _clean_json_response(response_text: str) -> str:
@@ -173,6 +214,30 @@ def _get_reflection_items(result: dict[str, Any], text: str) -> list[dict[str, s
             }
         )
 
+    # Reflect on document_date
+    doc_date_val = result.get("document_date")
+    reflection_items.append(
+        {
+            "field": "document_date",
+            "current_value": doc_date_val if doc_date_val else "null",
+            "requirements": DOCUMENT_DATE_REQUIREMENTS,
+            "examples": DOCUMENT_DATE_EXAMPLES,
+            "context": _get_date_context(text),
+        }
+    )
+
+    # Reflect on period_end_date
+    period_date_val = result.get("period_end_date")
+    reflection_items.append(
+        {
+            "field": "period_end_date",
+            "current_value": period_date_val if period_date_val else "null",
+            "requirements": PERIOD_END_DATE_REQUIREMENTS,
+            "examples": PERIOD_END_DATE_EXAMPLES,
+            "context": _get_date_context(text),
+        }
+    )
+
     return reflection_items
 
 
@@ -235,6 +300,7 @@ Return a JSON object with the following structure:
     "document_type": one of ["earnings_announcement", "quarterly_filing", "annual_filing", "press_release", "analyst_report", "news_article", "transcript", "other"],
     "time_period": the time period MUST BE in a format "Q3 2024", "FY 2023", or null if not EXPLICITLY found in the document text,
     "period_end_date": the period end date in YYYY-MM-DD format (e.g., "2024-03-31" for Q1 2024, "2024-09-30" for Q3 2024), or null if not EXPLICITLY found in the document text,
+    "document_date": the date the document was published/released in YYYY-MM-DD format, or null if not EXPLICITLY found,
     "company_name": the company name or null if not EXPLICITLY found in the document text,
     "ticker": the stock ticker symbol or null if not EXPLICITLY found in the document text,
     "confidence": one of ["high", "medium", "low"] based on how confident you are in the classification
@@ -247,6 +313,8 @@ CRITICAL ANTI-HALLUCINATION RULES:
 - DO NOT use external knowledge to fill in missing information
 - DO NOT include leading or trailing whitespace in "ticker" or "company_name"
 - For period_end_date, look for explicit date mentions like "For the quarter ended March 31, 2024" or "Three months ended September 30, 2024"
+- For document_date, look in the first few lines of the document, commonly coinciding with a location (e.g., New York, Beijing) and the company name
+- Period_end_date cannot be the same date as the announcement or document date. Period_end_date is likely 15 to 60 days before the announcement date (document_date).
 
 IMPORTANT:
 document_type classification rules:
@@ -257,9 +325,7 @@ document_type classification rules:
 - "analyst_report": Reports from financial analysts or research firms
 - "news_article": Third-party news articles about the company
 - "other": Any document that doesn't fit the above categories
-
 When in doubt between "earnings_announcement" and "press_release", choose "earnings_announcement" if the document primarily focuses on financial results, earnings, revenue, or quarterly/annual performance metrics.
-Period_end_date cannot be the same date as the announcement or document date. Period_end_date is likely 15 to 60 days before the announcement date.
 
 Document text (first few pages):
 {text[:DOCUMENT_TEXT_LIMIT]}
@@ -317,6 +383,67 @@ def _map_document_type_to_enum(doc_type_str: str) -> DocumentType | None:
         return None
 
 
+def _enrich_identity_with_knowledge(result: dict, text: str) -> dict:
+    """
+    Final double-check of company identity using LLM knowledge.
+    Unlike previous steps, this step ALLOWS the LLM to use its own knowledge
+    to normalize company names and verify stock tickers.
+
+    Args:
+        result: Current extraction result
+        text: Document text snippet
+
+    Returns:
+        Updated result with normalized company name and ticker
+    """
+    company_name = result.get("company_name")
+    ticker = result.get("ticker")
+
+    # If both are missing, we definitely need help
+    # If both are present, we want to normalize/verify
+
+    prompt = f"""
+I have extracted the following identity information from a financial document:
+- Extracted Company Name: {company_name or "null"}
+- Extracted Ticker: {ticker or "null"}
+
+The document text snippet is:
+---
+{text[:2000]}
+---
+
+YOUR TASK:
+Using your internal knowledge and the context of the document text, provide the STANDARDIZED company name and the correct PRIMARY stock ticker (e.g., AAPL for Apple Inc).
+
+RULES:
+1. You MAY use your external knowledge to correct or normalize these fields.
+2. If the company is public, provide its official full name and its primary trading ticker.
+3. If the extracted ticker and company name seem to belong to the same entity, ensure they are correct.
+4. If they seem to conflict, prioritize the one that matches the document context best.
+5. Return ONLY a JSON object with "company_name" and "ticker" keys.
+
+Response Format:
+{{
+    "company_name": "Official Company Name",
+    "ticker": "TICKER"
+}}
+"""
+    try:
+        response_text = generate_content_safe(prompt, temperature=0.0)
+        response_text = _clean_json_response(response_text)
+        enrichment = json.loads(response_text)
+
+        if enrichment.get("company_name"):
+            result["company_name"] = enrichment["company_name"].strip()
+        if enrichment.get("ticker"):
+            result["ticker"] = enrichment["ticker"].strip().upper()
+
+    except Exception as e:
+        print(f"Warning: Identity enrichment failed: {e}")
+
+    return result
+
+
 def _create_empty_result() -> dict[str, str | None]:
     """
     Create an empty classification result with all fields set to None.
@@ -328,6 +455,7 @@ def _create_empty_result() -> dict[str, str | None]:
         "document_type": None,
         "time_period": None,
         "period_end_date": None,
+        "document_date": None,
         "company_name": None,
         "ticker": None,
         "confidence": "low",
@@ -348,6 +476,7 @@ def classify_document(text: str) -> dict[str, str | None]:
         Dictionary with:
         - document_type: DocumentType enum value or None
         - time_period: String like "Q3 2024" or "FY 2023" or None
+        - document_date: Date string YYYY-MM-DD or None
         - company_name: Company name or None
         - ticker: Ticker symbol or None
         - confidence: Confidence level (high/medium/low) or None
@@ -361,17 +490,20 @@ def classify_document(text: str) -> dict[str, str | None]:
         response_text = _clean_json_response(response_text)
         result = json.loads(response_text)
 
-        # Step 3: Reflection step - validate and correct extracted fields
+        # Step 3: Reflection step - validate and correct extracted fields (strictly from text)
         result = _reflect_on_extraction(result, text)
 
-        # Step 4: Apply post-processing rules
+        # Step 4: Identity Enrichment - normalize company name and ticker using LLM knowledge
+        result = _enrich_identity_with_knowledge(result, text)
+
+        # Step 5: Apply post-processing rules
         doc_type = result.get("document_type")
         time_period = result.get("time_period")
 
         if doc_type and time_period:
             result["time_period"] = _apply_time_period_corrections(doc_type, time_period)
 
-        # Step 5: Map document_type string to DocumentType enum
+        # Step 6: Map document_type string to DocumentType enum
         if result.get("document_type"):
             result["document_type"] = _map_document_type_to_enum(result["document_type"])
 

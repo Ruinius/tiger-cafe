@@ -673,7 +673,7 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                                 value={assumptions.diluted_shares_outstanding}
                                 onChange={(val) => handleAssumptionChange('diluted_shares_outstanding', val)}
                                 isPercentage={false}
-                                decimalPlaces={0}
+                                decimalPlaces={3}
                                 useSeparators={true}
                             />
                         </label>

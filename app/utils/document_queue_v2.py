@@ -5,7 +5,7 @@ import traceback
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.models.document import Document, DocumentStatus, DocumentType
+from app.models.document import Document, DocumentStatus, DocumentType, ProcessingStatus
 
 # Import financial statement processors
 # We import them inside methods or here if no circular dep
@@ -116,6 +116,19 @@ class DocumentQueue:
 
                     # Refresh to check result
                     db.refresh(document)
+
+                    # Check for duplicates
+                    if document.duplicate_detected:
+                        print(f"Document {document_id} is a duplicate. Stopping pipeline.")
+                        document.indexing_status = ProcessingStatus.DUPLICATE_DETECTED
+                        db.commit()
+                        self._update_status(
+                            db,
+                            document,
+                            DocumentStatus.DUPLICATE_DETECTED,
+                            "Duplicate document detected",
+                        )
+                        return
 
                     if document.document_type == DocumentType.EARNINGS_ANNOUNCEMENT:
                         self._update_status(db, document, DocumentStatus.INDEXED)

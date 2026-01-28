@@ -52,7 +52,7 @@ def calculate_dcf(historical_entries: list, assumptions: dict) -> dict:
     latest_entry = historical_entries[-1]
 
     # Starting values
-    start_invested_capital = latest_entry.get("invested_capital") or Decimal("0")
+    start_invested_capital = Decimal(str(latest_entry.get("invested_capital") or 0))
 
     # Check if latest entry is quarterly (for fallback logic)
     time_period = latest_entry.get("time_period", "")
@@ -73,15 +73,15 @@ def calculate_dcf(historical_entries: list, assumptions: dict) -> dict:
 
             if revenues:
                 avg_revenue = sum(revenues) / len(revenues)
-                start_revenue = avg_revenue * 4
+                start_revenue = Decimal(str(avg_revenue)) * 4
             else:
                 # Fallback if specific revenue fields are missing
-                start_revenue = latest_entry.get("revenue") or Decimal("0")
+                start_revenue = Decimal(str(latest_entry.get("revenue") or 0))
                 if is_quarterly:
                     start_revenue *= 4
         else:
             # Fallback to original logic if no quarterly data found
-            start_revenue = latest_entry.get("revenue") or Decimal("0")
+            start_revenue = Decimal(str(latest_entry.get("revenue") or 0))
             if is_quarterly:
                 start_revenue *= 4
 
@@ -147,7 +147,7 @@ def calculate_dcf(historical_entries: list, assumptions: dict) -> dict:
         if mct != 0:
             delta_ic = delta_revenue / mct
         else:
-            delta_ic = 0
+            delta_ic = Decimal(0)
 
         current_invested_capital += delta_ic
 

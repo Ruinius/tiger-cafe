@@ -34,6 +34,7 @@ function MissionControlDashboard({ onBack, focusedDocumentId, setFocusedDocument
 
         // Convert to array and sort by last seen (most recent first)
         const merged = Array.from(completedDocumentsRef.current.values())
+            .reverse()
             .sort((a, b) => b.lastSeen - a.lastSeen)
 
         setAllDocuments(merged)
@@ -52,6 +53,13 @@ function MissionControlDashboard({ onBack, focusedDocumentId, setFocusedDocument
 
         const indexingStatus = doc.indexing_status?.toLowerCase()
         const analysisStatus = doc.analysis_status?.toLowerCase()
+
+        // Handle Duplicate Detected
+        if (indexingStatus === 'duplicate_detected') {
+            if (milestoneKey === 'upload') return 'completed'
+            if (milestoneKey === 'classification') return 'warning'
+            return 'skipped'
+        }
 
         if (milestoneKey === 'upload') return indexingStatus ? 'completed' : 'pending'
         if (milestoneKey === 'classification') {

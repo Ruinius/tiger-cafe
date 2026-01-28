@@ -49,7 +49,6 @@ def extract_income_statement(
     document_id: str,
     file_path: str,
     time_period: str,
-    max_retries: int = 4,
     document_type: str | None = None,
     balance_sheet_chunk_index: int | None = None,
     period_end_date: str | None = None,
@@ -64,7 +63,6 @@ def extract_income_statement(
         document_id: Document ID
         file_path: Path to PDF file
         time_period: Time period (e.g., "Q3 2023")
-        max_retries: Maximum number of retry attempts for section finding (4 total: same, before, after, 2 after)
         document_type: Document type (e.g., "earnings_announcement", "annual_filing", "quarterly_filing")
 
     Returns:
@@ -370,7 +368,8 @@ def check_income_statement_completeness_llm(
     """
     validation_criteria = """
     - The title of the income statement or statement of operations needs to be visible
-    - The table must have time header at the top, such as "Three Months Ended in..."
+    - The table must have time header at the top, such as "Three Months Ended in..." or Quarter
+    - The table SHOULD include multiple columns with data from other time periods
     - The statement itself starts with revenue header, revenue or sales
     - Include cost of revenue, cost of sales, or cost of goods sold
     - Include operating expenses (R&D, SG&A, etc.)
@@ -602,15 +601,54 @@ def post_process_income_statement_line_items(
         source="tiger-transformer",
     )
 
-    # Step 2: Normalize signs based on is_expense
-    # Confirmed expenses (is_expense=True) should be negative
-    for item in processed_items:
-        is_expense = item.get("is_expense")
-        line_value = item.get("line_value") or 0
+    # Step 2: Sign Normalization based on predominant category signs
 
-        if is_expense is True and line_value > 0:
-            # Flip to negative
-            item["line_value"] = -line_value
+    # 2.1: Expenses - Base items (is_expense=True, is_calculated=False)
+    base_expenses = [
+        item
+        for item in processed_items
+        if item.get("is_expense") is True and item.get("is_calculated") is False
+    ]
+    pos_exp_count = sum(1 for e in base_expenses if (e.get("line_value") or 0) > 0)
+    neg_exp_count = sum(1 for e in base_expenses if (e.get("line_value") or 0) < 0)
+
+    if pos_exp_count > neg_exp_count:
+        add_log(
+            document_id,
+            FinancialStatementMilestone.INCOME_STATEMENT,
+            "Expenses are predominantly positive. Flipping all expense signs to normalize categorical presentation.",
+        )
+        for item in processed_items:
+            # Flip ALL expenses to correct the systematic inversion
+            if item.get("is_expense") is True and item.get("line_value") is not None:
+                item["line_value"] = -item["line_value"]
+
+    # 2.2: Other Income - Base items (is_expense=False, is_calculated=False, no "revenue" in name)
+    base_other_income = [
+        item
+        for item in processed_items
+        if item.get("is_expense") is False
+        and item.get("is_calculated") is False
+        and "revenue" not in (item.get("standardized_name") or "").lower()
+    ]
+    pos_inc_count = sum(1 for i in base_other_income if (i.get("line_value") or 0) > 0)
+    neg_inc_count = sum(1 for i in base_other_income if (i.get("line_value") or 0) < 0)
+
+    if neg_inc_count > pos_inc_count:
+        add_log(
+            document_id,
+            FinancialStatementMilestone.INCOME_STATEMENT,
+            "Non-revenue income items are predominantly negative. Flipping all non-revenue income signs to normalize categorical presentation.",
+        )
+        for item in processed_items:
+            # Flip ALL non-revenue non-expenses to correct the systematic inversion
+            if (
+                item.get("is_expense") is False
+                and item.get("is_calculated") is False
+                and "revenue" not in (item.get("standardized_name") or "").lower()
+                and item.get("line_value") is not None
+            ):
+                item["line_value"] = -item["line_value"]
 
     # Step 3: Validate calculations using standardized_name and is_calculated
     validation_errors = []

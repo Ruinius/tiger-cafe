@@ -1,14 +1,2 @@
 formatted_input
-[<START>] [<START>] [income_statement] [NET SALES] [Cost of sales] [Gross profit]
-"[<START>] [NET SALES] [income_statement] [Cost of sales] [Gross profit] [Selling, general and administrative]"
-"[NET SALES] [Cost of sales] [income_statement] [Gross profit] [Selling, general and administrative] [Other - net]"
-"[Cost of sales] [Gross profit] [income_statement] [Selling, general and administrative] [Other - net] [Loss on sale of business]"
-"[Gross profit] [Selling, general and administrative] [income_statement] [Other - net] [Loss on sale of business] [Asset impairment charges]"
-"[Selling, general and administrative] [Other - net] [income_statement] [Loss on sale of business] [Asset impairment charges] [Restructuring charges]"
-[Other - net] [Loss on sale of business] [income_statement] [Asset impairment charges] [Restructuring charges] [Income from operations]
-[Loss on sale of business] [Asset impairment charges] [income_statement] [Restructuring charges] [Income from operations] [Interest - net]
-[Asset impairment charges] [Restructuring charges] [income_statement] [Income from operations] [Interest - net] [EARNINGS FROM CONTINUING OPERATIONS BEFORE INCOME TAXES]
-[Restructuring charges] [Income from operations] [income_statement] [Interest - net] [EARNINGS FROM CONTINUING OPERATIONS BEFORE INCOME TAXES] [Income taxes on continuing operations]
-[Income from operations] [Interest - net] [income_statement] [EARNINGS FROM CONTINUING OPERATIONS BEFORE INCOME TAXES] [Income taxes on continuing operations] [NET EARNINGS FROM CONTINUING OPERATIONS]
-[Interest - net] [EARNINGS FROM CONTINUING OPERATIONS BEFORE INCOME TAXES] [income_statement] [Income taxes on continuing operations] [NET EARNINGS FROM CONTINUING OPERATIONS] [<END>]
-[EARNINGS FROM CONTINUING OPERATIONS BEFORE INCOME TAXES] [Income taxes on continuing operations] [income_statement] [NET EARNINGS FROM CONTINUING OPERATIONS] [<END>] [<END>]
+[<START>] [<START>] [income_statement] [Total net revenue] [<END>] [<END>]

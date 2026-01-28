@@ -1,12 +1,12 @@
 import React from 'react'
 import '../views/document/Document.css'
 
-export default function OrganicGrowthTable({ data, formatNumber }) {
+export default function OrganicGrowthTable({ data, formatNumber, currency: propCurrency, unit: propUnit }) {
     if (!data) return null
 
-    // Determine currency and unit from data
-    const currency = data.currency || 'N/A'
-    const unit = data.current_period_revenue_unit || 'N/A'
+    // Determine currency and unit from props or data
+    const currency = propCurrency || data.currency || 'N/A'
+    const unit = propUnit || data.current_period_revenue_unit || 'N/A'
 
     return (
         <div className="table-container">

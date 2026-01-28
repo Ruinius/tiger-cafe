@@ -14,6 +14,7 @@ from agents.document_classifier import classify_document
 from agents.document_summarizer import generate_document_summary
 from app.models.company import Company
 from app.models.document import Document, DocumentType, ProcessingStatus
+from app.models.document_status import DocumentStatus
 from app.utils.document_hash import generate_document_hash
 from app.utils.document_indexer import index_document_chunks
 from app.utils.duplicate_detector import check_duplicate_document
@@ -183,15 +184,34 @@ def process_document(
     # 2. Fallback to name if not found by ticker
     if not company and company_name:
         company = db_session.query(Company).filter(Company.name.ilike(company_name)).first()
-        # If found by name but it has no ticker, link the ticker now
-        if company and ticker and not company.ticker:
-            company.ticker = ticker
-            db_session.commit()
+
+    # Update or Enrich existing company
+    if company:
+        name_updated = False
+        ticker_updated = False
+
+        # update name if different (use standardized name from enrichment)
+        if company_name and company.name != company_name:
             add_log(
                 document.id,
                 FinancialStatementMilestone.CLASSIFICATION,
-                f"I've updated the ticker for {company.name} to {ticker}.",
+                f"I'm updating the company name from '{company.name}' to '{company_name}' to match my standardized records.",
             )
+            company.name = company_name
+            name_updated = True
+
+        # update ticker if missing
+        if ticker and not company.ticker:
+            company.ticker = ticker
+            ticker_updated = True
+            add_log(
+                document.id,
+                FinancialStatementMilestone.CLASSIFICATION,
+                f"I've identified the ticker {ticker} for {company.name} and updated its record.",
+            )
+
+        if name_updated or ticker_updated:
+            db_session.commit()
 
     # 3. Create new if still not found
     if not company:
@@ -210,6 +230,7 @@ def process_document(
         document.document_type = classification_data.get("document_type")
         document.time_period = classification_data.get("time_period")
         document.period_end_date = classification_data.get("period_end_date")
+        document.document_date = classification_data.get("document_date")
         document.unique_id = document_hash
         document.page_count = total_pages
         document.character_count = character_count
@@ -343,6 +364,13 @@ def process_document(
             MilestoneStatus.ERROR,
             message=f"Indexing failed: {str(e)}",
         )
+
+        # Explicitly update DB state so it's not stuck in "indexing"
+        document.indexing_status = ProcessingStatus.ERROR
+        document.status = DocumentStatus.INDEXING_FAILED
+        document.error_message = str(e)
+        db_session.commit()
+
         raise e
 
     _, total_pages, character_count = extract_text_from_pdf(resolved_file_path, max_pages=None)

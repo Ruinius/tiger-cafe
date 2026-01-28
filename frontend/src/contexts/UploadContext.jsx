@@ -1,17 +1,33 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import axios from 'axios'
 import { useAuth } from './AuthContext'
 import { useStatusStream } from '../hooks/useStatusStream'
 import { API_BASE_URL } from '../config'
 
-export const UploadContext = createContext()
+export const UploadStateContext = createContext()
+export const UploadDispatchContext = createContext()
 
-export const useUpload = () => {
-    const context = useContext(UploadContext)
+export const useUploadState = () => {
+    const context = useContext(UploadStateContext)
     if (!context) {
-        throw new Error('useUpload must be used within UploadProvider')
+        throw new Error('useUploadState must be used within UploadProvider')
     }
     return context
+}
+
+export const useUploadDispatch = () => {
+    const context = useContext(UploadDispatchContext)
+    if (!context) {
+        throw new Error('useUploadDispatch must be used within UploadProvider')
+    }
+    return context
+}
+
+// Legacy hook returning both
+export const useUpload = () => {
+    const state = useUploadState()
+    const dispatch = useUploadDispatch()
+    return { ...state, ...dispatch }
 }
 
 export const UploadProvider = ({ children }) => {
@@ -249,7 +265,8 @@ export const UploadProvider = ({ children }) => {
                         'indexing_failed',
                         'upload_failed',
                         'error',
-                        'indexed' // Added 'indexed' as a fallback for non-earnings docs
+                        'indexed', // Added 'indexed' as a fallback for non-earnings docs
+                        'duplicate_detected'
                     ]
                     return terminal.includes(status) || terminal.includes(idxStatus)
                 })
@@ -276,20 +293,25 @@ export const UploadProvider = ({ children }) => {
         loadUploadProgress()
     }, []) // Only on mount
 
-    const value = {
+    const stateValue = {
         uploadingDocuments,
         processingLogs,
         isStreaming,
         showUploadProgress,
-        setShowUploadProgress,
-        loadUploadProgress,
         isConnected, // Expose SSE connection status
         sseError // Expose SSE errors
     }
 
+    const dispatchValue = useMemo(() => ({
+        setShowUploadProgress,
+        loadUploadProgress,
+    }), [loadUploadProgress])
+
     return (
-        <UploadContext.Provider value={value}>
-            {children}
-        </UploadContext.Provider>
+        <UploadDispatchContext.Provider value={dispatchValue}>
+            <UploadStateContext.Provider value={stateValue}>
+                {children}
+            </UploadStateContext.Provider>
+        </UploadDispatchContext.Provider>
     )
 }

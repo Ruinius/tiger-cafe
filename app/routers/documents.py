@@ -51,10 +51,12 @@ def add_uploader_name_to_document(db: Session, document: Document) -> dict:
         "document_type": document.document_type,
         "time_period": document.time_period,
         "period_end_date": document.period_end_date,
+        "document_date": document.document_date,
         "summary": document.summary,
         "unique_id": document.unique_id,
         "indexing_status": document.indexing_status,
         "analysis_status": document.analysis_status,
+        "status": document.status,
         "page_count": document.page_count,
         "character_count": document.character_count,
         "uploaded_at": document.uploaded_at,
@@ -82,6 +84,30 @@ def add_uploader_name_to_document(db: Session, document: Document) -> dict:
         doc_dict["income_statement_status"] = (
             "valid" if document.income_statement.is_valid else "invalid"
         )
+
+    # GAAP Reconciliation Status
+    from app.models.amortization import Amortization
+    from app.models.gaap_reconciliation import GAAPReconciliation
+
+    # Check if either amortization or GAAP reconciliation exists
+    # If the document is an Earnings Announcement, we expect GAAP Reconciliation
+    # If it's a Filing, we typically look for Amortization (though both are checked in calculation)
+    gaap_recon = (
+        db.query(GAAPReconciliation).filter(GAAPReconciliation.document_id == document.id).first()
+    )
+    amortization = db.query(Amortization).filter(Amortization.document_id == document.id).first()
+
+    if gaap_recon or amortization:
+        # If both exist or either is valid, we consider it found.
+        # However, if one exists but is explicitly marked as invalid (e.g. empty or calculation error),
+        # we might want to flag it. For now, "valid" if they exist.
+        doc_dict["gaap_reconciliation_status"] = "valid"
+    else:
+        # If document is processed but no reconciliation table was found, set to warning
+        if document.status == DocumentStatus.PROCESSING_COMPLETE:
+            doc_dict["gaap_reconciliation_status"] = "warning"
+        else:
+            doc_dict["gaap_reconciliation_status"] = "not_extracted"
 
     return doc_dict
 
@@ -558,13 +584,40 @@ async def confirm_upload_internal(
         raise HTTPException(status_code=500, detail=f"Error classifying document: {str(e)}")
 
     # Get company (required to create document)
+    ticker = (
+        classification_data.get("ticker").strip().upper()
+        if classification_data.get("ticker")
+        else None
+    )
     company_name = classification_data.get("company_name")
-    if not company_name:
-        raise HTTPException(status_code=400, detail="Company not found")
 
-    company = db.query(Company).filter(Company.name.ilike(company_name)).first()
+    # 1. Try to find by ticker (the primary unique identifier)
+    company = None
+    if ticker:
+        company = db.query(Company).filter(Company.ticker == ticker).first()
+
+    # 2. Fallback to name if not found by ticker
+    if not company and company_name:
+        company = db.query(Company).filter(Company.name.ilike(company_name)).first()
+
     if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Company not found (Ticker: {ticker or 'N/A'}, Name: {company_name or 'N/A'})",
+        )
+
+    # Sync Identity
+    needs_commit = False
+    if company_name and company.name != company_name:
+        company.name = company_name
+        needs_commit = True
+
+    if ticker and not company.ticker:
+        company.ticker = ticker
+        needs_commit = True
+
+    if needs_commit:
+        db.commit()
 
     # Generate hash from first 5000 characters (avoids large document issues)
     hash_text = (

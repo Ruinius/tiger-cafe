@@ -10,6 +10,7 @@ class DocumentStatus(str, enum.Enum):
     # Pre-Processing (Duplicate Check - happens BEFORE file upload)
     CHECKING_DUPLICATE = "checking_duplicate"
     AWAITING_CONFIRMATION = "awaiting_confirmation"  # User must confirm (duplicate or new)
+    DUPLICATE_DETECTED = "duplicate_detected"
 
     # Classification Phase
     CLASSIFYING = "classifying"

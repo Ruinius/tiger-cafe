@@ -34,7 +34,7 @@ DEFAULT_MODEL = (
     "gemini-2.5-flash-lite"  # small model is enough. Did not see real performance difference
 )
 TEMPERATURE = 0.1  # Very low temperature for focused, deterministic responses
-EMBEDDING_MODEL = "models/embedding-001"  # Gemini embedding model
+EMBEDDING_MODEL = "models/gemini-embedding-001"  # Gemini stable embedding model
 
 # Logging
 LOG_LEVEL = "INFO"

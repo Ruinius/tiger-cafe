@@ -1,19 +1,2 @@
 formatted_input
-"[<START>] [<START>] [current_assets] [Cash and cash equivalents] [Accounts and notes receivable, net] [Inventories, net]"
-"[<START>] [Cash and cash equivalents] [current_assets] [Accounts and notes receivable, net] [Inventories, net] [Other current assets]"
-"[Cash and cash equivalents] [Accounts and notes receivable, net] [current_assets] [Inventories, net] [Other current assets] [Total current assets]"
-"[Accounts and notes receivable, net] [Inventories, net] [current_assets] [Other current assets] [Total current assets] [Property, plant and equipment, net]"
-"[Inventories, net] [Other current assets] [current_assets] [Total current assets] [Property, plant and equipment, net] [Goodwill and other intangibles, net]"
-"[Other current assets] [Total current assets] [noncurrent_assets] [Property, plant and equipment, net] [Goodwill and other intangibles, net] [Other assets]"
-"[Total current assets] [Property, plant and equipment, net] [noncurrent_assets] [Goodwill and other intangibles, net] [Other assets] [Total assets]"
-"[Property, plant and equipment, net] [Goodwill and other intangibles, net] [noncurrent_assets] [Other assets] [Total assets] [Short-term borrowings]"
-"[Goodwill and other intangibles, net] [Other assets] [noncurrent_assets] [Total assets] [Short-term borrowings] [Current maturities of long-term debt]"
-[Other assets] [Total assets] [current_liabilities] [Short-term borrowings] [Current maturities of long-term debt] [Accounts payable]
-[Total assets] [Short-term borrowings] [current_liabilities] [Current maturities of long-term debt] [Accounts payable] [Accrued expenses]
-[Short-term borrowings] [Current maturities of long-term debt] [current_liabilities] [Accounts payable] [Accrued expenses] [Total current liabilities]
-[Current maturities of long-term debt] [Accounts payable] [current_liabilities] [Accrued expenses] [Total current liabilities] [Long-term debt]
-[Accounts payable] [Accrued expenses] [current_liabilities] [Total current liabilities] [Long-term debt] [Other long-term liabilities]
-[Accrued expenses] [Total current liabilities] [noncurrent_liabilities] [Long-term debt] [Other long-term liabilities] [Shareowners' equity]
-[Total current liabilities] [Long-term debt] [noncurrent_liabilities] [Other long-term liabilities] [Shareowners' equity] [Total liabilities and shareowners' equity]
-[Long-term debt] [Other long-term liabilities] [stockholders_equity] [Shareowners' equity] [Total liabilities and shareowners' equity] [<END>]
-[Other long-term liabilities] [Shareowners' equity] [stockholders_equity] [Total liabilities and shareowners' equity] [<END>] [<END>]
+[<START>] [<START>] [current_assets] [Cash and cash equivalents] [<END>] [<END>]

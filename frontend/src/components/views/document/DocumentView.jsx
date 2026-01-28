@@ -149,7 +149,7 @@ function DocumentView({ selectedDocument, selectedCompany, onBack, onShowUpdates
                                 </span>
                                 {doc.balance_sheet_status && doc.balance_sheet_status !== 'not_extracted' && (
                                     <span
-                                        className={`status-badge status-${doc.balance_sheet_status === 'valid' ? 'indexed' : 'classified'}`}
+                                        className={`status-badge status-${doc.balance_sheet_status === 'valid' ? 'indexed' : (doc.balance_sheet_status === 'warning' ? 'warning' : 'classified')}`}
                                         title={`Balance Sheet: ${doc.balance_sheet_status}`}
                                     >
                                         BS
@@ -157,16 +157,28 @@ function DocumentView({ selectedDocument, selectedCompany, onBack, onShowUpdates
                                 )}
                                 {doc.income_statement_status && doc.income_statement_status !== 'not_extracted' && (
                                     <span
-                                        className={`status-badge status-${doc.income_statement_status === 'valid' ? 'indexed' : 'classified'}`}
+                                        className={`status-badge status-${doc.income_statement_status === 'valid' ? 'indexed' : (doc.income_statement_status === 'warning' ? 'warning' : 'classified')}`}
                                         title={`Income Statement: ${doc.income_statement_status}`}
                                     >
                                         IS
                                     </span>
                                 )}
+                                {doc.gaap_reconciliation_status && doc.gaap_reconciliation_status === 'warning' && (
+                                    <span
+                                        className="status-badge status-warning"
+                                        title="GAAP Reconciliation: Not Found (Warning)"
+                                    >
+                                        GAAP!
+                                    </span>
+                                )}
                             </div>
+
                         </div>
                         <div className="metadata-item">
                             <strong>Type:</strong> {doc.document_type?.replace(/_/g, ' ') || 'N/A'}
+                        </div>
+                        <div className="metadata-item">
+                            <strong>Document Date:</strong> {doc.document_date ? formatDate(doc.document_date) : 'N/A'}
                         </div>
                         <div className="metadata-item">
                             <strong>Time Period:</strong> {doc.time_period || 'N/A'}
@@ -199,7 +211,7 @@ function DocumentView({ selectedDocument, selectedCompany, onBack, onShowUpdates
                     )}
 
                     {/* Re-run Processing Buttons */}
-                    {(doc.indexing_status === 'indexed' || doc.indexing_status === 'indexing') && (
+                    {doc.id && (
                         <div className="summary-section" style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
                             <strong>Re-run Processing</strong>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
@@ -209,8 +221,6 @@ function DocumentView({ selectedDocument, selectedCompany, onBack, onShowUpdates
                                         isCheckingProcessingStatus ||
                                         isProcessing ||
                                         doc.analysis_status === 'processing' ||
-                                        !doc.document_type ||
-                                        !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(doc.document_type) ||
                                         buttonDebouncing['rerun-extraction']
                                     }
                                     onClick={() => debounceAction('rerun-extraction', () => {
@@ -228,9 +238,6 @@ function DocumentView({ selectedDocument, selectedCompany, onBack, onShowUpdates
                                         isCheckingProcessingStatus ||
                                         isProcessing ||
                                         doc.analysis_status === 'processing' ||
-                                        !hasFinancialStatements ||
-                                        !doc.document_type ||
-                                        !['earnings_announcement', 'quarterly_filing', 'annual_filing'].includes(doc.document_type) ||
                                         buttonDebouncing['rerun-historical']
                                     }
                                     style={{ width: '100%', textAlign: 'left' }}

@@ -99,7 +99,6 @@ async def extract_balance_sheet_task(document_id: str, db: Session) -> None:
                 document_id=document_id,
                 file_path=document.file_path,
                 time_period=time_period,
-                max_retries=3,
                 document_type=document.document_type,
                 period_end_date=document.period_end_date,
             ),
@@ -285,7 +284,6 @@ async def extract_income_statement_task(document_id: str, db: Session) -> None:
                 document_id=document_id,
                 file_path=document.file_path,
                 time_period=time_period,
-                max_retries=3,
                 document_type=document.document_type,
                 period_end_date=document.period_end_date,
                 balance_sheet_chunk_index=balance_sheet_chunk_index,
@@ -403,6 +401,7 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
     from app.models.other_assets import OtherAssets, OtherAssetsLineItem
     from app.models.other_liabilities import OtherLiabilities, OtherLiabilitiesLineItem
     from app.models.shares_outstanding import SharesOutstanding
+    from app.utils.line_item_utils import convert_from_ones, convert_to_ones
 
     loop = asyncio.get_event_loop()
 
@@ -437,6 +436,42 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
             )
 
             if shares_data:
+                # Normalize units to match Income Statement if available
+                if document.income_statement and document.income_statement.unit:
+                    target_unit = document.income_statement.unit
+
+                    # Normalize Basic Shares
+                    basic_val = shares_data.get("basic_shares_outstanding")
+                    basic_unit = shares_data.get("basic_shares_outstanding_unit")
+                    if basic_val is not None:
+                        # If unit is missing for shares but we have value, we assume it might be raw or same as IS?
+                        # But simpler to only convert if we have a source unit.
+                        # If source unit is missing, we can't reliably convert.
+                        if basic_unit and target_unit.lower().strip() != basic_unit.lower().strip():
+                            try:
+                                val_ones = convert_to_ones(float(basic_val), basic_unit)
+                                val_converted = convert_from_ones(val_ones, target_unit)
+                                shares_data["basic_shares_outstanding"] = val_converted
+                                shares_data["basic_shares_outstanding_unit"] = target_unit
+                            except (ValueError, TypeError):
+                                pass
+
+                    # Normalize Diluted Shares
+                    diluted_val = shares_data.get("diluted_shares_outstanding")
+                    diluted_unit = shares_data.get("diluted_shares_outstanding_unit")
+                    if diluted_val is not None:
+                        if (
+                            diluted_unit
+                            and target_unit.lower().strip() != diluted_unit.lower().strip()
+                        ):
+                            try:
+                                val_ones = convert_to_ones(float(diluted_val), diluted_unit)
+                                val_converted = convert_from_ones(val_ones, target_unit)
+                                shares_data["diluted_shares_outstanding"] = val_converted
+                                shares_data["diluted_shares_outstanding_unit"] = target_unit
+                            except (ValueError, TypeError):
+                                pass
+
                 # Delete existing shares
                 db.query(SharesOutstanding).filter(
                     SharesOutstanding.document_id == document_id
@@ -461,7 +496,7 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
                     document_id,
                     FinancialStatementMilestone.SHARES_OUTSTANDING,
                     MilestoneStatus.COMPLETED,
-                    "Shares outstanding extracted",
+                    f"Shares outstanding extracted (Unit: {shares_data.get('basic_shares_outstanding_unit') or shares_data.get('diluted_shares_outstanding_unit') or 'Unknown'})",
                 )
             else:
                 update_milestone(
@@ -485,116 +520,133 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
             )
 
         # Extract Organic Growth (if applicable)
-        if document.document_type in [
-            DocumentType.EARNINGS_ANNOUNCEMENT,
-            DocumentType.QUARTERLY_FILING,
-        ]:
-            update_milestone(
-                document_id,
-                FinancialStatementMilestone.ORGANIC_GROWTH,
-                MilestoneStatus.IN_PROGRESS,
-                "Extracting organic growth...",
-            )
-
-            # Ensure we have the latest income statement data
-            db.refresh(document)
-
-            # Prepare income statement data as a dict for the agent
-            income_statement_data = {"line_items": [], "revenue_prior_year": None}
-            if document.income_statement:
-                income_statement_data = {
-                    "unit": document.income_statement.unit,
-                    "currency": document.income_statement.currency,
-                    "chunk_index": document.income_statement.chunk_index,
-                    "revenue_prior_year": float(document.income_statement.revenue_prior_year)
-                    if document.income_statement.revenue_prior_year
-                    else None,
-                    "line_items": [
-                        {
-                            "line_name": item.line_name,
-                            "standardized_name": item.standardized_name,
-                            "line_value": float(item.line_value)
-                            if item.line_value is not None
-                            else None,
-                        }
-                        for item in document.income_statement.line_items
-                    ],
-                    "period_end_date": document.income_statement.period_end_date,
-                }
-
-            organic_growth_data = await loop.run_in_executor(
-                None,
-                functools.partial(
-                    extract_organic_growth,
-                    document_id=document_id,
-                    file_path=document.file_path,
-                    time_period=document.time_period or "Unknown",
-                    income_statement_data=income_statement_data,
-                ),
-            )
-
-            if organic_growth_data:
-                db.query(OrganicGrowth).filter(OrganicGrowth.document_id == document_id).delete()
-
-                organic_growth = OrganicGrowth(
-                    id=str(uuid.uuid4()),
-                    document_id=document_id,
-                    time_period=document.time_period,
-                    period_end_date=document.period_end_date,
-                    prior_period_revenue=organic_growth_data.get("prior_period_revenue"),
-                    prior_period_revenue_unit=organic_growth_data.get("prior_period_revenue_unit"),
-                    current_period_revenue=organic_growth_data.get("current_period_revenue"),
-                    simple_revenue_growth=organic_growth_data.get("simple_revenue_growth"),
-                    acquisition_revenue_impact=organic_growth_data.get(
-                        "acquisition_revenue_impact"
-                    ),
-                    current_period_adjusted_revenue=organic_growth_data.get(
-                        "current_period_adjusted_revenue"
-                    ),
-                    organic_revenue_growth=organic_growth_data.get("organic_revenue_growth"),
-                    chunk_index=organic_growth_data.get("chunk_index"),
-                    is_valid=organic_growth_data.get("is_valid", False),
+        try:
+            if document.document_type in [
+                DocumentType.EARNINGS_ANNOUNCEMENT,
+                DocumentType.QUARTERLY_FILING,
+            ]:
+                update_milestone(
+                    document_id,
+                    FinancialStatementMilestone.ORGANIC_GROWTH,
+                    MilestoneStatus.IN_PROGRESS,
+                    "Extracting organic growth...",
                 )
-                db.add(organic_growth)
 
-                # Update income statement with prior year data if missing
+                # Ensure we have the latest income statement data
+                db.refresh(document)
+
+                # Prepare income statement data as a dict for the agent
+                income_statement_data = {"line_items": [], "revenue_prior_year": None}
                 if document.income_statement:
-                    document.income_statement.revenue_prior_year = organic_growth_data.get(
-                        "prior_period_revenue"
-                    )
-                    document.income_statement.revenue_prior_year_unit = organic_growth_data.get(
-                        "prior_period_revenue_unit"
-                    )
+                    income_statement_data = {
+                        "unit": document.income_statement.unit,
+                        "currency": document.income_statement.currency,
+                        "chunk_index": document.income_statement.chunk_index,
+                        "revenue_prior_year": float(document.income_statement.revenue_prior_year)
+                        if document.income_statement.revenue_prior_year
+                        else None,
+                        "line_items": [
+                            {
+                                "line_name": item.line_name,
+                                "standardized_name": item.standardized_name,
+                                "line_value": float(item.line_value)
+                                if item.line_value is not None
+                                else None,
+                            }
+                            for item in document.income_statement.line_items
+                        ],
+                        "period_end_date": document.income_statement.period_end_date,
+                    }
 
-                db.commit()
+                organic_growth_data = await loop.run_in_executor(
+                    None,
+                    functools.partial(
+                        extract_organic_growth,
+                        document_id=document_id,
+                        file_path=document.file_path,
+                        time_period=document.time_period or "Unknown",
+                        income_statement_data=income_statement_data,
+                    ),
+                )
 
-                if organic_growth_data.get("is_valid"):
-                    update_milestone(
-                        document_id,
-                        FinancialStatementMilestone.ORGANIC_GROWTH,
-                        MilestoneStatus.COMPLETED,
-                        "Organic growth extracted",
+                if organic_growth_data:
+                    db.query(OrganicGrowth).filter(
+                        OrganicGrowth.document_id == document_id
+                    ).delete()
+
+                    organic_growth = OrganicGrowth(
+                        id=str(uuid.uuid4()),
+                        document_id=document_id,
+                        time_period=document.time_period,
+                        period_end_date=document.period_end_date,
+                        prior_period_revenue=organic_growth_data.get("prior_period_revenue"),
+                        prior_period_revenue_unit=organic_growth_data.get(
+                            "prior_period_revenue_unit"
+                        ),
+                        current_period_revenue=organic_growth_data.get("current_period_revenue"),
+                        simple_revenue_growth=organic_growth_data.get("simple_revenue_growth"),
+                        acquisition_revenue_impact=organic_growth_data.get(
+                            "acquisition_revenue_impact"
+                        ),
+                        current_period_adjusted_revenue=organic_growth_data.get(
+                            "current_period_adjusted_revenue"
+                        ),
+                        organic_revenue_growth=organic_growth_data.get("organic_revenue_growth"),
+                        chunk_index=organic_growth_data.get("chunk_index"),
+                        is_valid=organic_growth_data.get("is_valid", False),
                     )
+                    db.add(organic_growth)
+
+                    # Update income statement with prior year data if missing
+                    if document.income_statement:
+                        document.income_statement.revenue_prior_year = organic_growth_data.get(
+                            "prior_period_revenue"
+                        )
+                        document.income_statement.revenue_prior_year_unit = organic_growth_data.get(
+                            "prior_period_revenue_unit"
+                        )
+
+                    db.commit()
+
+                    if organic_growth_data.get("is_valid"):
+                        update_milestone(
+                            document_id,
+                            FinancialStatementMilestone.ORGANIC_GROWTH,
+                            MilestoneStatus.COMPLETED,
+                            "Organic growth extracted",
+                        )
+                    else:
+                        update_milestone(
+                            document_id,
+                            FinancialStatementMilestone.ORGANIC_GROWTH,
+                            MilestoneStatus.ERROR,
+                            "Comparative revenue missing",
+                        )
                 else:
                     update_milestone(
                         document_id,
                         FinancialStatementMilestone.ORGANIC_GROWTH,
-                        MilestoneStatus.ERROR,
-                        "Comparative revenue missing",
+                        MilestoneStatus.SKIPPED,
+                        "Organic growth not found",
                     )
-            else:
-                update_milestone(
-                    document_id,
-                    FinancialStatementMilestone.ORGANIC_GROWTH,
-                    MilestoneStatus.SKIPPED,
-                    "Organic growth not found",
-                )
-                add_log(
-                    document_id,
-                    FinancialStatementMilestone.ORGANIC_GROWTH,
-                    "Gemini response: I couldn't find a dedicated section for organic revenue growth or acquisition impact. I'll rely on the GAAP figures for now.",
-                    source="gemini",
-                )
+                    add_log(
+                        document_id,
+                        FinancialStatementMilestone.ORGANIC_GROWTH,
+                        "Gemini response: I couldn't find a dedicated section for organic revenue growth or acquisition impact. I'll rely on the GAAP figures for now.",
+                        source="gemini",
+                    )
+        except Exception as og_error:
+            update_milestone(
+                document_id,
+                FinancialStatementMilestone.ORGANIC_GROWTH,
+                MilestoneStatus.ERROR,
+                f"Organic growth extraction failed: {str(og_error)}",
+            )
+            add_log(
+                document_id,
+                FinancialStatementMilestone.ORGANIC_GROWTH,
+                f"Organic growth extraction encountered an error: {str(og_error)}",
+            )
 
         # Extract GAAP Reconciliation (runs for all document types, but especially earnings announcements)
         try:
@@ -676,7 +728,7 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
             update_milestone(
                 document_id,
                 FinancialStatementMilestone.GAAP_RECONCILIATION,
-                MilestoneStatus.ERROR,
+                MilestoneStatus.WARNING,
                 f"GAAP reconciliation extraction failed: {str(gaap_error)}",
             )
             add_log(
@@ -1059,6 +1111,18 @@ async def run_ingestion_pipeline(document_id: str, db: Session = None) -> None:
             MilestoneStatus.ERROR,
             f"Ingestion failed: {str(e)}",
         )
+
+        # Ensure failure is recorded in DB
+        from app.models.document import Document, ProcessingStatus
+        from app.models.document_status import DocumentStatus
+
+        doc = db_session.query(Document).filter(Document.id == document_id).first()
+        if doc:
+            doc.status = DocumentStatus.INDEXING_FAILED
+            doc.indexing_status = ProcessingStatus.ERROR
+            doc.error_message = f"Ingestion pipeline failed: {str(e)}"
+            db_session.commit()
+
         raise
     finally:
         if should_close_session:

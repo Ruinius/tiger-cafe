@@ -13,8 +13,8 @@ from google import genai
 from app.utils.mock_llm_responses import MOCK_EMBEDDING_RESPONSE, get_mock_response
 from config.config import DEFAULT_MODEL, EMBEDDING_MODEL, GEMINI_API_KEY, TEMPERATURE
 
-# Initialize Gemini client
-_client = genai.Client(api_key=GEMINI_API_KEY)
+# Initialize Gemini client explicitly using v1 API version
+_client = genai.Client(api_key=GEMINI_API_KEY, http_options={"api_version": "v1beta"})
 
 # Rate limiting configuration
 MIN_DELAY_BETWEEN_CALLS = 0.5  # Minimum 500ms between API calls (increased from 100ms)

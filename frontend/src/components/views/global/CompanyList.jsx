@@ -134,7 +134,7 @@ function CompanyList({ onCompanySelect, onOpenUploadModal, onShowUploadProgress 
                         className={`sort-btn ${sortBy === 'last_doc' ? 'active' : ''}`}
                         onClick={() => setSortBy('last_doc')}
                     >
-                        Date Financials Cover
+                        Most Recent Document
                     </button>
                     <button
                         className={`sort-btn ${sortBy === 'valuation' ? 'active' : ''}`}
@@ -180,7 +180,7 @@ function CompanyList({ onCompanySelect, onOpenUploadModal, onShowUploadProgress 
 
                                 <div className="company-stats">
                                     <div className="stat-row">
-                                        <span className="stat-label">Date Financials Cover</span>
+                                        <span className="stat-label">Most Recent Document</span>
                                         <span className="stat-value">{formatDate(company.latest_document_date)}</span>
                                     </div>
                                     <div className="stat-row">

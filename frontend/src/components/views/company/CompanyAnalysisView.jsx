@@ -179,10 +179,10 @@ function CompanyAnalysisView({ selectedCompany }) {
             render: (entry) => {
                 const val = entry.diluted_shares_outstanding || entry.basic_shares_outstanding;
                 if (!val) return 'N/A';
-                return Number(val).toLocaleString();
+                return Number(val).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 });
             },
             stats: calculateStats(e => e.diluted_shares_outstanding || e.basic_shares_outstanding),
-            formatStats: (val) => val ? Number(val).toLocaleString() : 'N/A'
+            formatStats: (val) => val ? Number(val).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : 'N/A'
         }
     ]
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
-import { useUploadManager } from '../hooks/useUploadManager'
+import { useUploadModalLogic } from '../hooks/useUploadManager'
 import SplitScreen from '../components/layout/SplitScreen'
 import Header from '../components/layout/Header'
 import UploadModal from '../components/modals/UploadModal'
@@ -36,11 +36,7 @@ function Dashboard() {
     openUploadModal,
     closeUploadModal,
     handleUploadSuccess,
-    handleReplaceAndIndex,
-    handleCancelDuplicate,
-    handleCancelUpload,
-    uploadingDocuments
-  } = useUploadManager(() => setRefreshKey(prev => prev + 1))
+  } = useUploadModalLogic(() => setRefreshKey(prev => prev + 1))
 
   // Default split ratios per view type
   const DEFAULT_RATIOS = {

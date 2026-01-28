@@ -14,6 +14,7 @@ class DocumentBase(BaseModel):
     document_type: DocumentType | None = None
     time_period: str | None = None
     period_end_date: str | None = None
+    document_date: str | None = None
     summary: str | None = None
     unique_id: str | None = None
 
@@ -27,6 +28,7 @@ class DocumentUpdate(BaseModel):
     document_type: DocumentType | None = None
     time_period: str | None = None
     period_end_date: str | None = None
+    document_date: str | None = None
     summary: str | None = None
     page_count: int | None = None
     character_count: int | None = None
@@ -60,6 +62,7 @@ class ClassificationResult(BaseModel):
     document_type: DocumentType | None = None
     time_period: str | None = None
     period_end_date: str | None = None
+    document_date: str | None = None
     company_name: str | None = None
     ticker: str | None = None
     confidence: str | None = None  # "high", "medium", "low"

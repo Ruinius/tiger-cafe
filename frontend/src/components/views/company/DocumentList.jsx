@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react'
 import { useDocumentData } from '../../../hooks/useDocumentData'
-import { useUploadManager } from '../../../hooks/useUploadManager'
 
 function DocumentList({ selectedCompany, onDocumentSelect, onBack, onOpenUploadModal, onShowUploadProgress }) {
     const {
@@ -9,30 +8,36 @@ function DocumentList({ selectedCompany, onDocumentSelect, onBack, onOpenUploadM
         loadCompanyDocuments
     } = useDocumentData(selectedCompany)
 
-    const {
-        hasActiveUploads,
-        uploadingDocuments,
-    } = useUploadManager()
-
     // TODO: Re-enable filtering once all documents have proper status values
     // Filter to only show completed documents (PROCESSED or ERROR)
     // Exclude documents that are still in progress
     const completedDocuments = documents.filter(doc => {
+        // Check unified status first (new source of truth)
+        if (doc.status) {
+            const status = doc.status.toLowerCase()
+            const allowedStates = [
+                'processing_complete',
+                'classified',
+                'extraction_failed',
+                'indexing_failed',
+                'completed',
+                'error',
+                'pending',
+                'processing',
+                'classifying',
+                'extracting',
+                'indexing',
+                'uploading'
+            ]
+            if (allowedStates.includes(status)) return true
+        }
+
+        // Fallback to legacy fields for older documents
         const indexingStatus = doc.indexing_status?.toLowerCase()
         const analysisStatus = doc.analysis_status?.toLowerCase()
 
-        // Exclude if still indexing
-        if (['uploading', 'classifying', 'indexing'].includes(indexingStatus)) {
-            return false
-        }
-
-        // Exclude if still processing or pending
-        if (['processing', 'pending'].includes(analysisStatus)) {
-            return false
-        }
-
-        // Only show PROCESSED or ERROR
-        return ['processed', 'error'].includes(analysisStatus)
+        // Include everything for now to avoid disappearing documents during re-runs
+        return true
     })
 
     const formatDocumentType = (type) => {

@@ -271,46 +271,31 @@ def get_operating_income_line_item(
 ) -> IncomeStatementLineItem | None:
     """
     Extract the operating income line item from the income statement.
-    Uses standardized name "Operating Income" if available.
+    Uses standardized name "operating_income".
+    """
+    # First, try to find standardized "operating_income" key (Highest Confidence)
+    for item in income_statement.line_items:
+        if hasattr(item, "standardized_name") and item.standardized_name == "operating_income":
+            if item.line_value is not None:
+                return item
+
+    return None
+
+
+def get_income_before_taxes_line_item(
+    income_statement: IncomeStatement,
+) -> IncomeStatementLineItem | None:
+    """
+    Extract the income before taxes line item from the income statement.
+    Uses standardized name "income_before_taxes".
     """
     if not income_statement or not income_statement.line_items:
         return None
 
-    # First, try to find standardized "Operating Income" name
     for item in income_statement.line_items:
-        if "Operating Income (" in item.line_name:
+        if getattr(item, "standardized_name", None) == "income_before_taxes":
             if item.line_value is not None:
                 return item
-
-    # Fallback to LLM insights if available
-    if llm_insights:
-        llm_line = llm_insights.get("operating_income_line")
-        matched_item = _match_line_item(income_statement.line_items, llm_line)
-        if matched_item and matched_item.line_value is not None:
-            return matched_item
-
-    # Fallback to original logic
-    for item in income_statement.line_items:
-        name_lower = item.line_name.lower()
-
-        if any(
-            term in name_lower
-            for term in [
-                "operating income",
-                "income from operations",
-                "operating profit",
-                "operating earnings",
-                "operating result",
-                "operating loss",
-                "loss from operations",
-            ]
-        ):
-            # Allow "Total Operating Income" as it's often the correct line
-            # Only exclude "subtotal" unless it's the only match?
-            # Safer to just remove the total check as "Operating Expenses" won't match the terms above.
-            if "subtotal" not in name_lower:
-                if item.line_value is not None:
-                    return item
 
     return None
 
@@ -330,35 +315,33 @@ def calculate_ebita(
     - operating_income: The operating income value used (or income_before_taxes if used as fallback)
     - adjustments: List of adjustment items used
     - used_fallback: Boolean indicating if income_before_taxes was used instead of operating_income
+    - starting_value_label: Label for the starting profit figure
     """
     op_income_item = get_operating_income_line_item(income_statement)
+    starting_item = op_income_item
     used_fallback = False
     starting_value_label = "Operating Income"
 
-    if op_income_item is None or op_income_item.line_value is None:
-        # Fallback: Use Income Before Taxes
-        tax_inputs = extract_tax_inputs(income_statement)
-        income_before_taxes = tax_inputs.get("income_before_taxes")
-
-        if income_before_taxes is None:
+    if starting_item is None or starting_item.line_value is None:
+        # Fallback 1: Use Income Before Taxes
+        ibt_item = get_income_before_taxes_line_item(income_statement)
+        if ibt_item and ibt_item.line_value is not None:
+            starting_item = ibt_item
+            used_fallback = True
+            starting_value_label = "Income Before Taxes"
+        else:
             return None
 
-        operating_income = income_before_taxes
-        used_fallback = True
-        starting_value_label = "Income Before Taxes"
-        # For fallback, we don't have a line_order to filter by
-        op_income_order = None
-    else:
-        operating_income = op_income_item.line_value
-        op_income_order = op_income_item.line_order
+    operating_income = starting_item.line_value
+    starting_order = starting_item.line_order
 
     ebita = operating_income
     adjustments = []
 
+    # 1. Process explicit Non-GAAP items (from separate table/extraction)
     if non_gaap_items:
         for item in non_gaap_items:
             # Check if it's non-operating
-            # Note: item might be an object or a dict depending on source
             is_operating = getattr(item, "is_operating", None)
             if is_operating is None and isinstance(item, dict):
                 is_operating = item.get("is_operating")
@@ -397,21 +380,25 @@ def calculate_ebita(
                     "category": category,
                 }
             )
-    elif not used_fallback and op_income_order is not None:
-        # Fallback: Use Income Statement "Non-Operating" items
-        # Logic: Items marked is_operating=False explicitly
-        # Constraint: Must be BEFORE Operating Income line
-        # Note: Only do this if we have operating income (not using fallback)
 
+    # 2. Process Income Statement "Non-Operating" items
+    # Logic: Items marked is_operating=False explicitly in the main IS table.
+    # Constraint: Must be BEFORE the starting anchor line (Operating Income or IBT).
+    # We do this regardless of whether Non-GAAP items were provided, to ensure completeness.
+    if starting_order is not None:
         sorted_items = sorted(income_statement.line_items, key=lambda x: x.line_order)
 
         for item in sorted_items:
-            # Must be before Operating Income
-            if item.line_order >= op_income_order:
+            # Must be before the starting line
+            if item.line_order >= starting_order:
                 continue
 
             # Must be explicitly non-operating
             if item.is_operating is not False:
+                continue
+
+            # Skip if already captured in explicit non-gaap items (prevent double counting)
+            if any(adj["line_name"] == item.line_name for adj in adjustments):
                 continue
 
             # Skip totals
@@ -419,16 +406,8 @@ def calculate_ebita(
             if "total" in name_lower or "subtotal" in name_lower:
                 continue
 
-            # Reverse sign: Expenses are usually negative in extraction (-100).
-            # To "Add Back", we subtract the negative (- -100 = +100).
-            # Or if they are positive costs, we add them.
-            # Standard convention in this app: Expenses are negative numbers?
-            # Let's check: "Tax Expense (100)" -> extracted as 100 or -100?
-            # Usually standard extraction keeps positive magnitude if it's just a table,
-            # but "net income" calcs imply sign.
-            # User instruction: "Make sure to reverse the signs in the calculation."
-
-            # So if value is V, we use -V.
+            # Reverse sign for IS items (expenses usually negative -100).
+            # To "Add Back", we negate the value.
             val_decimal = Decimal(str(item.line_value))
             adjustment_val = -val_decimal
 
@@ -487,8 +466,7 @@ def extract_tax_inputs(
             if std_name == "income_before_taxes":
                 income_before_taxes = item.line_value
             elif std_name == "income_tax_provision":
-                # Ensure tax expense is positive for rate calculations
-                income_tax_expense = abs(item.line_value)
+                income_tax_expense = item.line_value
             elif std_name == "net_income":
                 net_income = item.line_value
 
@@ -530,14 +508,16 @@ def calculate_effective_tax_rate_from_inputs(
     """
     if income_before_taxes and income_before_taxes != 0:
         if income_tax_expense is not None:
-            tax_rate = income_tax_expense / abs(income_before_taxes)
+            # Negate because income_tax_expense is stored as a negative expense
+            # (e.g., -250 / 1000 = -0.25, we want 0.25)
+            tax_rate = -(income_tax_expense / income_before_taxes)
             return tax_rate.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
         if net_income is not None:
-            taxes_paid = abs(income_before_taxes) - abs(net_income)
-            if taxes_paid > 0:
-                tax_rate = taxes_paid / abs(income_before_taxes)
-                return tax_rate.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+            # IBT - NI = Profit lost to tax.
+            # (1000 - 750) / 1000 = 0.25. (Correct sign)
+            tax_rate = (income_before_taxes - net_income) / income_before_taxes
+            return tax_rate.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
     return None
 
@@ -569,26 +549,39 @@ def calculate_adjusted_tax_rate(
 
     marginal_tax_rate = Decimal("0.25")
 
-    # 1. Intermediate items
-    operating_item = get_operating_income_line_item(income_statement)
+    # 1. Intermediate and Pre-Anchor items
+    anchor_item = get_operating_income_line_item(income_statement)
+    if not anchor_item:
+        anchor_item = get_income_before_taxes_line_item(income_statement)
+
     tax_item = get_tax_expense_line_item(income_statement)
 
     intermediate_items = []
 
-    if operating_item and tax_item:
+    if anchor_item and tax_item:
         sorted_items = sorted(income_statement.line_items, key=lambda x: x.line_order)
-        start_order = min(operating_item.line_order, tax_item.line_order)
-        end_order = max(operating_item.line_order, tax_item.line_order)
+        # Scan from the very top down to the tax line
+        # Logic: We want to tax-effect any non-operating item that was excluded/added back to reach EBITA
+        # If it's above the Profit Anchor, it was an "Add back".
+        # If it's between Profit Anchor and Tax, it's an "Intermediate item".
+        # In both cases, if it's is_operating=False, it contributes to the gap between EBITA and Taxable Income.
+
+        # We define relevant range as [0, tax_item.line_order]
+        target_limit_order = tax_item.line_order
 
         for item in sorted_items:
-            if start_order < item.line_order < end_order:
+            # Must be above the tax line
+            if item.line_order >= target_limit_order:
+                continue
+
+            # Skip the anchor itself
+            if item.id == anchor_item.id:
+                continue
+
+            # Check if non-operating
+            if item.is_operating is False:
                 name_lower = item.line_name.lower()
-                item.line_category.lower() if item.line_category else ""
-
-                if item.is_calculated is True:
-                    continue
-
-                if "impairment" in name_lower:
+                if item.is_calculated is True or "total" in name_lower or "subtotal" in name_lower:
                     continue
 
                 intermediate_items.append(item)
@@ -612,8 +605,6 @@ def calculate_adjusted_tax_rate(
             name_lower = line_name.lower()
             if "total" in name_lower or "subtotal" in name_lower:
                 continue
-            if "impairment" in name_lower:
-                continue
 
             non_gaap_adjustments.append(item)
 
@@ -626,13 +617,17 @@ def calculate_adjusted_tax_rate(
     # So we negate the value.
     for item in intermediate_items:
         val = item.line_value
-        # Assuming expenses are negative
+        name_lower = item.line_name.lower()
+
+        # Specific tax rate: 0% for impairment, amortization, and equity items
+        item_marginal_rate = marginal_tax_rate
+        if any(term in name_lower for term in ["impairment", "amortization", "equity"]):
+            item_marginal_rate = Decimal("0")
+
         # Effect on taxable income if we ADD BACK this item (or rather, ignore its deduction)
         # If it was -100 (deducted). Ignoring it means Income is +100 higher.
-        # Effect = -1 * (-100) = 100.
-        # Tax Effect = 100 * 0.25 = 25.
         effect_on_taxable_income = -val
-        tax_effect = effect_on_taxable_income * marginal_tax_rate
+        tax_effect = effect_on_taxable_income * item_marginal_rate
 
         total_tax_adjustment += tax_effect
         adjustments_breakdown.append(
@@ -641,6 +636,7 @@ def calculate_adjusted_tax_rate(
                 "line_value": float(val),
                 "tax_effect": float(tax_effect),
                 "source": "Intermediate",
+                "marginal_rate": float(item_marginal_rate),
             }
         )
 
@@ -652,17 +648,27 @@ def calculate_adjusted_tax_rate(
         if isinstance(item, dict):
             val = item.get("line_value", 0)
 
+        line_name = getattr(item, "line_name", "") or (
+            item.get("line_name") if isinstance(item, dict) else ""
+        )
+        name_lower = line_name.lower()
+
+        # Specific tax rate: 0% for impairment, amortization, and equity items
+        item_marginal_rate = marginal_tax_rate
+        if any(term in name_lower for term in ["impairment", "amortization", "equity"]):
+            item_marginal_rate = Decimal("0")
+
         val_decimal = Decimal(str(val))
-        tax_effect = val_decimal * marginal_tax_rate
+        tax_effect = val_decimal * item_marginal_rate
 
         total_tax_adjustment += tax_effect
         adjustments_breakdown.append(
             {
-                "line_name": getattr(item, "line_name", "")
-                or (item.get("line_name") if isinstance(item, dict) else ""),
+                "line_name": line_name,
                 "line_value": float(val_decimal),
                 "tax_effect": float(tax_effect),
                 "source": "Non-GAAP",
+                "marginal_rate": float(item_marginal_rate),
             }
         )
 
@@ -670,8 +676,8 @@ def calculate_adjusted_tax_rate(
 
     # Calculate Rate
     # Adjusted Tax Rate = Adjusted Tax / EBITA
-    # Ensure EBITA is not zero (checked at start)
-    adjusted_rate = adjusted_tax / ebita
+    # Negate because adjusted_tax contains negative expense values.
+    adjusted_rate = -(adjusted_tax / ebita)
 
     return {
         "adjusted_tax_rate": adjusted_rate.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP),

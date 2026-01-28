@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from 'vitest'
 import Dashboard from '../pages/Dashboard'
 import { AuthContext } from '../contexts/AuthContext'
 import { ThemeContext } from '../contexts/ThemeContext'
-import { UploadContext } from '../contexts/UploadContext'
+import { UploadStateContext, UploadDispatchContext } from '../contexts/UploadContext'
 
 // Mock the child components to isolate Dashboard testing
 vi.mock('../components/layout/Header', () => ({
@@ -53,9 +53,11 @@ describe('Dashboard Component', () => {
         render(
             <AuthContext.Provider value={mockAuthValue}>
                 <ThemeContext.Provider value={mockThemeValue}>
-                    <UploadContext.Provider value={mockUploadValue}>
-                        <Dashboard />
-                    </UploadContext.Provider>
+                    <UploadDispatchContext.Provider value={mockUploadValue}>
+                        <UploadStateContext.Provider value={mockUploadValue}>
+                            <Dashboard />
+                        </UploadStateContext.Provider>
+                    </UploadDispatchContext.Provider>
                 </ThemeContext.Provider>
             </AuthContext.Provider>
         )

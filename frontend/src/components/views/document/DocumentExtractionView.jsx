@@ -401,6 +401,8 @@ function DocumentExtractionView({ selectedDocument }) {
                                 <OrganicGrowthTable
                                     data={organicGrowth}
                                     formatNumber={formatNumber}
+                                    currency={incomeStatement?.currency}
+                                    unit={incomeStatement?.unit}
                                 />
                             </div>
                         )}

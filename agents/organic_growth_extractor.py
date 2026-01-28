@@ -66,6 +66,7 @@ def _reflect_on_prior_revenue(
     """
     Verify the extracted prior revenue matches the duration of the current period.
     """
+    # Reflection prompt updated to enforce unit constraints
     reflection_prompt = f"""You are a QA Auditor.
     1.  The system extracted a prior year revenue of {original_value} for: {prior_label}.
     2.  The current period is: {current_label}.
@@ -74,10 +75,10 @@ def _reflect_on_prior_revenue(
     YOUR JOB: Verify that the extracted value ({original_value}) comes from the column with the SAME DURATION as the current period revenue ({current_revenue}).
 
     Common sense:
-    - {original_value} should be a reasonable increase or decrease compared to {current_revenue}
-    - {original_value} should be in the same table as {current_revenue}
-    - {original_value} should be for three months or a quarter and NOT six months, nine months, or a full year
-    - {original_value} should come from the same row as {current_revenue}
+    - {original_value} should be a reasonable increase or decrease compared to {current_revenue} (usually within +/- 50%).
+    - {original_value} should be in the same table as {current_revenue}.
+    - {original_value} should be for three months or a quarter and NOT six months, nine months, or a full year.
+    - {original_value} should come from the same row as {current_revenue}.
 
     If the value {original_value} is correct (correct period, correct duration), return it.
     If it is incorrect (wrong duration, e.g. YTD instead of Quarter), find the CORRECT value for {prior_label} with the matching duration.
@@ -85,7 +86,7 @@ def _reflect_on_prior_revenue(
     Return a JSON object:
     {{
         "verified_value": number (the correct value to use),
-        "verified_unit": string (unit for the correct value),
+        "verified_unit": string (one of: "ones", "thousands", "millions", "billions"; use null if unknown. DO NOT use currency codes like RMB/USD),
         "correction_reason": "Explanation of why you changed it or kept it the same"
     }}
 
@@ -440,6 +441,38 @@ def extract_organic_growth(
         # NOTE: extracted_prior_val from extract_prior_year_revenue is raw from LLM.
         # extracted_prior_unit is what the LLM said it is.
         # So conversion to ones IS needed.
+
+        # VALIDATION: If prior unit looks like a currency code (e.g. RMB, USD) or is None,
+        # and current unit is valid, default to current unit.
+        if not prior_revenue_unit:
+            print(
+                f"DEBUG: prior_revenue_unit is None. Defaulting to current_unit '{current_unit}'."
+            )
+            prior_revenue_unit = current_unit
+        else:
+            norm_unit = prior_revenue_unit.lower().strip()
+            # If it's a currency code (3 letters) or not a standard multiplier, trust current_unit
+            if len(norm_unit) == 3 or not any(
+                x in norm_unit for x in ["thousand", "million", "billion", "ten_thous"]
+            ):
+                # Check if the values are comparable raw.
+                # If current=31174 and prior=33557, likely same unit.
+                ratio = (
+                    float(current_revenue) / float(prior_revenue)
+                    if float(prior_revenue) != 0
+                    else 0
+                )
+                if 0.1 < ratio < 10:
+                    print(
+                        f"DEBUG: Overriding invalid prior unit '{prior_revenue_unit}' with current unit '{current_unit}' based on value magnitude similarity."
+                    )
+                    prior_revenue_unit = current_unit
+                else:
+                    print(
+                        f"DEBUG: prior_revenue_unit '{prior_revenue_unit}' is invalid, but values are not comparable. Defaulting to current_unit '{current_unit}' anyway as fallback."
+                    )
+                    prior_revenue_unit = current_unit
+
         prior_rev_ones = convert_to_ones(float(prior_revenue), prior_revenue_unit)
 
         if prior_rev_ones != 0:
