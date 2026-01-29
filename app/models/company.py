@@ -32,3 +32,9 @@ class Company(Base):
         "AnalysisResult", back_populates="company", cascade="all, delete-orphan"
     )
     valuations = relationship("Valuation", back_populates="company", cascade="all, delete-orphan")
+    qualitative_assessment = relationship(
+        "QualitativeAssessment",
+        back_populates="company",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )

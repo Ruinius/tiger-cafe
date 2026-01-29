@@ -148,11 +148,22 @@ Triggered automatically after extraction milestones:
     - **Performance**: NOPAT and ROIC (annualized).
 4.  **Persistence**: Results saved to `historical_calculations` table.
 
-### 4) Financial Modeling (DCF Valuation)
+### 4) Qualitative Assessment (Moat & Growth)
+
+Before the DCF model is built, a dedicated qualitative analysis runs:
+1.  **Agent**: `QualitativeAssessmentAgent` evaluates the company based on general LLM knowledge.
+2.  **Output**: Determines:
+    - **Economic Moat**: Width (Wide/Narrow/None) -> Impacts Terminal Growth Rate.
+    - **Growth Trajectory**: (Faster/Steady/Slower) -> Impacts Stage 1 Growth Rate.
+    - **Predictability**: (High/Medium/Low) -> Contextual confidence.
+3.  **Integration**: These labels automatically adjust the default assumptions seeded into the Financial Model.
+
+### 5) Financial Modeling (DCF Valuation)
 
 1.  **Assumptions Management**:
     - Users input 3-stage growth assumptions (Revenue, Margins, Turnover) via UI.
     - Assumptions are stored in `financial_assumptions` table.
+    - **Auto-Seeding**: Defaults are derived from Historical L4Q averages **AND** Qualitative Assessment overrides.
 2.  **Projections Engine**:
     - Generates 10-year forecasts for P&L and Balance Sheet (Invested Capital).
     - Calculates Free Cash Flow (FCF) for each projected year.
@@ -164,7 +175,7 @@ Triggered automatically after extraction milestones:
     - Sums PVs to derive Company Intrinsic Value.
     - Compares against Shares Outstanding for per-share value.
 
-### 5) Analysis & Reporting
+### 6) Analysis & Reporting
 
 1. Metrics are derived from extracted statements.
 2. Analysis results are stored in `analysis_results`.

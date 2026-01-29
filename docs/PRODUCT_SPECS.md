@@ -223,6 +223,7 @@ The following is a comprehensive list of all frontend files and their roles. Fil
 #### View Components - Company (State 2)
 - **`components/views/company/DocumentList.jsx`**: Document list for selected company (left panel)
 - **`components/views/company/CompanyAnalysisView.jsx`**: Company metrics and DCF model (right panel)
+- **`components/views/company/QualitativeAssessment.jsx`**: Moat, Growth, and Predictability analysis card
 - **`components/views/company/FinancialModel.jsx`**: DCF valuation model component
 - **`components/views/company/FinancialModel.css`**: Financial model styles
 - **`components/views/company/Company.css`**: Company view styles
@@ -471,6 +472,28 @@ The application automatically computes and displays the following based on extra
 - Aggregates key metrics across all available time periods.
 - Includes: Revenue, Growth, EBITA, Margins, Tax Rates, Capital Turnover, ROIC, and Diluted Shares.
 
+## Qualitative Assessment (AI Analyst)
+The application employs an LLM-based agent to perform a qualitative "Economic Moat" and growth analysis.
+
+### 1. Analysis Pillars
+- **Economic Moat**: Assessment of sustainable competitive advantage.
+  - *Labels*: Wide, Narrow, None.
+- **Near-term Growth Trajectory**: Outlook for the next 1-3 years relative to historicals.
+  - *Labels*: Faster, Steady, Slower.
+- **Revenue Predictability**: Confidence in future cash flows.
+  - *Labels*: High, Medium, Low.
+
+### 2. Assumption Integration
+The qualitative outputs directly influence the default values in the Financial Model:
+- **Terminal Growth**:
+  - Wide Moat -> 4.0%
+  - Narrow Moat -> 3.5%
+  - None -> 3.0%
+- **Stage 1 Growth**:
+  - Faster -> L4Q Avg + 2.0%
+  - Slower -> L4Q Avg - 2.0%
+  - Steady -> L4Q Avg
+
 ## Financial Modeling & Valuation (DCF)
 
 The application provides an interactive Discounted Cash Flow (DCF) model for each company.
@@ -482,7 +505,10 @@ Users can modify key assumptions to drive the valuation model.
 - **Marginal Capital Turnover**: 3-stage input (Years 1-5, Years 6-10, Terminal Rate).
 - **Operating Tax Rate**: Single inputs for projected tax rate.
 - **WACC**: Weighted Average Cost of Capital (default 8%).
-- **Defaults**: System auto-populates defaults based on historical averages (Recent 4 years/quarters).
+- **WACC**: Weighted Average Cost of Capital (default 8%).
+- **Defaults**:
+  - **Auto-Seeding**: System auto-populates defaults based on L4Q historical averages.
+  - **Qualitative Overrides**: Adjustments applied based on qualitative assessment (e.g., Wide Moat -> Higher Terminal Growth).
 
 ### 2. Projections Engine (10-Year Forecast)
 The model generates a 10-year forecast based on the inputs:

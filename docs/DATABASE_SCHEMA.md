@@ -387,6 +387,22 @@ Stores historical valuation snapshots for tracking fair value estimates over tim
 - Many-to-one with `companies`
 - Many-to-one with `users`
 
+### `qualitative_assessments`
+Stores LLM-generated qualitative analysis of the company's competitive position and growth.
+
+- `id` (String, Primary Key): Unique assessment identifier
+- `company_id` (String, Foreign Key → `companies.id`, Indexed, Unique): Associated company
+- `economic_moat_label` (String): "Wide", "Narrow", "None"
+- `economic_moat_rationale` (Text): Reasoning for moat rating
+- `near_term_growth_label` (String): "Faster", "Steady", "Slower"
+- `near_term_growth_rationale` (Text): Reasoning for growth outlook
+- `predictability_label` (String): "High", "Medium", "Low"
+- `predictability_rationale` (Text): Reasoning for predictability
+- `updated_at` (DateTime): Last assessment timestamp
+
+**Relationships:**
+- One-to-one with `companies`
+
 ## Enums
 
 ### `DocumentType`

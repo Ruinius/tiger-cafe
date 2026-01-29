@@ -103,6 +103,10 @@ The "Mission Control" panel provides a high-fidelity, real-time command center f
   - **Typography**: `0.75rem`, weight `600`, tracking `0.025em`.
   - **Operating**: Green (Emerald) background (10% opacity) + Text.
   - **Non-Operating**: Amber background (10% opacity) + Text.
+  - **Qualitative (Moat/Growth)**: 
+    - *Good/Wide/Faster*: Green (Success).
+    - *Neutral/Narrow/Steady*: Grey (Neutral).
+    - *Bad/None/Slower*: Orange (Warning).
   - **Void/Null**: Simple muted dash "—".
 
 ## Spacing & Layout Structure

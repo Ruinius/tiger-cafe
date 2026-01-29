@@ -115,22 +115,37 @@ def calculate_dcf(historical_entries: list, assumptions: dict) -> dict:
 
     for year in range(1, years_to_project + 1):
         # Determine phase
-        if year <= 5:
+        if year == 1:
             growth_rate = get_assumption("revenue_growth_stage1")
             margin = get_assumption("ebita_margin_stage1")
             mct = assumptions.get("marginal_capital_turnover_stage1")
-            if mct is None:
-                mct = avg_capital_turnover
-            else:
-                mct = Decimal(str(mct))
-        else:
+        elif year <= 5:
+            # Interpolate Growth between Year 1 (Stage 1) and Year 6 (Stage 2)
+            g1 = get_assumption("revenue_growth_stage1")
+            g2 = get_assumption("revenue_growth_stage2")
+            growth_rate = g1 + ((g2 - g1) / 5) * (Decimal(year) - 1)
+
+            # Keep Margin/MCT constant for Stage 1 (or we could smooth them too, but req only specified revenue)
+            margin = get_assumption("ebita_margin_stage1")
+            mct = assumptions.get("marginal_capital_turnover_stage1")
+        elif year == 6:
             growth_rate = get_assumption("revenue_growth_stage2")
             margin = get_assumption("ebita_margin_stage2")
             mct = assumptions.get("marginal_capital_turnover_stage2")
-            if mct is None:
-                mct = avg_capital_turnover
-            else:
-                mct = Decimal(str(mct))
+        else:
+            # Interpolate Growth between Year 6 (Stage 2) and Year 11 (Terminal)
+            g2 = get_assumption("revenue_growth_stage2")
+            g_terminal = get_assumption("revenue_growth_terminal")
+            growth_rate = g2 + ((g_terminal - g2) / 5) * (Decimal(year) - 6)
+
+            margin = get_assumption("ebita_margin_stage2")
+            mct = assumptions.get("marginal_capital_turnover_stage2")
+
+        # Fallback for MCT if not set
+        if mct is None:
+            mct = avg_capital_turnover
+        else:
+            mct = Decimal(str(mct))
 
         # 1. Revenue
         prev_revenue = current_revenue

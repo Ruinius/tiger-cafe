@@ -51,18 +51,25 @@ The system currently supports:
     - In Company List, replace "Date Financials Cover" to "Most Recent Document" in the sort
 - [x] SSE should only drive re-render on the MissionControl, but I am getting re-render in all pages, which makes editing impossible
 - [x] The system correctly detects duplicate and stops the pipeline, but the document still sits in the processing pipeline in MissionControl indefinitely
+- [x] Fix ghost companies (0 documents) reappearing in company list when sorting
+- [x] In the DocumentExtractionView, for each of the tables (e.g., Balance Sheet) to the right of "Unit", add and populate "Chunk Index:" as appropriate
+- [x] Change the @financialmodel.jsx such that the revenue growth transition is smooth. So Stage 1 (Y1-5) is really just defining Y1. Stage 2 (Y6-10) is only defining Y6. Then the in between years are straight-line smoothed out
+- [x] Change raw beta in @financialmodel.jsx to use Blume's adjustment (basically 2/3 raw beta and 1/3 = 1.0). Change the label from "Beta" to "Adjusted Beta" and add a tooltip explaining the adjustment
 - [ ] Improve the Document list
 - [ ] Enable editing extracted values in Document Extraction View
-- [ ] In the DocumentExtractionView, add the chunk the Balance Sheet, Income Statement, and Non-GAAP Reconciliation were extracted from
 - [ ] Revenue Growth and Margin Sensitivity
 
 
 ### Phase 17: Further agent enhancements
 - [x] time_period based on quarterly is not reliable. See if can use period_end_date instead. If both are unreliable, then will require some kind of reflection step prior to extraction
+- [x] add a simple LLM-based qualitative economic moat and future growth assessment
+    - See detailed plan: @[docs/IMPLEMENTATION_PLAN_QUALITATIVE.md]
+- [ ] add a reflection step for the meta data of all the documents, such as comparing period_end_date and time_period, then self-heal time_period before going through the rest of the pipeline
 - [ ] Continue to fix time period and period_end_date logic. Some documents have one, some other.
 - [ ] EL case - LLM extracting after the net earnings / net income line
 - [ ] EL case - LLM extracting Non-GAAP table very strangely - look into the non-gaap reconciliation logic
 - [ ] EL case - add a reflection step to the Non-GAAP table on time period of line items
+- [ ] EL case - cannot seem to extract dilted shares outstanding
 - [ ] BIDU case - rare issue where despite using income statement, the prior year revenue is being pulled from a different table (BIDU Core instead of Consolidated)
 - [ ] BABA case - the agent is not able to find the balance sheet based on the current chunking and search logic'
 - [ ] BABA case - the document does not say which quarter it is only the month, which needs to be interpreted as a certain quarter
@@ -74,6 +81,12 @@ The system currently supports:
 - [x] CSCO, KO case - the ticker was not identified. Need a reflection step.
 - [ ] JD case - need to fix the labeling for equity method, because they need to be treated differently for adjusted tax calculations
 - [ ] DIS case - rare case where total equity & liability is missing
+- [ ] DIS case - total PPE line is not labeled and is instead just an indented line
+- [ ] ABNB case - dates are mostly missing from the document
+- [ ] TXN case - PPE total is not marked correctly, causing validation to fail and invested capital to be exaggerated
+- [ ] MTCH case - there's a strange situation where total other income, net is not a calculated field
+- [ ] WDAY case - there is a strange case where the diluted shares outstanding is not standardized into right units
+- [ ] RKT case - tiger-transformer does not know how to handle mortgage company
 
 
 ### Phase 18: Transcripts, news, and Gemini copy & paste

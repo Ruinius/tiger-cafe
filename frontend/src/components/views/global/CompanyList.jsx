@@ -29,7 +29,9 @@ function CompanyList({ onCompanySelect, onOpenUploadModal, onShowUploadProgress 
 
     const sortedCompanies = useMemo(() => {
         if (!filteredCompanies) return [];
-        const sorted = [...filteredCompanies];
+        // Filter out "ghost" companies (those with 0 documents)
+        const validCompanies = filteredCompanies.filter(c => c.document_count > 0);
+        const sorted = [...validCompanies];
 
         sorted.sort((a, b) => {
             switch (sortBy) {

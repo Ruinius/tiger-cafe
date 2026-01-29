@@ -594,17 +594,16 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                     <div className="assumption-group">
                         <h5>WACC</h5>
                         <label>
-                            Beta:
+                            <span>Adjusted Beta: <ToolTip text="Adjusted using Blume's method: (2/3 * Raw Beta) + (1/3 * 1.0)" /></span>
                             <input
                                 type="text"
                                 value={typeof assumptions.beta === 'number' ? assumptions.beta.toFixed(2) : (Number(assumptions.beta) || 1.0).toFixed(2)}
                                 disabled
                                 style={{ backgroundColor: 'var(--bg-base)', cursor: 'not-allowed' }}
-                                title="Beta pulled from Yahoo Finance"
                             />
                         </label>
                         <label>
-                            <span>Cost of Equity: <ToolTip text="Calculated using CAPM: 4.2% risk-free rate + Beta × 5.0% market risk premium" /></span>
+                            <span>Cost of Equity: <ToolTip text="Calculated using CAPM: 4.2% risk-free rate + Adjusted Beta × 5.0% market risk premium" /></span>
                             <input
                                 type="text"
                                 value={formatPercent(0.042 + (Number(assumptions.beta) || 1.0) * 0.05)}
@@ -613,7 +612,7 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                             />
                         </label>
                         <label>
-                            <span>Weight of Equity <ToolTip text={`Market Cap / (Market Cap + Debt). Market Cap: ${formatNumber(assumptions.market_cap / (unit === 'millions' ? 1000000 : unit === 'billions' ? 1000000000 : unit === 'thousands' ? 1000 : 1))} ${unit || ''}`} />:</span>
+                            <span>Weight of Equity: <ToolTip text={`Market Cap / (Market Cap + Debt). Market Cap: ${formatNumber(assumptions.market_cap / (unit === 'millions' ? 1000000 : unit === 'billions' ? 1000000000 : unit === 'thousands' ? 1000 : 1))} ${unit || ''}`} /></span>
                             <input
                                 type="text"
                                 value={formatPercent(assumptions.weight_of_equity)}

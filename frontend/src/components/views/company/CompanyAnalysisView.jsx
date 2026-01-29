@@ -4,6 +4,7 @@ import { useAuth } from '../../../contexts/AuthContext'
 import { API_BASE_URL } from '../../../config'
 import { formatDate } from '../../../utils/formatting'
 import FinancialModel from './FinancialModel'
+import QualitativeAssessment from './QualitativeAssessment'
 import './Company.css'
 
 function CompanyAnalysisView({ selectedCompany }) {
@@ -207,6 +208,7 @@ function CompanyAnalysisView({ selectedCompany }) {
                     </h2>
                 </div>
                 <div className="company-analysis">
+
                     {companyHistoricalLoading && (
                         <p className="placeholder-text">Loading historical calculations...</p>
                     )}
@@ -266,6 +268,15 @@ function CompanyAnalysisView({ selectedCompany }) {
                                 </div>
                             </div>
 
+
+                            {/* Divider between Historical Data and Qualitative Assessment */}
+                            <hr style={{ border: 0, borderTop: '1px solid var(--border)', marginTop: '2rem', marginBottom: '1rem' }} />
+
+                            {/* Qualitative Assessment - Placed between Historical Data and Financial Model */}
+                            <div style={{ marginBottom: '2.5rem' }}>
+                                <QualitativeAssessment companyId={selectedCompany.id} />
+                            </div>
+
                             {/* Financial Modeling Section */}
                             <FinancialModel
                                 selectedCompany={selectedCompany}
@@ -276,9 +287,15 @@ function CompanyAnalysisView({ selectedCompany }) {
                         </>
                     )}
                     {!companyHistoricalLoading && !companyHistoricalError && !hasCompanyData && (
-                        <p className="placeholder-text">
-                            Company analysis will be displayed here once financial analysis is completed.
-                        </p>
+                        <>
+                            {/* Always show Qualitative Assessment even if no historical data */}
+                            <div style={{ marginBottom: '2rem' }}>
+                                <QualitativeAssessment companyId={selectedCompany.id} />
+                            </div>
+                            <p className="placeholder-text">
+                                Company analysis will be displayed here once financial analysis is completed.
+                            </p>
+                        </>
                     )}
                 </div>
             </div>

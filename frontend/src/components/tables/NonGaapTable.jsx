@@ -17,6 +17,9 @@ export default function NonGaapTable({ data, formatNumber, currency = 'N/A', uni
                     {displayUnit && displayUnit !== 'N/A' && (
                         <span><strong>Unit:</strong> {displayUnit.replace('_', ' ')}</span>
                     )}
+                    {data.chunk_index !== undefined && data.chunk_index !== null && (
+                        <span><strong>Chunk Index:</strong> {data.chunk_index}</span>
+                    )}
                 </div>
             </div>
 

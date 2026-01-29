@@ -3,11 +3,23 @@ from collections import Counter
 
 from sqlalchemy.orm import Session, selectinload
 
+from app.models.balance_sheet import BalanceSheet
 from app.models.company import Company
 from app.models.document import Document, DocumentType
+from app.models.financial_assumption import FinancialAssumption
 from app.models.income_statement import IncomeStatement
+from app.models.non_operating_classification import (
+    NonOperatingClassification,
+    NonOperatingClassificationItem,
+)
+from app.models.qualitative_assessment import QualitativeAssessment
 from app.utils.historical_calculations import get_interest_expense, get_revenue
 from app.utils.line_item_utils import convert_from_ones, convert_to_ones
+from app.utils.market_data import (
+    get_beta,
+    get_currency_rate,
+    get_market_cap,
+)
 
 ELIGIBLE_DOCUMENT_TYPES = {
     DocumentType.EARNINGS_ANNOUNCEMENT,
@@ -229,3 +241,277 @@ def get_company_historical_data(db: Session, company_id: str) -> dict:
             for entry in sorted_entries
         ],
     }
+
+
+def get_or_create_assumptions(db: Session, company_id: str) -> FinancialAssumption:
+    """
+    Get existing financial assumptions or create new ones with defaults
+    derived from historical data and qualitative assessments.
+    Enriches the result with dynamic market data (Beta, WACC components).
+    """
+    assumption = (
+        db.query(FinancialAssumption).filter(FinancialAssumption.company_id == company_id).first()
+    )
+
+    # Fetch historical data (needed for defaults AND dynamic cost of debt)
+    historical_data = get_company_historical_data(db, company_id)
+    historical_entries = historical_data.get("entries", []) if historical_data else []
+
+    # 1. Beta: Fetch from Yahoo Finance
+    company = db.query(Company).filter(Company.id == company_id).first()
+    beta = 1.0
+    if company and company.ticker:
+        raw_beta = float(get_beta(company.ticker))
+        # Blume's Adjustment: Modified Beta = (2/3) * Raw Beta + (1/3) * 1.0
+        beta = (2.0 / 3.0) * raw_beta + (1.0 / 3.0)
+
+    # 2. WACC Components
+    market_cap = float(get_market_cap(company.ticker)) if company and company.ticker else 0.0
+
+    # We need bridge items for Debt
+    non_op_classifications = (
+        db.query(NonOperatingClassification)
+        .join(Document)
+        .filter(Document.company_id == company_id)
+        .options(
+            selectinload(NonOperatingClassification.document)
+            .selectinload(Document.balance_sheet)
+            .selectinload(BalanceSheet.line_items)
+        )
+        .all()
+    )
+
+    non_op_classification = None
+    if non_op_classifications:
+        non_op_classifications.sort(
+            key=lambda x: time_period_sort_key(x.document.time_period) if x.document else (0, 0, "")
+        )
+        non_op_classification = non_op_classifications[-1]
+
+    debt = 0.0
+    bs_unit = "millions"
+    if non_op_classification:
+        # Create lookup map from balance sheet
+        bs_values = {}
+        if non_op_classification.document and non_op_classification.document.balance_sheet:
+            bs_unit = non_op_classification.document.balance_sheet.unit or "millions"
+            for bsi in non_op_classification.document.balance_sheet.line_items:
+                bs_values[bsi.line_name] = bsi.line_value
+
+        items = (
+            db.query(NonOperatingClassificationItem)
+            .filter(NonOperatingClassificationItem.classification_id == non_op_classification.id)
+            .all()
+        )
+        for item in items:
+            if item.category == "debt":
+                val = bs_values.get(item.line_name) or 0
+                debt += float(val)
+
+    # Convert debt to absolute dollars (ones) - this is in LOCAL CURRENCY
+    debt_local_ones = convert_to_ones(debt, bs_unit)
+
+    # debt_dollars will be in USD for WACC weight calculation
+    debt_dollars = debt_local_ones
+
+    # Convert debt to USD if balance sheet is in different currency
+    # Market cap from Yahoo is typically in USD for US-listed tickers
+    if (
+        non_op_classification
+        and non_op_classification.document
+        and non_op_classification.document.balance_sheet
+    ):
+        bs_currency = non_op_classification.document.balance_sheet.currency
+        if bs_currency and bs_currency != "USD":
+            # Convert debt from local currency to USD
+            conversion_rate = float(get_currency_rate(bs_currency, "USD"))
+            debt_dollars = debt_local_ones * conversion_rate
+
+    weight_of_equity = 1.0
+    if (market_cap + debt_dollars) > 0:
+        weight_of_equity = market_cap / (market_cap + debt_dollars)
+
+    # Cost of Debt - Calculate in LOCAL CURRENCY
+    interest_expense_annualized_ones = 0.0
+    if historical_entries:
+        latest = historical_entries[-1]
+        ie = latest.get("interest_expense")
+        if ie is not None:
+            # ie is in historical_data["unit"]
+            hist_unit = historical_data.get("unit")
+            ie_ones = convert_to_ones(float(ie), hist_unit)
+            interest_expense_annualized_ones = abs(ie_ones) * 4.0
+
+    cost_of_debt = 0.05
+    # Use debt_local_ones (local currency) for Cost of Debt calculation
+    if debt_local_ones > 0:
+        calculated_cod = interest_expense_annualized_ones / debt_local_ones
+        cost_of_debt = max(calculated_cod, 0.05)  # Minimum 5%
+
+    # Cost of Equity
+    risk_free_rate = 0.042
+    market_risk_premium = 0.05
+    cost_of_equity = risk_free_rate + (beta * market_risk_premium)
+
+    # Calculated WACC
+    marginal_tax_rate = 0.25
+    calculated_wacc = (cost_of_equity * weight_of_equity) + (
+        cost_of_debt * (1 - marginal_tax_rate) * (1 - weight_of_equity)
+    )
+
+    # Bound calculated WACC to 7-11% for default value
+    bounded_wacc = max(0.07, min(0.11, calculated_wacc))
+
+    # IF NO ASSUMPTION: Create with defaults
+    if not assumption:
+        # Calculate defaults from L4Q historical data
+        quarterly_entries = [e for e in historical_entries if "Q" in e.get("time_period", "")]
+        l4q_list = quarterly_entries[-4:] if len(quarterly_entries) >= 4 else quarterly_entries
+
+        def l4q_avg(field):
+            vals = [e.get(field) for e in l4q_list if e.get(field) is not None]
+            return sum(vals) / len(vals) if vals else None
+
+        # --- QUALITATIVE ASSESSMENT OVERRIDES ---
+        qualitative = (
+            db.query(QualitativeAssessment)
+            .filter(QualitativeAssessment.company_id == company_id)
+            .first()
+        )
+
+        # 1. Stage 1 Revenue Growth: L4Q Average Organic Growth
+        organic_growth = l4q_avg("organic_revenue_growth")
+        stage1_growth = float(organic_growth) / 100 if organic_growth else 0.05
+
+        # Apply Logic: Faster -> +2%, Slower -> -2%
+        if qualitative:
+            if qualitative.near_term_growth_label == "Faster":
+                stage1_growth += 0.02
+            elif qualitative.near_term_growth_label == "Slower":
+                stage1_growth -= 0.02
+
+        # 2. Terminal Growth
+        terminal_growth = 0.03
+        if qualitative:
+            if qualitative.economic_moat_label == "Wide":
+                terminal_growth = 0.04
+            elif qualitative.economic_moat_label == "Narrow":
+                terminal_growth = 0.035
+            # Else None/other -> 0.03
+
+        stage2_growth = (stage1_growth + terminal_growth) / 2
+
+        # 3. EBITA Margin
+        ebita_margin_avg = l4q_avg("ebita_margin")
+        ebita_margin = float(ebita_margin_avg) if ebita_margin_avg else 0.20
+
+        # 4. Capital Turnover
+        capital_turnover_avg = l4q_avg("capital_turnover")
+        if capital_turnover_avg and 0 < capital_turnover_avg < 100:
+            mct = float(capital_turnover_avg)
+        else:
+            mct = 100.0
+
+        # 5. Tax Rate - Use Median of Historical Data
+        all_tax_rates = sorted(
+            [
+                float(e.get("adjusted_tax_rate"))
+                for e in historical_entries
+                if e.get("adjusted_tax_rate") is not None
+            ]
+        )
+        if all_tax_rates:
+            mid = len(all_tax_rates) // 2
+            if len(all_tax_rates) % 2 == 0:
+                tax_rate = (all_tax_rates[mid - 1] + all_tax_rates[mid]) / 2.0
+            else:
+                tax_rate = all_tax_rates[mid]
+        else:
+            tax_rate = 0.25
+
+        # 6. Shares
+        diluted_shares = None
+        if historical_entries:
+            # 1. Try Latest
+            latest = historical_entries[-1]
+            diluted_shares = latest.get("diluted_shares_outstanding") or latest.get(
+                "basic_shares_outstanding"
+            )
+
+            # 2. Fallback: L4Q Average
+            if not diluted_shares and l4q_list:
+                diluted_shares = l4q_avg("diluted_shares_outstanding")
+
+            # 3. Fallback: Median of all history
+            if not diluted_shares:
+                all_shares = sorted(
+                    [
+                        float(e.get("diluted_shares_outstanding"))
+                        for e in historical_entries
+                        if e.get("diluted_shares_outstanding") is not None
+                    ]
+                )
+                if all_shares:
+                    mid = len(all_shares) // 2
+                    if len(all_shares) % 2 == 0:
+                        diluted_shares = (all_shares[mid - 1] + all_shares[mid]) / 2.0
+                    else:
+                        diluted_shares = all_shares[mid]
+
+        # 7. Base Revenue
+        base_revenue = None
+        if l4q_list:
+            revenue_values = [e.get("revenue") for e in l4q_list if e.get("revenue") is not None]
+            if revenue_values:
+                base_revenue = (sum(revenue_values) / len(revenue_values)) * 4
+
+        # 8. Currency & ADR
+        currency_conversion_rate = 1.0
+        latest_currency = "USD"
+
+        # Query the most recent balance sheet for this company
+        latest_balance_sheet = (
+            db.query(BalanceSheet)
+            .join(Document)
+            .filter(Document.company_id == company_id)
+            .order_by(BalanceSheet.extraction_date.desc())
+            .first()
+        )
+
+        if latest_balance_sheet and latest_balance_sheet.currency:
+            latest_currency = latest_balance_sheet.currency
+
+        if latest_currency and latest_currency != "USD":
+            currency_conversion_rate = float(get_currency_rate(latest_currency, "USD"))
+
+        assumption = FinancialAssumption(
+            company_id=company_id,
+            revenue_growth_stage1=stage1_growth,
+            revenue_growth_stage2=stage2_growth,
+            revenue_growth_terminal=terminal_growth,
+            ebita_margin_stage1=ebita_margin,
+            ebita_margin_stage2=ebita_margin,
+            ebita_margin_terminal=ebita_margin,
+            marginal_capital_turnover_stage1=mct,
+            marginal_capital_turnover_stage2=mct,
+            marginal_capital_turnover_terminal=mct,
+            beta=beta,
+            adjusted_tax_rate=tax_rate,
+            wacc=bounded_wacc,
+            diluted_shares_outstanding=diluted_shares,
+            base_revenue=base_revenue,
+            currency_conversion_rate=currency_conversion_rate,
+            adr_conversion_factor=1.0,
+        )
+        db.add(assumption)
+        db.commit()
+        db.refresh(assumption)
+
+    # Attach dynamic fields for display
+    assumption.weight_of_equity = weight_of_equity
+    assumption.cost_of_debt = cost_of_debt
+    assumption.calculated_wacc = calculated_wacc
+    assumption.market_cap = market_cap
+    assumption.beta = beta
+
+    return assumption

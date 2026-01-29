@@ -18,6 +18,7 @@ export default function BalanceSheetTable({ data, formatNumber }) {
             currency={data.currency}
             unit={data.unit}
             timePeriod={data.time_period}
+            chunkIndex={data.chunk_index}
         />
     )
 }

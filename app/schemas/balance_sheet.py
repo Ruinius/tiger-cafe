@@ -33,6 +33,7 @@ class BalanceSheetBase(BaseModel):
     time_period: str | None = None
     currency: str | None = None
     unit: str | None = None  # "ones", "thousands", "millions", "billions", or "ten_thousands"
+    chunk_index: int | None = None
 
 
 class BalanceSheetCreate(BalanceSheetBase):

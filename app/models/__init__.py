@@ -20,6 +20,7 @@ from app.models.non_operating_classification import (
 from app.models.organic_growth import OrganicGrowth
 from app.models.other_assets import OtherAssets, OtherAssetsLineItem
 from app.models.other_liabilities import OtherLiabilities, OtherLiabilitiesLineItem
+from app.models.qualitative_assessment import QualitativeAssessment
 from app.models.shares_outstanding import SharesOutstanding
 from app.models.user import User
 from app.models.valuation import Valuation
@@ -50,4 +51,5 @@ __all__ = [
     "GAAPReconciliationLineItem",
     "SharesOutstanding",
     "Valuation",
+    "QualitativeAssessment",
 ]

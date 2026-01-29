@@ -17,6 +17,7 @@ export default function IncomeStatementTable({ data, formatNumber }) {
             currency={data.currency}
             unit={data.unit}
             timePeriod={data.time_period}
+            chunkIndex={data.chunk_index}
         />
     )
 }

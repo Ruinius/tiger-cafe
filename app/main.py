@@ -16,6 +16,7 @@ from app.routers import (
     historical_calculations,
     income_statement,
     processing,
+    qualitative,
     status_stream,
 )
 from app.utils.cleanup_scheduler import get_cleanup_scheduler
@@ -40,6 +41,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
 app.include_router(companies.router, prefix="/api/companies", tags=["companies"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
+app.include_router(qualitative.router, prefix="/api/companies", tags=["companies"])
 # Specific routers must effectively precede generic /{document_id} routes
 app.include_router(status_stream.router, prefix="/api/documents", tags=["status-stream"])
 app.include_router(processing.router, prefix="/api/processing", tags=["processing"])

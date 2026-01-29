@@ -22,7 +22,8 @@ export default function LineItemTable({
     timePeriod = 'N/A',
     typeOverride,
     categoryFormatter,
-    showCategory = true
+    showCategory = true,
+    chunkIndex = 'N/A'
 }) {
     if (!data || !data.line_items || data.line_items.length === 0) return null
 
@@ -40,6 +41,9 @@ export default function LineItemTable({
                     <span><strong>Currency:</strong> {displayCurrency}</span>
                     {displayUnit && displayUnit !== 'N/A' && (
                         <span><strong>Unit:</strong> {displayUnit.replace('_', ' ')}</span>
+                    )}
+                    {chunkIndex !== undefined && chunkIndex !== null && chunkIndex !== 'N/A' && (
+                        <span><strong>Chunk Index:</strong> {chunkIndex}</span>
                     )}
                 </div>
             </div>

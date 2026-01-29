@@ -1,0 +1,250 @@
+/* Qualitative Assessment Panel - "Table-like" Grid Layout */
+
+.qa-container {
+    /* No outer styles, just layout container */
+    margin-bottom: 2rem;
+}
+
+/* Header Section matches .table-header structure */
+.qa-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    /* Matches table-header margin */
+}
+
+/* Reusing generic classes for title/button if possible, otherwise: */
+.qa-title {
+    margin: 0;
+    font-size: 1.125rem;
+    /* Standard h3 size */
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.qa-run-button {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.qa-run-button:hover:not(:disabled) {
+    background-color: var(--bg-elevated);
+    border-color: var(--border-strong);
+}
+
+.qa-run-button:disabled {
+    background-color: var(--bg-elevated);
+    color: var(--text-disabled);
+    cursor: not-allowed;
+}
+
+/* The Main "Card" that looks like a Table Container */
+/* The Main "Card" that looks like a Table Container */
+.qa-panel-grid {
+    display: flex;
+    flex-direction: column;
+    /* Main axis is vertical now */
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    /* Matches financial-table-container */
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+    /* Contains children */
+}
+
+.qa-panel-content {
+    display: flex;
+    flex-direction: row;
+    /* Items side-by-side */
+}
+
+@media (max-width: 768px) {
+    .qa-panel-content {
+        flex-direction: column;
+        /* Stack on mobile */
+    }
+}
+
+/* Header Row Styling (New) */
+.qa-panel-header-row {
+    display: flex;
+    background-color: var(--bg-primary);
+    border-bottom: 1px solid var(--border);
+}
+
+.qa-header-item {
+    flex: 1;
+    padding: 0.75rem 1.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    border-right: 1px solid var(--border-subtle);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.qa-header-item:last-child {
+    border-right: none;
+}
+
+/* Individual Sections (Columns) */
+.qa-panel-item {
+    flex: 1;
+    /* Equal width */
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border-subtle);
+}
+
+.qa-panel-item:last-child {
+    border-right: none;
+}
+
+@media (max-width: 768px) {
+    .qa-panel-header-row {
+        display: none;
+        /* Hide header on mobile, stack content? Or keep? Usually hide/stack */
+    }
+
+    .qa-panel-item {
+        border-right: none;
+        border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .qa-panel-item:last-child {
+        border-bottom: none;
+    }
+}
+
+/* Internal Content Styling */
+
+/* q-label removed from JSX, class can remain unused or deleted. */
+
+/* Badge Style */
+.qa-badge {
+    padding: 0.25rem 0.625rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* Rationale Text */
+.qa-rationale-text {
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: var(--text-primary);
+    margin: 0;
+    flex-grow: 1;
+    white-space: pre-wrap;
+    /* Push footer down if we had one */
+}
+
+/* States */
+.qa-error-banner {
+    background-color: #FEF2F2;
+    border: 1px solid #FEE2E2;
+    color: #991B1B;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.qa-empty-state {
+    padding: 3rem 1rem;
+    text-align: center;
+    color: var(--text-secondary);
+    width: 100%;
+}
+
+.qa-footer {
+    padding: 1rem 1.5rem;
+    background-color: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.qa-timestamp {
+    font-size: 0.75rem;
+    color: var(--text-disabled);
+}
+
+.qa-loading {
+    padding: 2rem;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+/* Badge variants */
+.qa-badge.success {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: #059669;
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.qa-badge.warning {
+    background-color: rgba(245, 158, 11, 0.1);
+    color: #d97706;
+    border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.qa-badge.error {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: #dc2626;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.qa-badge.info {
+    background-color: rgba(59, 130, 246, 0.1);
+    color: #2563eb;
+    border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.qa-badge.neutral {
+    background-color: rgba(107, 114, 128, 0.1);
+    color: #4b5563;
+    border: 1px solid rgba(107, 114, 128, 0.2);
+}
+
+/* Dark mode overrides for badges */
+[data-theme="dark"] .qa-badge.success {
+    background-color: rgba(16, 185, 129, 0.2);
+    color: #34d399;
+}
+
+[data-theme="dark"] .qa-badge.warning {
+    background-color: rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+}
+
+[data-theme="dark"] .qa-badge.error {
+    background-color: rgba(239, 68, 68, 0.2);
+    color: #f87171;
+}
+
+[data-theme="dark"] .qa-badge.info {
+    background-color: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+}
+
+[data-theme="dark"] .qa-badge.neutral {
+    background-color: rgba(156, 163, 175, 0.2);
+    color: #e5e7eb;
+    /* Much lighter gray */
+    border-color: rgba(156, 163, 175, 0.3);
+}
