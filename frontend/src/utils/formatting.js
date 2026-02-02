@@ -29,10 +29,20 @@ export const formatDecimal = (value, digits = 4) => {
 
 export const formatDate = (dateString, isTimestamp = false) => {
   if (!dateString) return null
-  return new Date(dateString).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    timeZone: isTimestamp ? undefined : 'UTC'
-  })
+  const date = new Date(dateString)
+  // Check if date is valid
+  if (isNaN(date.getTime())) {
+    return 'Invalid Date'
+  }
+
+  try {
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      timeZone: isTimestamp ? undefined : 'UTC'
+    })
+  } catch (e) {
+    return 'Invalid Date'
+  }
 }

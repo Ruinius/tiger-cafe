@@ -43,18 +43,6 @@ export default function OrganicGrowthTable({ data, formatNumber, currency: propC
                                 <td className="text-right col-value">{formatNumber(data.current_period_revenue, data.current_period_revenue_unit)}</td>
                             </tr>
                         )}
-                        {data.acquisition_revenue_impact !== null && (
-                            <tr>
-                                <td className="col-name">Acquisition Revenue Impact</td>
-                                <td className="text-right col-value">{formatNumber(data.acquisition_revenue_impact, data.acquisition_revenue_impact_unit)}</td>
-                            </tr>
-                        )}
-                        {data.current_period_adjusted_revenue !== null && (
-                            <tr>
-                                <td className="col-name">Adjusted Revenue</td>
-                                <td className="text-right col-value">{formatNumber(data.current_period_adjusted_revenue, data.current_period_adjusted_revenue_unit)}</td>
-                            </tr>
-                        )}
                         {data.simple_revenue_growth !== null && (
                             <tr>
                                 <td className="col-name">Simple Revenue Growth</td>

@@ -14,8 +14,13 @@ from app.utils.financial_statement_progress import (
 from app.utils.gemini_client import generate_content_safe
 
 
-def extract_shares_outstanding_llm(text: str, time_period: str) -> dict:
-    prompt = f"""Extract basic and diluted shares outstanding from the following document text for the time period: {time_period}.
+def extract_shares_outstanding_llm(
+    text: str, time_period: str, period_end_date: str | None = None
+) -> dict:
+    from agents.extractor_utils import format_period_prompt_label
+
+    period_info = format_period_prompt_label(time_period, period_end_date)
+    prompt = f"""Extract basic and diluted shares outstanding from the following document text for the {period_info}.
 
 IMPORTANT GUIDANCE ON LABELING:
 - Basic and diluted shares outstanding may not be explicitly labeled as "basic shares outstanding" or "diluted shares outstanding"
@@ -59,6 +64,7 @@ def extract_shares_outstanding(
     file_path: str,
     time_period: str,
     max_retries: int = 1,
+    period_end_date: str | None = None,
 ) -> dict:
     query_texts = ["weighted average", "shares", "basic", "diluted"]
 
@@ -92,7 +98,7 @@ def extract_shares_outstanding(
             FinancialStatementMilestone.SHARES_OUTSTANDING,
             f"I'm asking Gemini to find the weighted average shares (basic and diluted) for {time_period}.",
         )
-        extraction = extract_shares_outstanding_llm(text, time_period)
+        extraction = extract_shares_outstanding_llm(text, time_period, period_end_date)
         if extraction.get("basic_shares_outstanding") or extraction.get(
             "diluted_shares_outstanding"
         ):
@@ -112,7 +118,7 @@ def extract_shares_outstanding(
         retries = 0
         while retries < max_retries and not extraction:
             retries += 1
-            extraction = extract_shares_outstanding_llm(text, time_period)
+            extraction = extract_shares_outstanding_llm(text, time_period, period_end_date)
 
         is_valid = any(
             extraction.get(field) is not None

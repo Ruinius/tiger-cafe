@@ -1,5 +1,6 @@
 import json
 import time  # Added import for time.sleep
+from datetime import datetime
 from typing import Any
 
 from app.utils.gemini_client import generate_content_safe
@@ -74,6 +75,31 @@ def call_llm_with_retry(
     raise Exception("Should not reach here")
 
 
+def format_period_prompt_label(time_period: str | None, period_end_date: str | None) -> str:
+    """
+    Formats a descriptive string for the time period to be used in LLM prompts.
+    Handles 'fiscal' vs 'calendar' labeling and date formatting.
+    """
+    period_info_parts = []
+    if time_period:
+        period_info_parts.append(f"time period in fiscal: {time_period}")
+
+    if period_end_date:
+        formatted_date = period_end_date
+        try:
+            # Format to "Dec 31, 2023" style to match global formatter
+            dt = datetime.strptime(period_end_date, "%Y-%m-%d")
+            formatted_date = dt.strftime("%b %d, %Y")
+        except (ValueError, TypeError):
+            pass
+        period_info_parts.append(f"(period ending in calendar {formatted_date})")
+
+    period_info = " ".join(period_info_parts)
+    if not period_info:
+        period_info = "specified period"
+    return period_info
+
+
 def check_section_completeness_llm(
     text: str,
     time_period: str,
@@ -84,9 +110,7 @@ def check_section_completeness_llm(
     """
     Generic function to check if a document section contains a complete financial statement.
     """
-    period_info = f"time period in fiscal: {time_period}"
-    if period_end_date:
-        period_info += f" (period ending in calendar {period_end_date})"
+    period_info = format_period_prompt_label(time_period, period_end_date)
 
     prompt = f"""Analyze the following document text to determine if it contains a COMPLETE {statement_name} for the {period_info}.
 

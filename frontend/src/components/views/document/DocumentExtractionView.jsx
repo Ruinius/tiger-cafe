@@ -250,8 +250,19 @@ function DocumentExtractionView({ selectedDocument }) {
                             });
 
                             // 2. Add specific validation errors from the statements themselves
-                            const processStatementErrors = (statement, label) => {
+                            // Only add if not already present in milestone warnings
+                            const processStatementErrors = (statement, label, milestoneKey) => {
                                 if (statement && statement.is_valid === false) {
+                                    // Check if milestone already has a warning with validation errors
+                                    const milestoneWarning = milestones[milestoneKey];
+                                    const milestoneHasValidationWarnings = milestoneWarning?.status === 'warning' && 
+                                        milestoneWarning?.message?.includes('Validation warnings:');
+                                    
+                                    // Skip if milestone already reported validation warnings
+                                    if (milestoneHasValidationWarnings) {
+                                        return;
+                                    }
+
                                     const errorDetails = statement.validation_errors;
                                     if (errorDetails) {
                                         try {
@@ -276,8 +287,8 @@ function DocumentExtractionView({ selectedDocument }) {
                                 }
                             };
 
-                            processStatementErrors(balanceSheet, 'Balance Sheet');
-                            processStatementErrors(incomeStatement, 'Income Statement');
+                            processStatementErrors(balanceSheet, 'Balance Sheet', 'balance_sheet');
+                            processStatementErrors(incomeStatement, 'Income Statement', 'income_statement');
 
                             // 3. Data Integrity & Health Checks
                             // We run these if the pipeline is terminal OR if enough attempts have failed

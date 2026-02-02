@@ -191,28 +191,15 @@ def get_revenue_line_item(
 ) -> IncomeStatementLineItem | None:
     """
     Extract the revenue line item from the income statement.
-    Uses standardized name "Total Net Revenue" if available.
+    Uses standardized name "revenue" or "total_revenue".
     """
     if not income_statement or not income_statement.line_items:
         return None
 
-    # First, try to find standardized "Total Net Revenue" name
     for item in income_statement.line_items:
-        if "Total Net Revenue" in item.line_name and item.line_value > 0:
-            return item
-
-    # Fallback to original logic
-    for item in income_statement.line_items:
-        name_lower = item.line_name.lower()
-        category_lower = item.line_category.lower() if item.line_category else ""
-
-        if (
-            "revenue" in name_lower
-            or "revenue" in category_lower
-            or "sales" in name_lower
-            or "net sales" in name_lower
-        ):
-            if item.line_value > 0:
+        # User defined rule: use standardized_name = "revenue" or "total_revenue"
+        if item.standardized_name in ["revenue", "total_revenue"]:
+            if item.line_value is not None and item.line_value > 0:
                 return item
 
     return None
@@ -229,27 +216,23 @@ def get_revenue(income_statement: IncomeStatement) -> Decimal | None:
 def get_interest_expense(income_statement: IncomeStatement) -> Decimal | None:
     """
     Extract interest expense from the income statement.
-    Standardized name is "Interest Expense" or similar.
+    Uses standardized name "interest_expense".
+    Accumulates multiple lines if present.
     """
     if not income_statement or not income_statement.line_items:
         return None
 
-    # First, try to find standardized "Interest Expense" name
-    for item in income_statement.line_items:
-        if "Interest Expense (" in item.line_name:
-            return item.line_value
+    total_interest = Decimal("0")
+    found_interest = False
 
-    # Fallback to loose matching
     for item in income_statement.line_items:
-        name_lower = item.line_name.lower()
-        if any(
-            term in name_lower
-            for term in ["interest expense", "interest and other expense", "interest expense net"]
-        ):
-            # Interest expense is usually a positive number in financial tables but an expense.
-            # However, in our system, we store values AS EXTRACTED.
-            # If it's labeled as expense, we return the value.
-            return item.line_value
+        if getattr(item, "standardized_name", None) == "interest_expense":
+            if item.line_value is not None:
+                total_interest += item.line_value
+                found_interest = True
+
+    if found_interest:
+        return total_interest
 
     return None
 

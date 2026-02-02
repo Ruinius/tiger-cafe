@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import { useAuth } from '../../../contexts/AuthContext'
 import { API_BASE_URL } from '../../../config'
+import { formatDate } from '../../../utils/formatting'
 import './FinancialModel.css'
 
 function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) {
@@ -485,6 +486,30 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
         return num.toFixed(2)
     }
 
+    const formatCurrency = (value, currencyCode) => {
+        if (value === null || value === undefined) return 'N/A'
+        const num = parseFloat(value)
+        if (isNaN(num)) return 'N/A'
+
+        // Handle currency code or default to USD if missing
+        const code = currencyCode || 'USD'
+
+        try {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: code,
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(num)
+        } catch (e) {
+            // Fallback if currency code is invalid, just add commas
+            return new Intl.NumberFormat('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(num)
+        }
+    }
+
     if (!assumptions) return <div>Loading assumptions...</div>
 
     return (
@@ -745,6 +770,12 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                                     <td className="text-right">{formatNumber(modelData.terminal_column?.ebita)}</td>
                                 </tr>
                                 <tr>
+                                    <td>EBITA Margin</td>
+                                    <td className="text-right">{formatPercent(modelData.base_year?.margin)}</td>
+                                    {modelData.projections.map(p => <td key={p.year} className="text-right">{formatPercent(p.margin)}</td>)}
+                                    <td className="text-right">{formatPercent(modelData.terminal_column?.margin)}</td>
+                                </tr>
+                                <tr>
                                     <td>NOPAT</td>
                                     <td className="text-right">{formatNumber(modelData.base_year?.nopat)}</td>
                                     {modelData.projections.map(p => <td key={p.year} className="text-right">{formatNumber(p.nopat)}</td>)}
@@ -834,7 +865,7 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                                         </tr>
                                         <tr className="key-total-row">
                                             <td>{currency && currency !== 'USD' ? `Fair Value per Share (${currency})` : "Fair Value per Share"}</td>
-                                            <td className="text-right">{formatDecimal(modelData.fair_value_per_share)}</td>
+                                            <td className="text-right">{formatCurrency(modelData.fair_value_per_share, currency)}</td>
                                         </tr>
 
                                         {currency && currency !== 'USD' && (
@@ -848,7 +879,7 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                                                 <tr>
                                                     <td>Fair Value per Share (USD)</td>
                                                     <td className="text-right">
-                                                        {formatDecimal(modelData.fair_value_per_share * (assumptions.currency_conversion_rate || 1))}
+                                                        {formatCurrency(modelData.fair_value_per_share * (assumptions.currency_conversion_rate || 1), 'USD')}
                                                     </td>
                                                 </tr>
                                                 <tr>
@@ -875,7 +906,7 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                                                 <tr className="key-total-row">
                                                     <td>Fair Value per ADR (USD)</td>
                                                     <td className="text-right">
-                                                        {formatDecimal(modelData.fair_value_per_share * (assumptions.currency_conversion_rate || 1) * (assumptions.adr_conversion_factor || 1))}
+                                                        {formatCurrency(modelData.fair_value_per_share * (assumptions.currency_conversion_rate || 1) * (assumptions.adr_conversion_factor || 1), 'USD')}
                                                     </td>
                                                 </tr>
                                             </>
@@ -885,7 +916,7 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                                             <>
                                                 <tr>
                                                     <td>Current Share Price ({selectedCompany.ticker})</td>
-                                                    <td className="text-right">{formatDecimal(parseFloat(modelData.current_share_price))}</td>
+                                                    <td className="text-right">{formatCurrency(parseFloat(modelData.current_share_price), modelData.current_share_price_currency || currency)}</td>
                                                 </tr>
                                                 <tr className="key-total-row">
                                                     <td>Percent Undervalued (or Overvalued)</td>
@@ -930,10 +961,10 @@ function FinancialModel({ selectedCompany, historicalEntries, unit, currency }) 
                                         ) : (
                                             valuations.map(v => (
                                                 <tr key={v.id}>
-                                                    <td>{new Date(v.date).toLocaleDateString()}</td>
+                                                    <td>{formatDate(v.date)}</td>
                                                     <td>{v.user_name || v.user_email || 'Unknown'}</td>
-                                                    <td className="text-right">${formatDecimal(parseFloat(v.fair_value))}</td>
-                                                    <td className="text-right">{v.share_price_at_time ? `$${formatDecimal(parseFloat(v.share_price_at_time))}` : 'N/A'}</td>
+                                                    <td className="text-right">{formatCurrency(parseFloat(v.fair_value), 'USD')}</td>
+                                                    <td className="text-right">{v.share_price_at_time ? formatCurrency(parseFloat(v.share_price_at_time), 'USD') : 'N/A'}</td>
                                                     <td className={`text-right ${parseFloat(v.percent_undervalued) > 0 ? 'text-green' : 'text-red'}`}>
                                                         {v.percent_undervalued ? formatPercent(parseFloat(v.percent_undervalued)) : 'N/A'}
                                                     </td>

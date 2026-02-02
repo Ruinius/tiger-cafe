@@ -39,7 +39,12 @@ function CompanyList({ onCompanySelect, onOpenUploadModal, onShowUploadProgress 
                     return a.name.localeCompare(b.name);
                 case 'last_doc':
                     // Newest first (descending)
-                    return (b.latest_document_date || '').localeCompare(a.latest_document_date || '');
+                    const docDateA = a.latest_document_date ? new Date(a.latest_document_date).getTime() : 0;
+                    const docDateB = b.latest_document_date ? new Date(b.latest_document_date).getTime() : 0;
+                    // Handle invalid dates (NaN) by treating them as 0
+                    const safeA = isNaN(docDateA) ? 0 : docDateA;
+                    const safeB = isNaN(docDateB) ? 0 : docDateB;
+                    return safeB - safeA;
                 case 'valuation':
                     // Newest first (descending)
                     const dateA = a.last_valuation_date ? new Date(a.last_valuation_date).getTime() : 0;

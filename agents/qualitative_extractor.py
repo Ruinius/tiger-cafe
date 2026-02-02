@@ -35,26 +35,77 @@ def extract_qualitative_assessment(ticker: str, company_name: str) -> dict[str, 
 
     Return a JSON object with the following structure:
     {{
-        "economic_moat_rationale": "String with newlines:\\nCases For: [Points]\\nCases Against: [Points]\\nConclusion: [Final reasoning]",
-        "near_term_growth_rationale": "String with newlines:\\nCases For: [Points]\\nCases Against: [Points]\\nConclusion: [Final reasoning]",
-        "revenue_predictability_rationale": "String with newlines:\\nCases For: [Points]\\nCases Against: [Points]\\nConclusion: [Final reasoning]"
+        "economic_moat": {{
+             "cases_for": ["point 1", "point 2"],
+             "cases_against": ["point 1", "point 2"],
+             "conclusion": "Final reasoning"
+        }},
+        "near_term_growth": {{
+             "cases_for": ["point 1", "point 2"],
+             "cases_against": ["point 1", "point 2"],
+             "conclusion": "Final reasoning"
+        }},
+        "revenue_predictability": {{
+             "cases_for": ["point 1", "point 2"],
+             "cases_against": ["point 1", "point 2"],
+             "conclusion": "Final reasoning"
+        }}
     }}
 
     Rules:
     - Be objective and critical.
-    - The rationales must explicitly follow the 'Cases For / Cases Against / Conclusion' format.
     - Return ONLY valid JSON.
     """
 
-    analysis_result = call_llm_with_retry(analysis_prompt, temperature=0.7)
+    analysis_raw = call_llm_with_retry(analysis_prompt, temperature=0.7)
+
+    # Convert structured response to flat strings
+    def format_analysis_section(data: Any) -> str:
+        if isinstance(data, str):
+            return data
+        if not isinstance(data, dict):
+            return str(data)
+
+        lines = []
+
+        # Handle cases_for
+        cases_for = data.get("cases_for", [])
+        if isinstance(cases_for, list) and cases_for:
+            lines.append("Cases For:")
+            lines.extend([f"• {item}" for item in cases_for])
+        elif isinstance(cases_for, str):
+            lines.append(f"Cases For:\n{cases_for}")
+
+        # Handle cases_against
+        cases_against = data.get("cases_against", [])
+        if isinstance(cases_against, list) and cases_against:
+            lines.append("\nCases Against:")
+            lines.extend([f"• {item}" for item in cases_against])
+        elif isinstance(cases_against, str):
+            lines.append(f"\nCases Against:\n{cases_against}")
+
+        # Handle conclusion
+        conclusion = data.get("conclusion", "")
+        if conclusion:
+            lines.append(f"\nConclusion: {conclusion}")
+
+        return "\n".join(lines)
+
+    analysis_result = {}
+    analysis_result["economic_moat_rationale"] = format_analysis_section(
+        analysis_raw.get("economic_moat", "No rationale.")
+    )
+    analysis_result["near_term_growth_rationale"] = format_analysis_section(
+        analysis_raw.get("near_term_growth", "No rationale.")
+    )
+    analysis_result["revenue_predictability_rationale"] = format_analysis_section(
+        analysis_raw.get("revenue_predictability", "No rationale.")
+    )
 
     # 2. Labeling: Assign labels based strictly on the generated analysis
-    # Use .get() to avoid KeyErrors if the first step fails to return a key
-    moat_rationale = analysis_result.get("economic_moat_rationale", "No rationale provided.")
-    growth_rationale = analysis_result.get("near_term_growth_rationale", "No rationale provided.")
-    predictability_rationale = analysis_result.get(
-        "revenue_predictability_rationale", "No rationale provided."
-    )
+    moat_rationale = analysis_result["economic_moat_rationale"]
+    growth_rationale = analysis_result["near_term_growth_rationale"]
+    predictability_rationale = analysis_result["revenue_predictability_rationale"]
 
     labeling_prompt = f"""
     You are a strict grading assistant. Based ONLY on the provided expert analysis below, assign the correct labels.
@@ -72,15 +123,17 @@ def extract_qualitative_assessment(ticker: str, company_name: str) -> dict[str, 
 
     Task:
     1. Economic Moat Label: Choose ["Wide", "Narrow", "None"].
-       - Wide: Strong, durable competitive advantages (network effects, high switching costs).
-       - Narrow: Some advantages but potentially fleeting or minor.
-       - None: No sustainable advantage.
+       - Wide: A company with a wide moat possesses structural advantages so powerful they are expected to fend off competitors and sustain excess Return on Invested Capital (ROIC) for 20 years or more. These firms often dominate their industry through massive network effects, high switching costs, or irreplaceable intangible assets that make entry for competitors nearly impossible.
+       - Narrow: A narrow moat indicates a company has a clear competitive advantage, but one that is likely to face erosion or increased competition within a 10-to-20-year horizon. While the business is currently outperforming its cost of capital, the "moat" is not deep enough to guarantee long-term protection against aggressive rivals or rapid technological shifts.
+       - None: Companies with no moat operate in highly commoditized or intensely competitive industries where they have no sustainable advantage over their peers. These businesses are "price takers" rather than "price makers," and any short-term excess profits are quickly competed away, eventually dragging returns down toward the company WACC.
+       - If you know what Morningstar rates the company as, then use that.
 
     2. Near-term Growth Label: Choose ["Faster", "Steady", "Slower"] (relative to historical).
 
     3. Revenue Predictability Label: Choose ["High", "Mid", "Low"].
-       - High: Recurring revenue, long-term contracts, backlog.
-       - Low: Project-based, cyclical, volatile.
+       - High: These companies typically rely on long-term recurring revenue streams, such as multi-year SaaS subscriptions or essential utility services. Because the vast majority of next year income is already "locked in" by contract or necessity, management can forecast performance with extremely high precision and low variance.
+       - Mid: This category often includes businesses with high customer loyalty but shorter contract terms or a mix of recurring and transactional sales. While there is a reliable "base" of repeat business, the total revenue is still sensitive to broader economic cycles or moderate changes in customer churn, leading to occasional surprises in quarterly results.
+       - Low: These businesses are primarily transactional or project-based, requiring the sales team to "kill what they eat" every single month. Companies in highly cyclical industries, like luxury retail or construction, fall here because their revenue is heavily dependent on external factors like consumer sentiment or fluctuating interest rates.
 
     Return a JSON object with the following structure:
     {{
@@ -101,22 +154,5 @@ def extract_qualitative_assessment(ticker: str, company_name: str) -> dict[str, 
 
     # Combine results
     final_result = {**analysis_result, **label_result}
-
-    # Post-process rationales to ensure they are strings (DB compatibility)
-    def format_rationale(value):
-        if isinstance(value, list):
-            # Join with newlines and bullet points
-            return "\n".join([f"• {item}" for item in value])
-        return value
-
-    keys_to_process = [
-        "economic_moat_rationale",
-        "near_term_growth_rationale",
-        "revenue_predictability_rationale",
-    ]
-
-    for key in keys_to_process:
-        if key in final_result:
-            final_result[key] = format_rationale(final_result[key])
 
     return final_result

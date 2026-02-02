@@ -18,7 +18,7 @@ from app.utils.financial_statement_progress import (
     add_log,
 )
 from app.utils.gemini_client import generate_content_safe
-from app.utils.line_item_utils import convert_from_ones, convert_to_ones
+from app.utils.line_item_utils import convert_to_ones
 
 
 def find_revenue_line_value(line_items: list[dict]) -> float | None:
@@ -94,14 +94,9 @@ def _reflect_on_prior_revenue(
     {{text[:30000]}}
     """
 
-    print(
-        f"DEBUG: Starting reflection on prior revenue: {original_value} comparing with current: {current_revenue}"
-    )
     try:
         formatted_prompt = reflection_prompt.replace("{text[:30000]}", text[:30000])
         result = call_llm_with_retry(formatted_prompt, temperature=0.0)
-        print(f"DEBUG: Called LLM with: {formatted_prompt[:10000]}")
-        print(f"DEBUG: Reflection result from LLM: {result}")
 
         verified_val = result.get("verified_value")
         verified_unit = result.get("verified_unit")
@@ -119,9 +114,7 @@ def _reflect_on_prior_revenue(
         return original_value, original_unit, None
     except Exception as e:
         # Fallback on error
-        print(f"DEBUG: Reflection failed with error: {e}")
         # Raise error to prevent "green" pass-through of unverified data
-        print(f"DEBUG: Reflection failed with error: {e}")
         raise RuntimeError(f"Reflection failed: {e}") from e
 
 
@@ -232,34 +225,91 @@ Return only valid JSON, no additional text."""
         raise RuntimeError(f"Prior year revenue extraction failed: {e}") from e
 
 
-def extract_organic_growth_llm(text: str, time_period: str) -> dict:
-    prompt = f"""Analyze the following document text for the time period: {time_period}.
-Determine if the company made acquisitions that impacted revenue for this period.
+def extract_organic_growth_percentage_only(
+    text: str, time_period: str, period_end_date: str | None = None
+) -> float | None:
+    """Step 1: Extract the organic growth percentage figure only."""
+    from agents.extractor_utils import format_period_prompt_label
 
-CRITICAL ANTI-HALLUCINATION RULES:
-- ONLY extract values that are EXPLICITLY shown in the document text below
-- DO NOT invent, infer, calculate, estimate, or approximate any values
-- If no acquisition impact is explicitly stated, set acquisition_revenue_impact to 0 and acquisition_flag to false
+    period_info = format_period_prompt_label(time_period, period_end_date)
+    prompt = f"""Analyze the provided document text for the {period_info}.
+Your goal is to extract the "Constant Currency Organic Growth" percentage (or "Organic Growth" percentage) if it exists.
 
-Return a JSON object with:
-{{
-  "acquisition_flag": true or false,
-  "acquisition_revenue_impact": number (0 if no acquisition impact is stated),
-  "acquisition_revenue_impact_unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (null if not stated)
-}}
+Instructions:
+- Look for a numeric percentage explicitly labeled as "organic growth", "organic revenue growth", or "constant currency organic growth".
+- Ignore simple revenue growth or other metrics.
+- Return the raw number as a float (e.g., 5.5 for 5.5%, -2.3 for -2.3%).
+- If not found, return null.
 
 Document text:
 {text[:30000]}
 
-Return only valid JSON, no additional text."""
+Return a JSON object:
+{{
+  "organic_growth_percentage": number or null
+}}
 
-    response_text = generate_content_safe(prompt, temperature=0.0)
-    if response_text.startswith("```"):
-        response_text = response_text.split("```")[1]
-        if response_text.startswith("json"):
-            response_text = response_text[4:]
-        response_text = response_text.strip()
-    return json.loads(response_text)
+Return only valid JSON."""
+
+    try:
+        response_text = generate_content_safe(prompt, temperature=0.0)
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+            response_text = response_text.strip()
+        data = json.loads(response_text)
+        return data.get("organic_growth_percentage")
+    except Exception:
+        return None
+
+
+def reflect_on_organic_growth(
+    text: str,
+    organic_growth: float,
+    simple_growth: float | None,
+) -> dict:
+    """Step 2: Reflect on the extracted value using the chunk and simple growth."""
+    simple_growth_str = f"{simple_growth:.2f}%" if simple_growth is not None else "Unknown"
+    organic_growth_str = f"{organic_growth}%"
+
+    prompt = f"""You are a QA Auditor verifying data extraction.
+You need to validate if the extracted "Organic Growth" figure makes sense in the context of the document and the calculated "Simple Growth".
+
+Data:
+- Extracted Organic Growth: {organic_growth_str}
+- Calculated Simple Growth (Current vs Prior): {simple_growth_str}
+
+Instructions:
+1.  **Locate**: Confirm {organic_growth_str} appears in the text in the context of organic/constant currency growth.
+2.  **Compare**:
+    -   Does the text explain the difference (if any) between Simple Growth ({simple_growth_str}) and Organic Growth ({organic_growth_str})? (e.g. FX impact, M&A)
+    -   If Simple Growth is 20% and Organic is 3%, are there major acquisitions mentioned?
+    -   If the numbers are totally different with no explanation, the Organic Growth might be a hallucination or wrong number.
+    -   If they are arguably consistent, ACCEPT the organic growth.
+    -   If they contradict the text or common sense, REJECT it.
+
+Document Text:
+{text[:30000]}
+
+Return a JSON object:
+{{
+  "is_valid": boolean,
+  "reason": "Short explanation of your verification logic."
+}}
+
+Return only valid JSON."""
+
+    try:
+        response_text = generate_content_safe(prompt, temperature=0.0)
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+            response_text = response_text.strip()
+        return json.loads(response_text)
+    except Exception as e:
+        return {"is_valid": False, "reason": f"Reflection failed: {e}"}
 
 
 def extract_organic_growth(
@@ -269,7 +319,100 @@ def extract_organic_growth(
     income_statement_data: dict,
     max_retries: int = 1,
 ) -> dict:
-    query_texts = ["merge", "acquire", "acquisition", "m&a", "business combination"]
+    # --- Step 1: Resolve Current and Prior Field Revenue & Calculate Simple Growth ---
+    validation_errors: list[str] = []
+    line_items = income_statement_data.get("line_items", [])
+    current_unit = income_statement_data.get("unit")
+    current_revenue = find_revenue_line_value(line_items)
+    prior_revenue = income_statement_data.get("revenue_prior_year")
+    prior_revenue_unit = None
+
+    if prior_revenue is not None:
+        prior_revenue_unit = current_unit  # Assume same if extracted together
+
+    # If prior revenue is missing, try to extract it from the IS chunk
+    if current_revenue is not None and prior_revenue is None:
+        add_log(
+            document_id,
+            FinancialStatementMilestone.ORGANIC_GROWTH,
+            "Prior period revenue missing from metadata. Attempting to extract from Income Statement context.",
+        )
+        is_chunk_index = income_statement_data.get("chunk_index")
+
+        candidate_chunks_is = [is_chunk_index] if is_chunk_index is not None else []
+
+        if candidate_chunks_is:
+            is_text, _, _ = get_chunk_with_context(
+                document_id, file_path, candidate_chunks_is[0], chars_before=2500, chars_after=2500
+            )
+
+            # Find line name for context
+            revenue_line_name = None
+            for item in line_items:
+                if item.get("standardized_name") in ["total_revenue", "revenue"]:
+                    revenue_line_name = item.get("line_name")
+                    break
+
+            # Extract
+            extracted_prior_val, extracted_prior_unit, reason = extract_prior_year_revenue(
+                is_text,
+                time_period,
+                current_revenue,
+                revenue_line_name,
+                current_unit,
+                income_statement_data.get("period_end_date"),
+            )
+
+            if extracted_prior_val is not None:
+                prior_revenue = extracted_prior_val
+                prior_revenue_unit = extracted_prior_unit
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.ORGANIC_GROWTH,
+                    f"Resolved prior revenue: {prior_revenue} ({prior_revenue_unit}). Reason: {reason}",
+                    source="gemini",
+                )
+            else:
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.ORGANIC_GROWTH,
+                    f"Could not resolve prior revenue. {reason}",
+                    source="gemini",
+                )
+
+    if current_revenue is None:
+        validation_errors.append("Current period revenue not found")
+    if prior_revenue is None:
+        validation_errors.append("Prior period revenue not found")
+
+    # Calculate Simple Growth
+    simple_growth = None
+    if current_revenue is not None and prior_revenue is not None:
+        # Normalize units
+        current_rev_ones = convert_to_ones(float(current_revenue), current_unit)
+
+        # Handle Prior Unit logic
+        used_prior_unit = prior_revenue_unit
+        if not used_prior_unit:
+            used_prior_unit = current_unit
+        else:
+            # Sanity check unit
+            # Check ratio
+            ratio = (
+                (float(current_revenue) / float(prior_revenue)) if float(prior_revenue) != 0 else 0
+            )
+            if 0.1 < ratio < 10:
+                used_prior_unit = current_unit
+
+        prior_rev_ones = convert_to_ones(float(prior_revenue), used_prior_unit)
+
+        if prior_rev_ones != 0:
+            simple_growth = (current_rev_ones - prior_rev_ones) / prior_rev_ones * 100
+            prior_revenue_unit = used_prior_unit  # Update for return
+
+    # --- Step 2: Find Chunk (constant currency organic growth) ---
+    query_texts = ["constant currency organic growth"]
+
     text, chunk_index, _ = collect_top_chunk_texts(
         document_id=document_id,
         file_path=file_path,
@@ -282,233 +425,85 @@ def extract_organic_growth(
         context_name="Organic Growth",
     )
 
-    validation_errors: list[str] = []
+    # --- Step 3, 4, 5, 6: Extract, Format, Reflect, Confirm ---
+    organic_growth = None
 
     if not text:
-        validation_errors.append("Organic growth section not found")
-        extraction = {
-            "acquisition_flag": False,
-            "acquisition_revenue_impact": 0,
-            "acquisition_revenue_impact_unit": None,
-        }
+        validation_errors.append("Organic growth text section not found")
+        add_log(
+            document_id,
+            FinancialStatementMilestone.ORGANIC_GROWTH,
+            "Could not find section discussing constant currency organic growth.",
+            source="system",
+        )
     else:
         add_log(
             document_id,
             FinancialStatementMilestone.ORGANIC_GROWTH,
-            f"I'm asking Gemini to analyze the section for any acquisition impacts on revenue for {time_period}.",
+            "Found relevant section. Attempting to extract organic growth percentage.",
             source="system",
         )
-        extraction = extract_organic_growth_llm(text, time_period)
-        if extraction.get("acquisition_flag"):
-            add_log(
-                document_id,
-                FinancialStatementMilestone.ORGANIC_GROWTH,
-                f"Gemini response: Acquisition detected with a revenue impact of {extraction.get('acquisition_revenue_impact')} ({extraction.get('acquisition_revenue_impact_unit') or 'ones'}). This will be used to calculate the organic growth rate.",
-                source="gemini",
-            )
-        else:
-            add_log(
-                document_id,
-                FinancialStatementMilestone.ORGANIC_GROWTH,
-                "Gemini response: No significant revenue-impacting acquisitions or business combinations were identified in the specified period.",
-                source="gemini",
-            )
 
-    retries = 0
-    while retries < max_retries and not extraction:
-        retries += 1
-        extraction = extract_organic_growth_llm(text or "", time_period)
-
-    line_items = income_statement_data.get("line_items", [])
-    current_unit = income_statement_data.get("unit")
-    current_revenue = find_revenue_line_value(line_items)
-    prior_revenue = income_statement_data.get("revenue_prior_year")
-    prior_revenue_unit = None
-
-    # If using prior_revenue from IS data, assume same unit as IS
-    if prior_revenue is not None:
-        prior_revenue_unit = current_unit
-
-    # If prior revenue is missing, attempt to extract it from the income statement section
-    if current_revenue is not None and prior_revenue is None:
-        add_log(
-            document_id,
-            FinancialStatementMilestone.ORGANIC_GROWTH,
-            "I'm looking for the prior period revenue in the income statement to calculate growth rates.",
+        # Step 3 & 4: Extract and Post-process (handled by strict return type)
+        extracted_val = extract_organic_growth_percentage_only(
+            text, time_period, income_statement_data.get("period_end_date")
         )
 
-        # 1. Find Income Statement section
-        is_chunk_index = income_statement_data.get("chunk_index")
-        candidate_chunks_is = []
-
-        if is_chunk_index is not None:
-            # If we have the chunk index from the IS extraction, use it directly
-            # This ensures we are looking at the EXACT same table that IS was extracted from
-            candidate_chunks_is = [is_chunk_index]
+        if extracted_val is not None:
+            # Step 5: Reflect
             add_log(
                 document_id,
                 FinancialStatementMilestone.ORGANIC_GROWTH,
-                f"Using the exact same document section (chunk {is_chunk_index}) where the Income Statement was found.",
+                f"Extracted candidate organic growth: {extracted_val}%. Reflecting against simple growth ({simple_growth if simple_growth is not None else 'N/A'}%) and text context.",
+                source="system",
             )
-        else:
-            # Fallback: Search for IS section again if chunk_index is missing
-            # Fallback: Search for IS section again if chunk_index is missing
-            # Error out instead of guessing
-            raise ValueError(
-                "Income Statement chunk index is missing. "
-                "Cannot reliably locate prior year revenue context."
-            )
+            reflection = reflect_on_organic_growth(text, extracted_val, simple_growth)
 
-        if candidate_chunks_is:
-            # We'll try the first candidate chunk for the IS
-            is_chunk_index = candidate_chunks_is[0]
-            is_text, _, _ = get_chunk_with_context(
-                document_id, file_path, is_chunk_index, chars_before=2500, chars_after=2500
-            )
-
-            # Find the revenue line name used in the IS
-            revenue_line_name = None
-            for item in line_items:
-                if item.get("standardized_name") in ["total_revenue", "revenue"]:
-                    revenue_line_name = item.get("line_name")
-                    break
-
-            # 2. Extract prior revenue
-            add_log(
-                document_id,
-                FinancialStatementMilestone.ORGANIC_GROWTH,
-                "I'm now asking Gemini to find the revenue from the same period last year in the comparative statements.",
-            )
-            extracted_prior_val, extracted_prior_unit, reflection_reason = (
-                extract_prior_year_revenue(
-                    is_text,
-                    time_period,
-                    current_revenue,
-                    revenue_line_name,
-                    income_statement_data.get("unit"),
-                    income_statement_data.get("period_end_date"),
-                )
-            )
-            if extracted_prior_val is not None:
-                msg = f"Gemini response: Found the comparative revenue figure for the prior year: {extracted_prior_val} ({extracted_prior_unit or 'ones'}). Comparative analysis can now proceed."
-                if reflection_reason:
-                    msg += f" (QA Check: {reflection_reason})"
+            # Step 6: Confirm
+            if reflection.get("is_valid"):
+                organic_growth = extracted_val
                 add_log(
                     document_id,
                     FinancialStatementMilestone.ORGANIC_GROWTH,
-                    msg,
+                    f"CONFIRMED Organic Growth: {organic_growth}%. Reason: {reflection.get('reason')}",
                     source="gemini",
                 )
             else:
-                msg = "Gemini response: Comparative revenue data for the prior fiscal interval could not be definitively located."
-                if reflection_reason:
-                    msg += f" QA Auditor flagged issue: {reflection_reason}"
                 add_log(
                     document_id,
                     FinancialStatementMilestone.ORGANIC_GROWTH,
-                    msg,
+                    f"REJECTED Organic Growth ({extracted_val}%). Reason: {reflection.get('reason')}. Fallback to simple growth.",
                     source="gemini",
                 )
-
-            if extracted_prior_val is not None:
-                prior_revenue = extracted_prior_val
-                prior_revenue_unit = extracted_prior_unit
-
-    if current_revenue is None:
-        validation_errors.append("Current period revenue not found in income statement")
-    if prior_revenue is None:
-        validation_errors.append("Prior period revenue not found in income statement")
-
-    acquisition_impact = extraction.get("acquisition_revenue_impact")
-    if acquisition_impact is None:
-        acquisition_impact = 0
-
-    simple_growth = None
-    organic_growth = None
-    adjusted_revenue = None
-
-    if current_revenue is not None and prior_revenue:
-        # Convert both to ones for safe calculation
-        current_rev_ones = convert_to_ones(float(current_revenue), current_unit)
-        impact_ones = convert_to_ones(
-            float(acquisition_impact), extraction.get("acquisition_revenue_impact_unit")
-        )
-
-        # If prior_revenue_unit is None, it might imply it's already in the same unit as the main doc or extracted as a raw number.
-        # But if it came from extract_prior_year_revenue, it returns a unit.
-        # IF prior_revenue came from income_statement_data.get("revenue_prior_year"), check if unit is already handled.
-
-        # NOTE: extracted_prior_val from extract_prior_year_revenue is raw from LLM.
-        # extracted_prior_unit is what the LLM said it is.
-        # So conversion to ones IS needed.
-
-        # VALIDATION: If prior unit looks like a currency code (e.g. RMB, USD) or is None,
-        # and current unit is valid, default to current unit.
-        if not prior_revenue_unit:
-            print(
-                f"DEBUG: prior_revenue_unit is None. Defaulting to current_unit '{current_unit}'."
-            )
-            prior_revenue_unit = current_unit
         else:
-            norm_unit = prior_revenue_unit.lower().strip()
-            # If it's a currency code (3 letters) or not a standard multiplier, trust current_unit
-            if len(norm_unit) == 3 or not any(
-                x in norm_unit for x in ["thousand", "million", "billion", "ten_thous"]
-            ):
-                # Check if the values are comparable raw.
-                # If current=31174 and prior=33557, likely same unit.
-                ratio = (
-                    float(current_revenue) / float(prior_revenue)
-                    if float(prior_revenue) != 0
-                    else 0
-                )
-                if 0.1 < ratio < 10:
-                    print(
-                        f"DEBUG: Overriding invalid prior unit '{prior_revenue_unit}' with current unit '{current_unit}' based on value magnitude similarity."
-                    )
-                    prior_revenue_unit = current_unit
-                else:
-                    print(
-                        f"DEBUG: prior_revenue_unit '{prior_revenue_unit}' is invalid, but values are not comparable. Defaulting to current_unit '{current_unit}' anyway as fallback."
-                    )
-                    prior_revenue_unit = current_unit
+            add_log(
+                document_id,
+                FinancialStatementMilestone.ORGANIC_GROWTH,
+                "Gemini could not explicitly extract an organic growth percentage from the text.",
+                source="gemini",
+            )
 
-        prior_rev_ones = convert_to_ones(float(prior_revenue), prior_revenue_unit)
+    # --- Step 6 (Fallback): If invalid/missing, usage simple growth ---
+    final_organic_growth = organic_growth if (organic_growth is not None) else simple_growth
 
-        if prior_rev_ones != 0:
-            simple_growth = (current_rev_ones - prior_rev_ones) / prior_rev_ones * 100
-
-            # Adjusted revenue = current - acquisition impact
-            adjusted_revenue_ones = current_rev_ones - impact_ones
-
-            organic_growth = (adjusted_revenue_ones - prior_rev_ones) / prior_rev_ones * 100
-
-            # Normalize display values to the current unit
-            prior_revenue = convert_from_ones(prior_rev_ones, current_unit)
-            acquisition_impact = convert_from_ones(impact_ones, current_unit)
-            adjusted_revenue = convert_from_ones(adjusted_revenue_ones, current_unit)
-
-            # Update unit metadata for return
-            prior_revenue_unit = current_unit
-
-    is_valid = not validation_errors and current_revenue is not None and prior_revenue is not None
+    is_valid_result = (
+        not validation_errors and final_organic_growth is not None and current_revenue is not None
+    )
 
     return {
         "currency": income_statement_data.get("currency"),
-        "acquisition_flag": extraction.get("acquisition_flag", False),
-        "acquisition_revenue_impact": acquisition_impact,
-        "acquisition_revenue_impact_unit": current_unit
-        if current_revenue is not None
-        else extraction.get("acquisition_revenue_impact_unit"),
+        "acquisition_flag": False,
+        "acquisition_revenue_impact": None,
+        "acquisition_revenue_impact_unit": None,
         "current_period_revenue": current_revenue,
         "current_period_revenue_unit": current_unit,
         "prior_period_revenue": prior_revenue,
         "prior_period_revenue_unit": prior_revenue_unit,
         "simple_revenue_growth": simple_growth,
-        "current_period_adjusted_revenue": adjusted_revenue,
+        "current_period_adjusted_revenue": None,
         "current_period_adjusted_revenue_unit": current_unit,
-        "organic_revenue_growth": organic_growth,
+        "organic_revenue_growth": final_organic_growth,
         "chunk_index": chunk_index,
-        "is_valid": is_valid,
+        "is_valid": is_valid_result,
         "validation_errors": validation_errors,
     }

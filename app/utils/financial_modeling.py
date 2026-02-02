@@ -115,30 +115,27 @@ def calculate_dcf(historical_entries: list, assumptions: dict) -> dict:
 
     for year in range(1, years_to_project + 1):
         # Determine phase
-        if year == 1:
-            growth_rate = get_assumption("revenue_growth_stage1")
-            margin = get_assumption("ebita_margin_stage1")
-            mct = assumptions.get("marginal_capital_turnover_stage1")
-        elif year <= 5:
-            # Interpolate Growth between Year 1 (Stage 1) and Year 6 (Stage 2)
+        if year <= 5:
+            # Stage 1 Interpolation (Years 1-5 transition to Stage 2 targets)
             g1 = get_assumption("revenue_growth_stage1")
             g2 = get_assumption("revenue_growth_stage2")
             growth_rate = g1 + ((g2 - g1) / 5) * (Decimal(year) - 1)
 
-            # Keep Margin/MCT constant for Stage 1 (or we could smooth them too, but req only specified revenue)
-            margin = get_assumption("ebita_margin_stage1")
+            m1 = get_assumption("ebita_margin_stage1")
+            m2 = get_assumption("ebita_margin_stage2")
+            margin = m1 + ((m2 - m1) / 5) * (Decimal(year) - 1)
+
             mct = assumptions.get("marginal_capital_turnover_stage1")
-        elif year == 6:
-            growth_rate = get_assumption("revenue_growth_stage2")
-            margin = get_assumption("ebita_margin_stage2")
-            mct = assumptions.get("marginal_capital_turnover_stage2")
         else:
-            # Interpolate Growth between Year 6 (Stage 2) and Year 11 (Terminal)
+            # Stage 2 Interpolation (Years 6-10 transition to Terminal targets)
             g2 = get_assumption("revenue_growth_stage2")
             g_terminal = get_assumption("revenue_growth_terminal")
             growth_rate = g2 + ((g_terminal - g2) / 5) * (Decimal(year) - 6)
 
-            margin = get_assumption("ebita_margin_stage2")
+            m2 = get_assumption("ebita_margin_stage2")
+            m_terminal = get_assumption("ebita_margin_terminal")
+            margin = m2 + ((m_terminal - m2) / 5) * (Decimal(year) - 6)
+
             mct = assumptions.get("marginal_capital_turnover_stage2")
 
         # Fallback for MCT if not set
@@ -232,6 +229,7 @@ def calculate_dcf(historical_entries: list, assumptions: dict) -> dict:
         "nopat": base_nopat,
         "invested_capital": start_invested_capital,
         "roic": base_roic,
+        "margin": base_ebita / start_revenue if start_revenue else 0,
         "fcf": None,  # FCF for base year usually not relevant for DCF sum
         "discount_factor": None,
         "pv_fcf": None,
@@ -305,6 +303,7 @@ def calculate_dcf(historical_entries: list, assumptions: dict) -> dict:
             "revenue": revenue_terminal,
             "growth_rate": g_terminal,
             "ebita": ebita_terminal,
+            "margin": margin_terminal,
             "nopat": nopat_terminal,
             "invested_capital": invested_capital_terminal,
             "roic": roic_terminal,

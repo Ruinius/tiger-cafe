@@ -125,8 +125,6 @@ async def rerun_pipeline(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    print(f"DEBUG: Rerun requested for document {document_id}")
-
     # Clear existing extracted data
     from app.models.amortization import Amortization, AmortizationLineItem
     from app.models.balance_sheet import BalanceSheet, BalanceSheetLineItem

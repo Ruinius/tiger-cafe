@@ -8,6 +8,7 @@ from agents.extractor_utils import (
     call_llm_and_parse_json,
     call_llm_with_retry,
     check_section_completeness_llm,
+    format_period_prompt_label,
 )
 from app.services.tiger_transformer_client import TigerTransformerClient
 from app.utils.financial_statement_progress import (
@@ -203,6 +204,11 @@ def extract_balance_sheet(
             extracted_data["line_items"], document_id
         )
 
+        # Fix accumulated depreciation sign before validation
+        extracted_data["line_items"] = fix_accumulated_depreciation_sign(
+            extracted_data["line_items"]
+        )
+
         calc_valid, calc_errors = validate_balance_sheet_calculations(extracted_data["line_items"])
 
         # Step 1: If validation fails, check time periods and remove out-of-place items
@@ -265,6 +271,12 @@ def extract_balance_sheet(
                 extracted_data["line_items"] = post_process_balance_sheet_line_items(
                     extracted_data["line_items"], document_id
                 )
+
+                # Fix accumulated depreciation sign before validation
+                extracted_data["line_items"] = fix_accumulated_depreciation_sign(
+                    extracted_data["line_items"]
+                )
+
                 calc_valid, calc_errors = validate_balance_sheet_calculations(
                     extracted_data["line_items"]
                 )
@@ -307,6 +319,12 @@ def extract_balance_sheet(
             extracted_data["line_items"] = post_process_balance_sheet_line_items(
                 extracted_data["line_items"], document_id
             )
+
+            # Fix accumulated depreciation sign before validation
+            extracted_data["line_items"] = fix_accumulated_depreciation_sign(
+                extracted_data["line_items"]
+            )
+
             calc_valid, calc_errors = validate_balance_sheet_calculations(
                 extracted_data["line_items"]
             )
@@ -406,9 +424,7 @@ def extract_balance_sheet_llm(
     Returns:
         Dictionary with balance sheet data
     """
-    period_info = f"time period: {time_period}"
-    if period_end_date:
-        period_info += f" (period ending {period_end_date})"
+    period_info = format_period_prompt_label(time_period, period_end_date)
 
     prompt = f"""Extract the balance sheet from the following document text for the {period_info}.
 Extract the balance sheet exactly line by line, including all line items and their values.
@@ -503,9 +519,7 @@ def extract_balance_sheet_llm_with_feedback(
     errors_text = "\n".join(f"- {error}" for error in validation_errors)
     previous_items_text = json.dumps(previous_extraction.get("line_items", []), indent=2)
 
-    period_info = f"time period: {time_period}"
-    if period_end_date:
-        period_info += f" (period ending {period_end_date})"
+    period_info = format_period_prompt_label(time_period, period_end_date)
 
     prompt = f"""Extract the balance sheet from the following document text for the {period_info}.
 Extract the balance sheet exactly line by line, including all line items and their values.
@@ -658,6 +672,25 @@ def post_process_balance_sheet_line_items(line_items: list[dict], document_id: s
     )
 
     return processed_items
+
+
+def fix_accumulated_depreciation_sign(line_items: list[dict]) -> list[dict]:
+    """
+    Ensure accumulated depreciation is always negative.
+
+    Args:
+        line_items: List of balance sheet line items
+
+    Returns:
+        Modified line items with corrected accumulated depreciation sign
+    """
+    for item in line_items:
+        if item.get("standardized_name") == "accumulated_depreciation":
+            value = item.get("line_value")
+            if value is not None and value > 0:
+                item["line_value"] = -value
+
+    return line_items
 
 
 def validate_balance_sheet_calculations(line_items: list[dict]) -> tuple[bool, list[str]]:

@@ -8,6 +8,7 @@ from agents.extractor_utils import (
     call_llm_and_parse_json,
     call_llm_with_retry,
     check_section_completeness_llm,
+    format_period_prompt_label,
 )
 from app.services.tiger_transformer_client import TigerTransformerClient
 from app.utils.financial_statement_progress import (
@@ -397,9 +398,7 @@ def extract_income_statement_llm(
     Returns:
         Dictionary with income statement data
     """
-    period_info = f"time period: {time_period}"
-    if period_end_date:
-        period_info += f" (period ending {period_end_date})"
+    period_info = format_period_prompt_label(time_period, period_end_date)
 
     prompt = f"""Extract the income statement (also called "consolidated statement of operations" or "statement of earnings") from the following document text for the {period_info}.
 Extract the income statement exactly line by line, including all line items and their values starting with revenue.
@@ -491,9 +490,7 @@ def extract_income_statement_llm_with_feedback(
     errors_text = "\n".join(f"- {error}" for error in validation_errors)
     previous_items_text = json.dumps(previous_extraction.get("line_items", []), indent=2)
 
-    period_info = f"time period: {time_period}"
-    if period_end_date:
-        period_info += f" (period ending {period_end_date})"
+    period_info = format_period_prompt_label(time_period, period_end_date)
 
     prompt = f"""Extract the income statement (also called "consolidated statement of operations" or "statement of earnings") from the following document text for the {period_info}.
 Extract the income statement exactly line by line, including all line items and their values starting with revenue.

@@ -30,15 +30,18 @@ def test_extract_prior_year_revenue_raises_error_on_failure():
     assert "Prior year revenue extraction failed: Parsing Error" in str(excinfo.value)
 
 
-def test_extract_organic_growth_raises_value_error_if_chunk_index_missing():
-    """Test that extract_organic_growth raises ValueError if IS chunk index is missing."""
+def test_extract_organic_growth_returns_invalid_if_chunk_index_missing():
+    """Test that extract_organic_growth returns invalid result if IS chunk index is missing."""
 
     # Mock dependencies
     mock_collect = MagicMock(return_value=("Organic Growth Text", 1, 0.9))
 
     with (
         patch("agents.organic_growth_extractor.collect_top_chunk_texts", mock_collect),
-        patch("agents.organic_growth_extractor.extract_organic_growth_llm", return_value={}),
+        patch(
+            "agents.organic_growth_extractor.extract_organic_growth_percentage_only",
+            return_value=None,
+        ),
         patch("agents.organic_growth_extractor.find_revenue_line_value", return_value=100.0),
         patch("agents.organic_growth_extractor.add_log"),
     ):
@@ -50,10 +53,11 @@ def test_extract_organic_growth_raises_value_error_if_chunk_index_missing():
             # "chunk_index": missing!
         }
 
-        with pytest.raises(ValueError) as excinfo:
-            extract_organic_growth("doc_id", "path/to/file", "Q1 2024", income_statement_data)
+        # Should NOT raise ValueError anymore, but return invalid result
+        result = extract_organic_growth("doc_id", "path/to/file", "Q1 2024", income_statement_data)
 
-        assert "Income Statement chunk index is missing" in str(excinfo.value)
+        assert result["is_valid"] is False
+        assert "Prior period revenue not found" in result["validation_errors"]
 
 
 def test_extract_organic_growth_uses_provided_chunk_index():
@@ -65,8 +69,12 @@ def test_extract_organic_growth_uses_provided_chunk_index():
     with (
         patch("agents.organic_growth_extractor.collect_top_chunk_texts", mock_collect),
         patch(
-            "agents.organic_growth_extractor.extract_organic_growth_llm",
-            return_value={"acquisition_flag": False},
+            "agents.organic_growth_extractor.extract_organic_growth_percentage_only",
+            return_value=5.5,
+        ),
+        patch(
+            "agents.organic_growth_extractor.reflect_on_organic_growth",
+            return_value={"is_valid": True, "reason": "Valid"},
         ),
         patch("agents.organic_growth_extractor.find_revenue_line_value", return_value=100.0),
         patch("agents.organic_growth_extractor.get_chunk_with_context", mock_get_chunk),

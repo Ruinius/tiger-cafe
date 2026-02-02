@@ -55,63 +55,72 @@ The system currently supports:
 - [x] In the DocumentExtractionView, for each of the tables (e.g., Balance Sheet) to the right of "Unit", add and populate "Chunk Index:" as appropriate
 - [x] Change the @financialmodel.jsx such that the revenue growth transition is smooth. So Stage 1 (Y1-5) is really just defining Y1. Stage 2 (Y6-10) is only defining Y6. Then the in between years are straight-line smoothed out
 - [x] Change raw beta in @financialmodel.jsx to use Blume's adjustment (basically 2/3 raw beta and 1/3 = 1.0). Change the label from "Beta" to "Adjusted Beta" and add a tooltip explaining the adjustment
+- [x] Fair value per share and Current Share price are not formatted correctly. Need to add dollar sign and comma when number exceeds 1000
+- [x] Smooth out EBITA Margin in the model similar to how revenue growth is being treated
+- [x] Fix formatting in the Past Valuations table
+    - Fair value column needs comma separators
+    - share price column needs comma separators
+    - the date needs to use the global date formmater
 - [ ] Improve the Document list
 - [ ] Enable editing extracted values in Document Extraction View
 - [ ] Revenue Growth and Margin Sensitivity
+- [ ] Delete duplicates after identifying one
+- [ ] When initiating a full pipeline via Re-run Extraction, it does not seem to enter the queue and instead tries to race
 
 
 ### Phase 17: Further agent enhancements
 - [x] time_period based on quarterly is not reliable. See if can use period_end_date instead. If both are unreliable, then will require some kind of reflection step prior to extraction
 - [x] add a simple LLM-based qualitative economic moat and future growth assessment
     - See detailed plan: @[docs/IMPLEMENTATION_PLAN_QUALITATIVE.md]
-- [ ] add a reflection step for the meta data of all the documents, such as comparing period_end_date and time_period, then self-heal time_period before going through the rest of the pipeline
-- [ ] Continue to fix time period and period_end_date logic. Some documents have one, some other.
-- [ ] EL case - LLM extracting after the net earnings / net income line
+- [x] SWK case - the agent cannot find the prior period revenue and current period revenue is screwed up
+- [x] CSCO, KO case - the ticker was not identified. Need a reflection step.
+- [x] ADP case - organic growth is not working for earnings announcement. For earnings announcement, just do a search for organic growth and see if there's a difference percentage
+- [x] APD case - accumulated depreciation is incorrectly shown as a positive number instead of a negative
+- [ ] Add reflection and healing step for when key totals are missing, such as total assets, total liabilities, total equity & liabilities
 - [ ] EL case - LLM extracting Non-GAAP table very strangely - look into the non-gaap reconciliation logic
 - [ ] EL case - add a reflection step to the Non-GAAP table on time period of line items
 - [ ] EL case - cannot seem to extract dilted shares outstanding
 - [ ] BIDU case - rare issue where despite using income statement, the prior year revenue is being pulled from a different table (BIDU Core instead of Consolidated)
-- [ ] BABA case - the agent is not able to find the balance sheet based on the current chunking and search logic'
-- [ ] BABA case - the document does not say which quarter it is only the month, which needs to be interpreted as a certain quarter
 - [ ] META case - cannot find shares outstanding for some reason
 - [ ] BKNG case - pulled value from a different column despite the reflection step. The LLM struggles with the value is zero, especially if it is represented by "—"
 - [ ] TOL case - the balance sheet and income statement does not label important totals for some reason - will need robust reflection step
-- [ ] CSCO case - the interest and other expense line is actually a subtotal line. Looking at the csv file, I may have copy & pasted a different company. Need to double check
-- [x] SWK case - the agent cannot find the prior period revenue and current period revenue is screwed up
-- [x] CSCO, KO case - the ticker was not identified. Need a reflection step.
-- [ ] JD case - need to fix the labeling for equity method, because they need to be treated differently for adjusted tax calculations
 - [ ] DIS case - rare case where total equity & liability is missing
 - [ ] DIS case - total PPE line is not labeled and is instead just an indented line
-- [ ] ABNB case - dates are mostly missing from the document
-- [ ] TXN case - PPE total is not marked correctly, causing validation to fail and invested capital to be exaggerated
-- [ ] MTCH case - there's a strange situation where total other income, net is not a calculated field
 - [ ] WDAY case - there is a strange case where the diluted shares outstanding is not standardized into right units
-- [ ] RKT case - tiger-transformer does not know how to handle mortgage company
+- [ ] TTD case - Total other income, net is for some reason not a calculated field
+- [ ] NVR case - tiger-transformer does not know how to handle special homebuilding case (WHY ARE ALL THE HOMEBUILDERS SO SPECIAL?!)
+- [ ] ULTA case - strange name for net income parent
+- [ ] GRND case - the financial statements are images instead of text
+- [ ] Prepare for incorporating multiple document types per period
+    - Rewire the architecture to be company -> time period -> documents. Time periods are fixed and documents are assigned with self-healing reflection prompts.
+    - EOY / Q4 are the anchors, because there is no ambiguity
+    - Balance Sheet and Income Statements are still tied to documents, so self-healing would affect them correctly
+    - [ ] Revisit the reflections for document_classifier, such as comparing period_end_date and time_period, then self-heal time_period before going through the rest of the pipeline
+    - [ ] Continue to fix time period and period_end_date logic. Some documents have one, some other
+    - [ ] GGG case - missing balance sheet in earnings announcement. Need to accelerate analyzing 10-Q and 10-K for complete picture
+    - [ ] MA case - the period end date is now missing, and income statement is not being found. This is likely due to time_period being used incorrectly. Need refactor / reflection step for dates and time period
+    - [ ] ABNB case - dates are mostly missing from the document
+    - [ ] DIS case - strange case where the extractor fails to find the document date despite it being the first line
+    - [ ] BABA case - the document does not say which quarter it is only the month, which needs to be interpreted as a certain quarter
 
 
-### Phase 18: Transcripts, news, and Gemini copy & paste
-- [ ] Growth, margin, and capital efficiency assumptions
-
-
-### Phase 19: 10-K and 10-Q
-- [ ] Refactor app to focus on company → period_end_date → documents
-- [ ] Enable incorporating multiple document types per period
+### Phase 18: 10-K and 10-Q
 - [ ] Extract financial statements more consistently
 - [ ] Improved organic growth analysis
 - [ ] Extract details on amortization, other assets, and other liabilities
 
 
-## Ongoing List of UI Improvements and Bugs
-
-
-
-## Backlog and Notes of Bigger Outstanding Issues - DO NOT CODE
-- [ ] Consolidate batch upload tests
+### Phase 19: Outstanding Refactor Opportunities
 - [ ] Refactor all the different status (legacy and new)
 - [ ] Refactor opportunity. Send raw pdf using Files API instead of processed text to Gemini
     - Instead of the current chunking logic, use PDF splitters
     - Extract and send global context with prompt
     - Use Gemini 3-flash for the difficult extractions and maintain flash-lite for easier tasks
+- [ ] Consolidate batch upload tests
+
+
+## Ongoing List of UI Improvements and Bugs
+
 
 
 

@@ -100,15 +100,22 @@ async def list_companies(
         # Fetch latest document date
         # We prefer document_date (published date), but fallback to period_end_date for legacy/missing data
         latest_doc_date = None
-        latest_doc = (
+        latest_docs = (
             db.query(Document)
             .filter(Document.company_id == company.id)
             .filter((Document.document_date.isnot(None)) | (Document.period_end_date.isnot(None)))
             .order_by(func.coalesce(Document.document_date, Document.period_end_date).desc())
-            .first()
+            .limit(10)
+            .all()
         )
-        if latest_doc:
-            latest_doc_date = latest_doc.document_date or latest_doc.period_end_date
+
+        # Iterate to find the first valid date (starts with digit)
+        # preventing "N/A" or "Unknown" from sorting to top
+        for doc in latest_docs:
+            candidate = doc.document_date or doc.period_end_date
+            if candidate and candidate[0].isdigit():
+                latest_doc_date = candidate
+                break
 
         company_dict = {
             "id": company.id,
@@ -293,9 +300,12 @@ async def get_financial_model(
 
     # 4. Fetch share price
     company = db.query(Company).filter(Company.id == company_id).first()
+    # 4. Fetch share price
+    company = db.query(Company).filter(Company.id == company_id).first()
     if company:
-        share_price = get_latest_share_price(company.ticker)
+        share_price, share_currency = get_latest_share_price(company.ticker)
         result["current_share_price"] = share_price
+        result["current_share_price_currency"] = share_currency
 
     # 5. Fetch non-operating items (Bridge from Enterprise Value to Equity Value)
     non_op_classifications = (
@@ -395,6 +405,8 @@ async def get_financial_model(
 
         # Convert fair value to USD and adjust for ADR
         # fair_value (local) * currency_rate (local->USD) * adr_factor (shares per ADR)
+        # Note: If current_share_price is NOT in USD, we simply assume it is for now (Yahoo default), and rely on currency_rate being set accurately.
+        # Future improvement: Use result["current_share_price_currency"] to drive this conversion logic fully.
         fair_value_adr_usd = fair_value * currency_rate * adr_factor
 
         # Now compare fair value (ADR, USD) to current price (ADR, USD)

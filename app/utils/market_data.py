@@ -58,27 +58,29 @@ def _set_cached_value(cache_key: str, value):
         pass
 
 
-def get_latest_share_price(ticker: str) -> Decimal:
+def get_latest_share_price(ticker: str) -> tuple[Decimal, str]:
     """
-    Fetch the latest share price for a given ticker from Yahoo Finance.
-    Returns Decimal("0") if failed.
+    Fetch the latest share price and currency for a given ticker from Yahoo Finance.
+    Returns (Decimal("0"), "USD") if failed.
     Uses 24-hour cache to prevent throttling.
     """
     if not ticker:
-        return Decimal("0")
+        return Decimal("0"), "USD"
 
     # Check cache first
-    cache_key = f"price_{ticker}"
+    cache_key = f"price_v2_{ticker}"
     cached = _get_cached_value(cache_key)
     if cached is not None:
-        return Decimal(str(cached))
+        # cache value is now a dict { "price": float, "currency": str }
+        return Decimal(str(cached.get("price", 0))), cached.get("currency", "USD")
 
     try:
         # Use yfinance to get ticker data
         ticker_obj = yf.Ticker(ticker)
 
         # Try to get fast info first (often faster/more reliable for price)
-        price = ticker_obj.fast_info.last_price
+        price = getattr(ticker_obj.fast_info, "last_price", None)
+        currency = getattr(ticker_obj.fast_info, "currency", None)
 
         if price is None:
             # Fallback to history
@@ -86,14 +88,19 @@ def get_latest_share_price(ticker: str) -> Decimal:
             if not hist.empty:
                 price = hist["Close"].iloc[-1]
 
-        if price is not None:
-            # Cache the result
-            _set_cached_value(cache_key, float(price))
-            return Decimal(str(price))
+        if currency is None:
+            # Fallback to info
+            currency = ticker_obj.info.get("currency", "USD")
 
-        return Decimal("0")
+        if price is not None:
+            # Cache the result as a dict
+            cache_val = {"price": float(price), "currency": currency or "USD"}
+            _set_cached_value(cache_key, cache_val)
+            return Decimal(str(price)), currency or "USD"
+
+        return Decimal("0"), "USD"
     except Exception:
-        return Decimal("0")
+        return Decimal("0"), "USD"
 
 
 def get_beta(ticker: str) -> Decimal:

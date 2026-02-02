@@ -7,7 +7,11 @@ from __future__ import annotations
 
 import json
 
-from agents.extractor_utils import call_llm_with_retry, check_section_completeness_llm
+from agents.extractor_utils import (
+    call_llm_with_retry,
+    check_section_completeness_llm,
+    format_period_prompt_label,
+)
 from app.models.document import DocumentType
 from app.utils.financial_statement_progress import (
     FinancialStatementMilestone,
@@ -389,9 +393,7 @@ def extract_gaap_reconciliation_llm(
     Returns:
         Dictionary with extracted line items
     """
-    period_info = f"time period: {time_period}"
-    if period_end_date:
-        period_info += f" (period ending {period_end_date})"
+    period_info = format_period_prompt_label(time_period, period_end_date)
 
     prompt = f"""Extract all line items from the OPERATING INCOME reconciliation table or EBITDA reconciliation table
 in the following document text for the {period_info}.
@@ -579,9 +581,7 @@ def retry_extraction_with_feedback(
     """
     items_json = json.dumps(current_line_items, indent=2)
 
-    period_info = f"time period: {time_period}"
-    if period_end_date:
-        period_info += f" (period ending {period_end_date})"
+    period_info = format_period_prompt_label(time_period, period_end_date)
 
     prompt = f"""I attempted to extract an operating income or EBITDA reconciliation table for {period_info}, but validation failed.
 

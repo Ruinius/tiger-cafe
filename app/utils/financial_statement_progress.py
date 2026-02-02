@@ -33,7 +33,7 @@ class FinancialStatementMilestone(Enum):
     OTHER_LIABILITIES = "other_liabilities"
     CLASSIFYING_NON_OPERATING_ITEMS = "classifying_non_operating_items"
     # Phase 4: Analysis
-    CALCULATE_VALUE_METRICS = "calculate_value_metrics"  # Document-level: RoIC, EBITA, etc.
+    CALCULATE_VALUE_METRICS = "calculate_value_metrics"  # Document-level: ROIC, EBITA, etc.
     UPDATE_HISTORICAL_DATA = "update_historical_data"  # Company-level: Aggregation
     UPDATE_ASSUMPTIONS = "update_assumptions"
     CALCULATE_INTRINSIC_VALUE = "calculate_intrinsic_value"
