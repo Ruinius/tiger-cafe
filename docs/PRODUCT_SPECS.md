@@ -71,6 +71,9 @@ Navigation is hierarchical:
 **Left Panel**: `DocumentList`
 - Breadcrumb: `< Companies`
 - List of documents belonging to the selected company
+  - **Status Badges**: Visual indicators for Balance Sheet (BS), Income Statement (IS), Organic Growth (OG), Shares Outstanding (SO), and Duplicates (dup).
+  - **Tooltips**: Detailed status information on hover.
+  - **Time Period**: Explicitly displays the financial period covered.
 - "Add Document" entry point (pre-selects company)
 - "Check Uploads" entry point (when uploads are active)
 
@@ -505,7 +508,8 @@ Users can modify key assumptions to drive the valuation model.
 - **Marginal Capital Turnover**: 3-stage input (Years 1-5, Years 6-10, Terminal Rate).
 - **Operating Tax Rate**: Single inputs for projected tax rate.
 - **WACC**: Weighted Average Cost of Capital (default 8%).
-- **WACC**: Weighted Average Cost of Capital (default 8%).
+- **Smoothing**: Revenue growth and EBITA margin transitions are smoothed between stages (Stage 1 to Stage 2) to avoid abrupt jumps.
+- **Adjusted Beta**: Raw beta is adjusted using Blume's method (2/3 Raw + 1/3 Market) for WACC calculations.
 - **Defaults**:
   - **Auto-Seeding**: System auto-populates defaults based on L4Q historical averages.
   - **Qualitative Overrides**: Adjustments applied based on qualitative assessment (e.g., Wide Moat -> Higher Terminal Growth).

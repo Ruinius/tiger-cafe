@@ -45,6 +45,35 @@ function DocumentList({ selectedCompany, onDocumentSelect, onBack, onOpenUploadM
         return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
     }
 
+    // Helper function to get badge class and tooltip based on status
+    const getBadgeInfo = (status, label) => {
+        const labelMap = {
+            'BS': 'Balance Sheet',
+            'IS': 'Income Statement',
+            'OG': 'Organic Growth',
+            'SO': 'Shares Outstanding'
+        }
+        const fullLabel = labelMap[label] || label
+
+        if (status === 'success') {
+            return {
+                className: 'status-badge status-success',
+                tooltip: `${fullLabel}: Extracted and validated`
+            }
+        } else if (status === 'warning') {
+            return {
+                className: 'status-badge status-warning',
+                tooltip: `${fullLabel}: Validation failed or incomplete data`
+            }
+        } else if (status === 'error') {
+            return {
+                className: 'status-badge status-error',
+                tooltip: `${fullLabel}: Not found`
+            }
+        }
+        return null
+    }
+
     return (
         <div className="panel-content">
             <div className="panel-header">
@@ -58,52 +87,75 @@ function DocumentList({ selectedCompany, onDocumentSelect, onBack, onOpenUploadM
                 {loading ? (
                     <div className="loading">Loading documents...</div>
                 ) : (
-                    completedDocuments.map(document => (
-                        <div
-                            key={document.id}
-                            className="document-item"
-                            onClick={() => onDocumentSelect(document)}
-                        >
-                            <div className="document-name">
-                                <span className="document-type-display">
-                                    {formatDocumentType(document.document_type)}
-                                </span>
-                                {document.period_end_date ? (
-                                    <span className="document-time-period"> • {new Date(document.period_end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                                ) : document.time_period && (
-                                    <span className="document-time-period"> • {document.time_period}</span>
-                                )}
+                    completedDocuments.map(document => {
+                        const bsBadge = getBadgeInfo(document.balance_sheet_status, 'BS')
+                        const isBadge = getBadgeInfo(document.income_statement_status, 'IS')
+                        const ogBadge = getBadgeInfo(document.organic_growth_status, 'OG')
+                        const soBadge = getBadgeInfo(document.shares_outstanding_status, 'SO')
+
+                        return (
+                            <div
+                                key={document.id}
+                                className="document-item"
+                                onClick={() => onDocumentSelect(document)}
+                            >
+                                <div className="document-name">
+                                    <span className="document-type-display">
+                                        {formatDocumentType(document.document_type)}
+                                    </span>
+                                    {document.time_period && (
+                                        <span className="document-time-period"> • {document.time_period}</span>
+                                    )}
+                                    {document.period_end_date ? (
+                                        <span className="document-time-period"> • {new Date(document.period_end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                    ) : !document.time_period && (
+                                        <span className="document-time-period"> • N/A</span>
+                                    )}
+                                </div>
+                                <div className="document-meta">
+                                    {document.duplicate_detected && (
+                                        <span
+                                            className="status-badge status-error"
+                                            title="Duplicate: This document is a duplicate of an existing document"
+                                            style={{ backgroundColor: 'var(--error, #E5484D)', color: 'white' }}
+                                        >
+                                            dup
+                                        </span>
+                                    )}
+                                    {bsBadge && (
+                                        <span className={bsBadge.className} title={bsBadge.tooltip}>
+                                            BS
+                                        </span>
+                                    )}
+                                    {isBadge && (
+                                        <span className={isBadge.className} title={isBadge.tooltip}>
+                                            IS
+                                        </span>
+                                    )}
+                                    {ogBadge && (
+                                        <span className={ogBadge.className} title={ogBadge.tooltip}>
+                                            OG
+                                        </span>
+                                    )}
+                                    {soBadge && (
+                                        <span className={soBadge.className} title={soBadge.tooltip}>
+                                            SO
+                                        </span>
+                                    )}
+                                    {document.uploader_name && (
+                                        <span className="document-uploader">
+                                            Uploaded by {document.uploader_name}
+                                        </span>
+                                    )}
+                                    {document.uploaded_at && (
+                                        <span className="document-date">
+                                            {new Date(document.uploaded_at).toLocaleDateString()}
+                                        </span>
+                                    )}
+                                </div>
                             </div>
-                            <div className="document-meta">
-                                {document.balance_sheet_status && document.balance_sheet_status !== 'not_extracted' && (
-                                    <span
-                                        className={`status-badge status-${document.balance_sheet_status === 'valid' ? 'indexed' : 'classified'}`}
-                                        title={`Balance Sheet: ${document.balance_sheet_status}`}
-                                    >
-                                        BS
-                                    </span>
-                                )}
-                                {document.income_statement_status && document.income_statement_status !== 'not_extracted' && (
-                                    <span
-                                        className={`status-badge status-${document.income_statement_status === 'valid' ? 'indexed' : 'classified'}`}
-                                        title={`Income Statement: ${document.income_statement_status}`}
-                                    >
-                                        IS
-                                    </span>
-                                )}
-                                {document.uploader_name && (
-                                    <span className="document-uploader">
-                                        Uploaded by {document.uploader_name}
-                                    </span>
-                                )}
-                                {document.uploaded_at && (
-                                    <span className="document-date">
-                                        {new Date(document.uploaded_at).toLocaleDateString()}
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    ))
+                        )
+                    })
                 )}
 
                 {!loading && completedDocuments.length === 0 && documents.length > 0 && (

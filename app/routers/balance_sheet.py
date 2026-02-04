@@ -212,19 +212,16 @@ async def get_balance_sheet(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    print(f"[DEBUG] Fetching Balance Sheet for doc: {document_id}")
     balance_sheet = db.query(BalanceSheet).filter(BalanceSheet.document_id == document_id).first()
 
     # State 1: Balance sheet exists
     if balance_sheet:
-        print(f"[DEBUG] Balance Sheet FOUND for doc: {document_id}")
         # Convert to schema for proper serialization
         balance_sheet_schema = BalanceSheetSchema.model_validate(balance_sheet)
         return {"status": "exists", "data": balance_sheet_schema.model_dump()}
 
     # State 2: Processing
     if document.analysis_status == ProcessingStatus.PROCESSING:
-        print(f"[DEBUG] Balance Sheet PROCESSING for doc: {document_id}")
         # Get processing milestones/logs (for now, return status)
         return {
             "status": "processing",
@@ -233,5 +230,4 @@ async def get_balance_sheet(
         }
 
     # State 3: Does not exist and not processing
-    print(f"[DEBUG] Balance Sheet NOT FOUND for doc: {document_id}")
     raise HTTPException(status_code=404, detail=f"DEBUG_BS_NOT_FOUND_FOR_{document_id}")

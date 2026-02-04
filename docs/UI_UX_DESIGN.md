@@ -60,9 +60,12 @@ The "Mission Control" panel provides a high-fidelity, real-time command center f
     - `SYSTEM`: Neutral grey / text-secondary.
     - `GEMINI`: Indigo / Purple.
     - `TIGER TRANSFORMER`: Indigo / Purple (Unified with Gemini for visual harmony).
-- **Animations**:
   - New logs should "drip" in with a subtle fade-and-slide up animation.
   - Active steps should feature a soft Pulse animation on the status icon.
+
+- **Phase-Based Progress Tracking**:
+  - The process is visualized as a 12-step phase journey (Phase 1: Ingestion -> ... -> Phase 12: Complete).
+  - Each phase highlights as active, completed (green check), or error (red).
 
 ## Table Design ("The Gold Standard")
 *Reference Implementation: Document View (DocumentExtractionView)*
@@ -107,6 +110,12 @@ The "Mission Control" panel provides a high-fidelity, real-time command center f
     - *Good/Wide/Faster*: Green (Success).
     - *Neutral/Narrow/Steady*: Grey (Neutral).
     - *Bad/None/Slower*: Orange (Warning).
+  - **Document List Badges** (Circular):
+    - **BS** (Balance Sheet), **IS** (Income Statement), **OG** (Organic Growth), **SO** (Shares Outstanding).
+    - **dup** (Duplicate) - Always Red.
+    - *Success*: Green.
+    - *Warning*: Yellow.
+    - *Error/Missing*: Red/Grey.
   - **Void/Null**: Simple muted dash "—".
 
 ## Spacing & Layout Structure

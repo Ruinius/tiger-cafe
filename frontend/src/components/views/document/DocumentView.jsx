@@ -147,30 +147,66 @@ function DocumentView({ selectedDocument, selectedCompany, onBack, onShowUpdates
                                 <span className={`status-badge status-${doc.indexing_status?.toLowerCase() || 'pending'}`}>
                                     {doc.indexing_status || 'pending'}
                                 </span>
-                                {doc.balance_sheet_status && doc.balance_sheet_status !== 'not_extracted' && (
-                                    <span
-                                        className={`status-badge status-${doc.balance_sheet_status === 'valid' ? 'indexed' : (doc.balance_sheet_status === 'warning' ? 'warning' : 'classified')}`}
-                                        title={`Balance Sheet: ${doc.balance_sheet_status}`}
-                                    >
-                                        BS
-                                    </span>
-                                )}
-                                {doc.income_statement_status && doc.income_statement_status !== 'not_extracted' && (
-                                    <span
-                                        className={`status-badge status-${doc.income_statement_status === 'valid' ? 'indexed' : (doc.income_statement_status === 'warning' ? 'warning' : 'classified')}`}
-                                        title={`Income Statement: ${doc.income_statement_status}`}
-                                    >
-                                        IS
-                                    </span>
-                                )}
-                                {doc.gaap_reconciliation_status && doc.gaap_reconciliation_status === 'warning' && (
-                                    <span
-                                        className="status-badge status-warning"
-                                        title="GAAP Reconciliation: Not Found (Warning)"
-                                    >
-                                        GAAP!
-                                    </span>
-                                )}
+                                {(() => {
+                                    // Helper function to get badge info (same as DocumentList)
+                                    const getBadgeInfo = (status, label) => {
+                                        const labelMap = {
+                                            'BS': 'Balance Sheet',
+                                            'IS': 'Income Statement',
+                                            'OG': 'Organic Growth',
+                                            'SO': 'Shares Outstanding'
+                                        }
+                                        const fullLabel = labelMap[label] || label
+
+                                        if (status === 'success') {
+                                            return {
+                                                className: 'status-badge status-success',
+                                                tooltip: `${fullLabel}: Extracted and validated`
+                                            }
+                                        } else if (status === 'warning') {
+                                            return {
+                                                className: 'status-badge status-warning',
+                                                tooltip: `${fullLabel}: Validation failed or incomplete data`
+                                            }
+                                        } else if (status === 'error') {
+                                            return {
+                                                className: 'status-badge status-error',
+                                                tooltip: `${fullLabel}: Not found`
+                                            }
+                                        }
+                                        return null
+                                    }
+
+                                    const bsBadge = getBadgeInfo(doc.balance_sheet_status, 'BS')
+                                    const isBadge = getBadgeInfo(doc.income_statement_status, 'IS')
+                                    const ogBadge = getBadgeInfo(doc.organic_growth_status, 'OG')
+                                    const soBadge = getBadgeInfo(doc.shares_outstanding_status, 'SO')
+
+                                    return (
+                                        <>
+                                            {bsBadge && (
+                                                <span className={bsBadge.className} title={bsBadge.tooltip}>
+                                                    BS
+                                                </span>
+                                            )}
+                                            {isBadge && (
+                                                <span className={isBadge.className} title={isBadge.tooltip}>
+                                                    IS
+                                                </span>
+                                            )}
+                                            {ogBadge && (
+                                                <span className={ogBadge.className} title={ogBadge.tooltip}>
+                                                    OG
+                                                </span>
+                                            )}
+                                            {soBadge && (
+                                                <span className={soBadge.className} title={soBadge.tooltip}>
+                                                    SO
+                                                </span>
+                                            )}
+                                        </>
+                                    )
+                                })()}
                             </div>
 
                         </div>

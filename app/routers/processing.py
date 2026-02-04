@@ -128,6 +128,7 @@ async def rerun_pipeline(
     # Clear existing extracted data
     from app.models.amortization import Amortization, AmortizationLineItem
     from app.models.balance_sheet import BalanceSheet, BalanceSheetLineItem
+    from app.models.gaap_reconciliation import GAAPReconciliation, GAAPReconciliationLineItem
     from app.models.historical_calculation import HistoricalCalculation
     from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
     from app.models.non_operating_classification import (
@@ -137,6 +138,7 @@ async def rerun_pipeline(
     from app.models.organic_growth import OrganicGrowth
     from app.models.other_assets import OtherAssets, OtherAssetsLineItem
     from app.models.other_liabilities import OtherLiabilities, OtherLiabilitiesLineItem
+    from app.models.shares_outstanding import SharesOutstanding
 
     # Delete balance sheet
     balance_sheet = db.query(BalanceSheet).filter(BalanceSheet.document_id == document_id).first()
@@ -166,6 +168,19 @@ async def rerun_pipeline(
 
     # Delete organic growth
     db.query(OrganicGrowth).filter(OrganicGrowth.document_id == document_id).delete()
+
+    # Delete shares outstanding
+    db.query(SharesOutstanding).filter(SharesOutstanding.document_id == document_id).delete()
+
+    # Delete GAAP reconciliation
+    gaap_recon = (
+        db.query(GAAPReconciliation).filter(GAAPReconciliation.document_id == document_id).first()
+    )
+    if gaap_recon:
+        db.query(GAAPReconciliationLineItem).filter(
+            GAAPReconciliationLineItem.gaap_reconciliation_id == gaap_recon.id
+        ).delete()
+        db.delete(gaap_recon)
 
     # Delete other assets
     other_assets = db.query(OtherAssets).filter(OtherAssets.document_id == document_id).first()
@@ -226,13 +241,16 @@ async def rerun_pipeline(
     document.indexing_status = ProcessingStatus.PENDING
     db.commit()
 
-    # Trigger full pipeline (including ingestion)
-    background_tasks.add_task(run_ingestion_pipeline, document_id, db)
+    # Add to queue instead of using background_tasks to ensure sequential processing
+    from app.services.queue_service import get_queue_service
+
+    queue_service = get_queue_service()
+    queue_service.add_document(document_id)
 
     return {
-        "status": "started",
+        "status": "queued",
         "document_id": document_id,
-        "message": "Pipeline restarted (existing data cleared)",
+        "message": "Pipeline restarted (existing data cleared, added to processing queue)",
     }
 
 

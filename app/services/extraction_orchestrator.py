@@ -435,7 +435,19 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
                 ),
             )
 
-            if shares_data:
+            # Check if extraction is valid and has meaningful values
+            has_valid_shares = False
+            if shares_data and shares_data.get("is_valid"):
+                basic = shares_data.get("basic_shares_outstanding")
+                diluted = shares_data.get("diluted_shares_outstanding")
+
+                # Validation rule: Must have at least one value > 1000 (to avoid small erroneous numbers)
+                if (basic is not None and float(basic) > 1000) or (
+                    diluted is not None and float(diluted) > 1000
+                ):
+                    has_valid_shares = True
+
+            if has_valid_shares:
                 # Normalize units to match Income Statement if available
                 if document.income_statement and document.income_statement.unit:
                     target_unit = document.income_statement.unit
@@ -444,9 +456,7 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
                     basic_val = shares_data.get("basic_shares_outstanding")
                     basic_unit = shares_data.get("basic_shares_outstanding_unit")
                     if basic_val is not None:
-                        # If unit is missing for shares but we have value, we assume it might be raw or same as IS?
-                        # But simpler to only convert if we have a source unit.
-                        # If source unit is missing, we can't reliably convert.
+                        # If unit is missing for shares but we have value, we assume it might be raw or same as IS
                         if basic_unit and target_unit.lower().strip() != basic_unit.lower().strip():
                             try:
                                 val_ones = convert_to_ones(float(basic_val), basic_unit)
@@ -502,8 +512,14 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
                 update_milestone(
                     document_id,
                     FinancialStatementMilestone.SHARES_OUTSTANDING,
-                    MilestoneStatus.ERROR,
-                    "Failed to extract shares outstanding",
+                    MilestoneStatus.WARNING,
+                    "Shares outstanding not found or values too small (< 1000)",
+                )
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.SHARES_OUTSTANDING,
+                    "Gemini response: I couldn't find valid shares outstanding data (values > 1000). Skipping this metric.",
+                    source="gemini",
                 )
         except Exception as shares_error:
             update_milestone(
@@ -1292,7 +1308,7 @@ async def run_analysis_pipeline(company_id: str, document_id: str, db: Session) 
             add_log(
                 document_id,
                 FinancialStatementMilestone.CALCULATE_VALUE_METRICS,
-                f"I've successfully calculated metrics: RoIC={result.roic}%, EBITA={result.ebita}",
+                f"I've successfully calculated metrics: ROIC={result.roic}%, EBITA={result.ebita}",
             )
         except Exception as calc_error:
             add_log(

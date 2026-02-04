@@ -1,24 +1,14 @@
 formatted_input
-[<START>] [<START>] [income_statement] [Subscriptions] [Maintenance] [Professional services]
-[<START>] [Subscriptions] [income_statement] [Maintenance] [Professional services] [Software licenses and royalties]
-[Subscriptions] [Maintenance] [income_statement] [Professional services] [Software licenses and royalties] [Hardware and other]
-[Maintenance] [Professional services] [income_statement] [Software licenses and royalties] [Hardware and other] [Total revenues]
-"[Professional services] [Software licenses and royalties] [income_statement] [Hardware and other] [Total revenues] [Subscriptions, maintenance and professional services]"
-"[Software licenses and royalties] [Hardware and other] [income_statement] [Total revenues] [Subscriptions, maintenance and professional services] [Software licenses and royalties]"
-"[Hardware and other] [Total revenues] [income_statement] [Subscriptions, maintenance and professional services] [Software licenses and royalties] [Amortization of software development]"
-"[Total revenues] [Subscriptions, maintenance and professional services] [income_statement] [Software licenses and royalties] [Amortization of software development] [Amortization of acquired software]"
-"[Subscriptions, maintenance and professional services] [Software licenses and royalties] [income_statement] [Amortization of software development] [Amortization of acquired software] [Hardware and other]"
-[Software licenses and royalties] [Amortization of software development] [income_statement] [Amortization of acquired software] [Hardware and other] [Total cost of revenues]
-[Amortization of software development] [Amortization of acquired software] [income_statement] [Hardware and other] [Total cost of revenues] [Gross profit]
-[Amortization of acquired software] [Hardware and other] [income_statement] [Total cost of revenues] [Gross profit] [Sales and marketing expense]
-[Hardware and other] [Total cost of revenues] [income_statement] [Gross profit] [Sales and marketing expense] [General and administrative expense]
-[Total cost of revenues] [Gross profit] [income_statement] [Sales and marketing expense] [General and administrative expense] [Research and development expense]
-[Gross profit] [Sales and marketing expense] [income_statement] [General and administrative expense] [Research and development expense] [Amortization of other intangibles]
-[Sales and marketing expense] [General and administrative expense] [income_statement] [Research and development expense] [Amortization of other intangibles] [Operating income]
-[General and administrative expense] [Research and development expense] [income_statement] [Amortization of other intangibles] [Operating income] [Interest expense]
-"[Research and development expense] [Amortization of other intangibles] [income_statement] [Operating income] [Interest expense] [Other income, net]"
-"[Amortization of other intangibles] [Operating income] [income_statement] [Interest expense] [Other income, net] [Income before income taxes]"
-"[Operating income] [Interest expense] [income_statement] [Other income, net] [Income before income taxes] [Income tax provision]"
-"[Interest expense] [Other income, net] [income_statement] [Income before income taxes] [Income tax provision] [Net income]"
-"[Other income, net] [Income before income taxes] [income_statement] [Income tax provision] [Net income] [<END>]"
-[Income before income taxes] [Income tax provision] [income_statement] [Net income] [<END>] [<END>]
+[<START>] [<START>] [income_statement] [Net sales] [Cost of products sold] [Gross profit]
+"[<START>] [Net sales] [income_statement] [Cost of products sold] [Gross profit] [Selling, general and administrative expenses, excluding impairment losses]"
+"[Net sales] [Cost of products sold] [income_statement] [Gross profit] [Selling, general and administrative expenses, excluding impairment losses] [Goodwill impairment losses]"
+"[Cost of products sold] [Gross profit] [income_statement] [Selling, general and administrative expenses, excluding impairment losses] [Goodwill impairment losses] [Intangible asset impairment losses]"
+"[Gross profit] [Selling, general and administrative expenses, excluding impairment losses] [income_statement] [Goodwill impairment losses] [Intangible asset impairment losses] [Selling, general and administrative expenses]"
+"[Selling, general and administrative expenses, excluding impairment losses] [Goodwill impairment losses] [income_statement] [Intangible asset impairment losses] [Selling, general and administrative expenses] [Operating income/(loss)]"
+"[Goodwill impairment losses] [Intangible asset impairment losses] [income_statement] [Selling, general and administrative expenses] [Operating income/(loss)] [Interest expense]"
+"[Intangible asset impairment losses] [Selling, general and administrative expenses] [income_statement] [Operating income/(loss)] [Interest expense] [Other expense/(income)]"
+"[Selling, general and administrative expenses] [Operating income/(loss)] [income_statement] [Interest expense] [Other expense/(income)] [Income/(loss) before income taxes]"
+[Operating income/(loss)] [Interest expense] [income_statement] [Other expense/(income)] [Income/(loss) before income taxes] [Provision for/(benefit from) income taxes]
+[Interest expense] [Other expense/(income)] [income_statement] [Income/(loss) before income taxes] [Provision for/(benefit from) income taxes] [Net income/(loss)]
+[Other expense/(income)] [Income/(loss) before income taxes] [income_statement] [Provision for/(benefit from) income taxes] [Net income/(loss)] [<END>]
+[Income/(loss) before income taxes] [Provision for/(benefit from) income taxes] [income_statement] [Net income/(loss)] [<END>] [<END>]

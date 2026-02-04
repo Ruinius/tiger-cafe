@@ -257,11 +257,15 @@ def process_document(
         document.existing_document_id = existing_doc.id
         document.indexing_status = ProcessingStatus.CLASSIFYING
         db_session.commit()
-        add_log(
+
+        # Set milestone to WARNING status so it appears in the Document Extraction View
+        update_milestone(
             document.id,
             FinancialStatementMilestone.CLASSIFICATION,
-            "I've detected that this document is a duplicate of one already in the system.",
+            MilestoneStatus.WARNING,
+            message=f"This document is a duplicate of '{existing_doc.filename}' (uploaded {existing_doc.uploaded_at.strftime('%Y-%m-%d') if existing_doc.uploaded_at else 'previously'}). Processing has been stopped.",
         )
+
         return DocumentProcessingResult(
             classification_data=classification_data,
             duplicate_check=duplicate_check,

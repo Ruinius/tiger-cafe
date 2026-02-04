@@ -1,30 +1,38 @@
 formatted_input
-"[<START>] [<START>] [current_assets] [Cash and cash equivalents] [Accounts receivable, net] [Short-term investments]"
-"[<START>] [Cash and cash equivalents] [current_assets] [Accounts receivable, net] [Short-term investments] [Prepaid expenses and other current assets]"
-"[Cash and cash equivalents] [Accounts receivable, net] [current_assets] [Short-term investments] [Prepaid expenses and other current assets] [Income tax receivable]"
-"[Accounts receivable, net] [Short-term investments] [current_assets] [Prepaid expenses and other current assets] [Income tax receivable] [Total current assets]"
-"[Short-term investments] [Prepaid expenses and other current assets] [current_assets] [Income tax receivable] [Total current assets] [Accounts receivable, long-term portion]"
-"[Prepaid expenses and other current assets] [Income tax receivable] [current_assets] [Total current assets] [Accounts receivable, long-term portion] [Operating lease right-of-use assets]"
-"[Income tax receivable] [Total current assets] [noncurrent_assets] [Accounts receivable, long-term portion] [Operating lease right-of-use assets] [Property and equipment, net]"
-"[Total current assets] [Accounts receivable, long-term portion] [noncurrent_assets] [Operating lease right-of-use assets] [Property and equipment, net] [Software development costs, net]"
-"[Accounts receivable, long-term portion] [Operating lease right-of-use assets] [noncurrent_assets] [Property and equipment, net] [Software development costs, net] [Goodwill]"
-"[Operating lease right-of-use assets] [Property and equipment, net] [noncurrent_assets] [Software development costs, net] [Goodwill] [Other intangibles, net]"
-"[Property and equipment, net] [Software development costs, net] [noncurrent_assets] [Goodwill] [Other intangibles, net] [Non-current investments]"
-"[Software development costs, net] [Goodwill] [noncurrent_assets] [Other intangibles, net] [Non-current investments] [Other non-current assets]"
-"[Goodwill] [Other intangibles, net] [noncurrent_assets] [Non-current investments] [Other non-current assets] [Total assets]"
-"[Other intangibles, net] [Non-current investments] [noncurrent_assets] [Other non-current assets] [Total assets] [Accounts payable and accrued liabilities]"
-[Non-current investments] [Other non-current assets] [noncurrent_assets] [Total assets] [Accounts payable and accrued liabilities] [Operating lease liabilities]
-[Other non-current assets] [Total assets] [current_liabilities] [Accounts payable and accrued liabilities] [Operating lease liabilities] [Current income tax payable]
-[Total assets] [Accounts payable and accrued liabilities] [current_liabilities] [Operating lease liabilities] [Current income tax payable] [Deferred revenue]
-[Accounts payable and accrued liabilities] [Operating lease liabilities] [current_liabilities] [Current income tax payable] [Deferred revenue] [Current portion of term loans]
-[Operating lease liabilities] [Current income tax payable] [current_liabilities] [Deferred revenue] [Current portion of term loans] [Total current liabilities]
-"[Current income tax payable] [Deferred revenue] [current_liabilities] [Current portion of term loans] [Total current liabilities] [Convertible senior notes due 2026, net]"
-"[Deferred revenue] [Current portion of term loans] [current_liabilities] [Total current liabilities] [Convertible senior notes due 2026, net] [Deferred revenue, long-term]"
-"[Current portion of term loans] [Total current liabilities] [noncurrent_liabilities] [Convertible senior notes due 2026, net] [Deferred revenue, long-term] [Deferred income taxes]"
-"[Total current liabilities] [Convertible senior notes due 2026, net] [noncurrent_liabilities] [Deferred revenue, long-term] [Deferred income taxes] [Operating lease liabilities, long-term]"
-"[Convertible senior notes due 2026, net] [Deferred revenue, long-term] [noncurrent_liabilities] [Deferred income taxes] [Operating lease liabilities, long-term] [Other long-term liabilities]"
-"[Deferred revenue, long-term] [Deferred income taxes] [noncurrent_liabilities] [Operating lease liabilities, long-term] [Other long-term liabilities] [Total liabilities]"
-"[Deferred income taxes] [Operating lease liabilities, long-term] [noncurrent_liabilities] [Other long-term liabilities] [Total liabilities] [Shareholders' equity]"
-"[Operating lease liabilities, long-term] [Other long-term liabilities] [noncurrent_liabilities] [Total liabilities] [Shareholders' equity] [Total liabilities and shareholders' equity]"
-[Other long-term liabilities] [Total liabilities] [stockholders_equity] [Shareholders' equity] [Total liabilities and shareholders' equity] [<END>]
-[Total liabilities] [Shareholders' equity] [stockholders_equity] [Total liabilities and shareholders' equity] [<END>] [<END>]
+"[<START>] [<START>] [current_assets] [Cash and cash equivalents] [Trade receivables, net] [Inventories]"
+"[<START>] [Cash and cash equivalents] [current_assets] [Trade receivables, net] [Inventories] [Prepaid expenses]"
+"[Cash and cash equivalents] [Trade receivables, net] [current_assets] [Inventories] [Prepaid expenses] [Marketable securities]"
+"[Trade receivables, net] [Inventories] [current_assets] [Prepaid expenses] [Marketable securities] [Other current assets]"
+[Inventories] [Prepaid expenses] [current_assets] [Marketable securities] [Other current assets] [Assets held for sale]
+[Prepaid expenses] [Marketable securities] [current_assets] [Other current assets] [Assets held for sale] [Total current assets]
+"[Marketable securities] [Other current assets] [current_assets] [Assets held for sale] [Total current assets] [Property, plant and equipment, net]"
+"[Other current assets] [Assets held for sale] [current_assets] [Total current assets] [Property, plant and equipment, net] [Goodwill]"
+"[Assets held for sale] [Total current assets] [noncurrent_assets] [Property, plant and equipment, net] [Goodwill] [Intangible assets, net]"
+"[Total current assets] [Property, plant and equipment, net] [noncurrent_assets] [Goodwill] [Intangible assets, net] [Other non-current assets]"
+"[Property, plant and equipment, net] [Goodwill] [noncurrent_assets] [Intangible assets, net] [Other non-current assets] [TOTAL ASSETS]"
+"[Goodwill] [Intangible assets, net] [noncurrent_assets] [Other non-current assets] [TOTAL ASSETS] [Commercial paper and other short-term debt]"
+"[Intangible assets, net] [Other non-current assets] [noncurrent_assets] [TOTAL ASSETS] [Commercial paper and other short-term debt] [Current portion of long-term debt]"
+[Other non-current assets] [TOTAL ASSETS] [current_liabilities] [Commercial paper and other short-term debt] [Current portion of long-term debt] [Accounts payable]
+[TOTAL ASSETS] [Commercial paper and other short-term debt] [current_liabilities] [Current portion of long-term debt] [Accounts payable] [Accrued marketing]
+[Commercial paper and other short-term debt] [Current portion of long-term debt] [current_liabilities] [Accounts payable] [Accrued marketing] [Interest payable]
+[Current portion of long-term debt] [Accounts payable] [current_liabilities] [Accrued marketing] [Interest payable] [Other current liabilities]
+[Accounts payable] [Accrued marketing] [current_liabilities] [Interest payable] [Other current liabilities] [Liabilities held for sale]
+[Accrued marketing] [Interest payable] [current_liabilities] [Other current liabilities] [Liabilities held for sale] [Total current liabilities]
+[Interest payable] [Other current liabilities] [current_liabilities] [Liabilities held for sale] [Total current liabilities] [Long-term debt]
+[Other current liabilities] [Liabilities held for sale] [current_liabilities] [Total current liabilities] [Long-term debt] [Deferred income taxes]
+[Liabilities held for sale] [Total current liabilities] [noncurrent_liabilities] [Long-term debt] [Deferred income taxes] [Accrued postemployment costs]
+[Total current liabilities] [Long-term debt] [noncurrent_liabilities] [Deferred income taxes] [Accrued postemployment costs] [Long-term deferred income]
+[Long-term debt] [Deferred income taxes] [noncurrent_liabilities] [Accrued postemployment costs] [Long-term deferred income] [Other non-current liabilities]
+[Deferred income taxes] [Accrued postemployment costs] [noncurrent_liabilities] [Long-term deferred income] [Other non-current liabilities] [TOTAL LIABILITIES]
+[Accrued postemployment costs] [Long-term deferred income] [noncurrent_liabilities] [Other non-current liabilities] [TOTAL LIABILITIES] [Redeemable noncontrolling interest]
+"[Long-term deferred income] [Other non-current liabilities] [noncurrent_liabilities] [TOTAL LIABILITIES] [Redeemable noncontrolling interest] [Common stock, $0.01 par value]"
+"[Other non-current liabilities] [TOTAL LIABILITIES] [stockholders_equity] [Redeemable noncontrolling interest] [Common stock, $0.01 par value] [Additional paid-in capital]"
+"[TOTAL LIABILITIES] [Redeemable noncontrolling interest] [stockholders_equity] [Common stock, $0.01 par value] [Additional paid-in capital] [Retained earnings/(deficit)]"
+"[Redeemable noncontrolling interest] [Common stock, $0.01 par value] [stockholders_equity] [Additional paid-in capital] [Retained earnings/(deficit)] [Accumulated other comprehensive income/(losses)]"
+"[Common stock, $0.01 par value] [Additional paid-in capital] [stockholders_equity] [Retained earnings/(deficit)] [Accumulated other comprehensive income/(losses)] [Treasury stock, at cost]"
+"[Additional paid-in capital] [Retained earnings/(deficit)] [stockholders_equity] [Accumulated other comprehensive income/(losses)] [Treasury stock, at cost] [Total shareholders' equity]"
+"[Retained earnings/(deficit)] [Accumulated other comprehensive income/(losses)] [stockholders_equity] [Treasury stock, at cost] [Total shareholders' equity] [Noncontrolling interest]"
+"[Accumulated other comprehensive income/(losses)] [Treasury stock, at cost] [stockholders_equity] [Total shareholders' equity] [Noncontrolling interest] [TOTAL EQUITY]"
+"[Treasury stock, at cost] [Total shareholders' equity] [stockholders_equity] [Noncontrolling interest] [TOTAL EQUITY] [TOTAL LIABILITIES AND EQUITY]"
+[Total shareholders' equity] [Noncontrolling interest] [stockholders_equity] [TOTAL EQUITY] [TOTAL LIABILITIES AND EQUITY] [<END>]
+[Noncontrolling interest] [TOTAL EQUITY] [stockholders_equity] [TOTAL LIABILITIES AND EQUITY] [<END>] [<END>]

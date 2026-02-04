@@ -43,6 +43,7 @@ class Document(DocumentBase):
     user_id: str
     company_id: str
     file_path: str
+    status: str | None = None  # DocumentStatus enum value
     indexing_status: ProcessingStatus | None = None
     analysis_status: ProcessingStatus | None = None
     page_count: int | None = None
@@ -53,8 +54,11 @@ class Document(DocumentBase):
     duplicate_detected: bool | None = False
     existing_document_id: str | None = None
     uploader_name: str | None = None  # Name of user who uploaded the document
-    balance_sheet_status: str | None = None  # "valid", "invalid", "not_extracted"
-    income_statement_status: str | None = None  # "valid", "invalid", "not_extracted"
+    balance_sheet_status: str | None = None  # "success", "warning", "error", None
+    income_statement_status: str | None = None  # "success", "warning", "error", None
+    gaap_reconciliation_status: str | None = None  # "success", "warning", "error", None
+    organic_growth_status: str | None = None  # "success", "warning", "error", None
+    shares_outstanding_status: str | None = None  # "success", "warning", "error", None
 
 
 # Upload and classification response schemas

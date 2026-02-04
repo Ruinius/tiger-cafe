@@ -188,17 +188,17 @@ class TigerTransformerClient:
 
         # Run inference
         # Log exact formatted inputs
-        try:
-            import os
+        # try:
+        #     import os
 
-            import pandas as pd
+        #     import pandas as pd
 
-            pd.DataFrame(inputs, columns=["formatted_input"]).to_csv(
-                os.path.join(os.getcwd(), "balance_sheet_transformer_exact_inputs.csv"), index=False
-            )
-            print("Logged exact balance sheet inputs to balance_sheet_transformer_exact_inputs.csv")
-        except Exception as e:
-            print(f"Failed to log exact inputs: {e}")
+        #     pd.DataFrame(inputs, columns=["formatted_input"]).to_csv(
+        #         os.path.join(os.getcwd(), "balance_sheet_transformer_exact_inputs.csv"), index=False
+        #     )
+        #     print("Logged exact balance sheet inputs to balance_sheet_transformer_exact_inputs.csv")
+        # except Exception as e:
+        #     print(f"Failed to log exact inputs: {e}")
 
         standardized_names = self._batch_inference(inputs)
 
@@ -257,20 +257,20 @@ class TigerTransformerClient:
 
         # Run inference
         # Log exact formatted inputs
-        try:
-            import os
+        # try:
+        #     import os
 
-            import pandas as pd
+        #     import pandas as pd
 
-            pd.DataFrame(inputs, columns=["formatted_input"]).to_csv(
-                os.path.join(os.getcwd(), "income_statement_transformer_exact_inputs.csv"),
-                index=False,
-            )
-            print(
-                "Logged exact income statement inputs to income_statement_transformer_exact_inputs.csv"
-            )
-        except Exception as e:
-            print(f"Failed to log exact inputs: {e}")
+        #     pd.DataFrame(inputs, columns=["formatted_input"]).to_csv(
+        #         os.path.join(os.getcwd(), "income_statement_transformer_exact_inputs.csv"),
+        #         index=False,
+        #     )
+        #     print(
+        #         "Logged exact income statement inputs to income_statement_transformer_exact_inputs.csv"
+        #     )
+        # except Exception as e:
+        #     print(f"Failed to log exact inputs: {e}")
 
         standardized_names = self._batch_inference(inputs)
 

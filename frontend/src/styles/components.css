@@ -199,6 +199,16 @@
     color: var(--success);
 }
 
+.status-success {
+    background-color: rgba(36, 161, 72, 0.15);
+    color: var(--success);
+}
+
+.status-warning {
+    background-color: rgba(245, 166, 35, 0.15);
+    color: var(--warning);
+}
+
 .status-error {
     background-color: rgba(229, 72, 77, 0.15);
     color: var(--error);

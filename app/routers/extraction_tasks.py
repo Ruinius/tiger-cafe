@@ -50,14 +50,11 @@ async def get_amortization(
 async def get_organic_growth(
     document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
-    print(f"[DEBUG] Fetching Organic Growth for doc: {document_id}")
     organic_growth = (
         db.query(OrganicGrowth).filter(OrganicGrowth.document_id == document_id).first()
     )
     if not organic_growth:
-        print(f"[DEBUG] Organic Growth NOT found for doc: {document_id}")
         raise HTTPException(status_code=404, detail=f"DEBUG_OG_NOT_FOUND_FOR_{document_id}")
-    print(f"[DEBUG] Organic Growth FOUND for doc: {document_id}")
 
     organic_growth_schema = OrganicGrowthSchema.model_validate(organic_growth)
     return {"status": "exists", "data": organic_growth_schema.model_dump()}
@@ -100,18 +97,15 @@ async def get_non_operating_classification(
     _get_document_or_404(document_id, db)
 
     # Get the classification
-    print(f"[DEBUG] Fetching classification for doc: {document_id}")
     classification = (
         db.query(NonOperatingClassification)
         .filter(NonOperatingClassification.document_id == document_id)
         .first()
     )
     if not classification:
-        print(f"[DEBUG] Classification NOT found for doc: {document_id}")
         raise HTTPException(
             status_code=404, detail="Non-operating classification not found for this document"
         )
-    print(f"[DEBUG] Classification FOUND for doc: {document_id}")
 
     # Get the balance sheet to join with
     balance_sheet = db.query(BalanceSheet).filter(BalanceSheet.document_id == document_id).first()
@@ -163,15 +157,12 @@ async def get_shares_outstanding(
     document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
     """Get shares outstanding data for a document."""
-    print(f"[DEBUG] Fetching Shares for doc: {document_id}")
     shares = (
         db.query(SharesOutstanding).filter(SharesOutstanding.document_id == document_id).first()
     )
 
     if not shares:
-        print(f"[DEBUG] Shares NOT found for doc: {document_id}")
         raise HTTPException(status_code=404, detail=f"DEBUG_SHARES_NOT_FOUND_FOR_{document_id}")
-    print(f"[DEBUG] Shares FOUND for doc: {document_id}")
 
     shares_schema = SharesOutstandingSchema.model_validate(shares)
     return {"status": "exists", "data": shares_schema.model_dump()}
@@ -184,15 +175,12 @@ async def get_gaap_reconciliation(
     """Get GAAP reconciliation data for a document (earnings announcements only)."""
     _get_document_or_404(document_id, db)
 
-    print(f"[DEBUG] Fetching GAAP recon for doc: {document_id}")
     gaap_recon = (
         db.query(GAAPReconciliation).filter(GAAPReconciliation.document_id == document_id).first()
     )
 
     if not gaap_recon:
-        print(f"[DEBUG] GAAP recon NOT found for doc: {document_id}")
         raise HTTPException(status_code=404, detail=f"DEBUG_GAAP_NOT_FOUND_FOR_{document_id}")
-    print(f"[DEBUG] GAAP recon FOUND for doc: {document_id}")
 
     gaap_recon_schema = GAAPReconciliationSchema.model_validate(gaap_recon)
     return {"status": "exists", "data": gaap_recon_schema.model_dump()}

@@ -65,9 +65,11 @@ def add_uploader_name_to_document(db: Session, document: Document) -> dict:
         "duplicate_detected": document.duplicate_detected,
         "existing_document_id": document.existing_document_id,
         "uploader_name": None,
-        "balance_sheet_status": "not_extracted",
-        "income_statement_status": "not_extracted",
-        "gaap_reconciliation_status": "not_extracted",  # Placeholder for future
+        "balance_sheet_status": None,
+        "income_statement_status": None,
+        "gaap_reconciliation_status": None,
+        "organic_growth_status": None,
+        "shares_outstanding_status": None,
     }
     # Get uploader name
     if document.user_id:
@@ -76,38 +78,59 @@ def add_uploader_name_to_document(db: Session, document: Document) -> dict:
             name = f"{user.first_name} {user.last_name}".strip()
             doc_dict["uploader_name"] = name or user.email
 
-    # Check for financial statements (assumes eager loading or lazy loading)
-    if document.balance_sheet:
-        doc_dict["balance_sheet_status"] = "valid" if document.balance_sheet.is_valid else "invalid"
+    # Harmonized status values:
+    # - "success": Data exists and is valid (green badge)
+    # - "warning": Data exists but has validation issues (yellow badge)
+    # - "error": Data not found / 404 (red badge)
+    # - None: Not yet extracted (no badge shown)
 
+    # Balance Sheet Status
+    if document.balance_sheet:
+        doc_dict["balance_sheet_status"] = (
+            "success" if document.balance_sheet.is_valid else "warning"
+        )
+    elif document.status == DocumentStatus.PROCESSING_COMPLETE:
+        doc_dict["balance_sheet_status"] = "error"  # Processed but not found
+
+    # Income Statement Status
     if document.income_statement:
         doc_dict["income_statement_status"] = (
-            "valid" if document.income_statement.is_valid else "invalid"
+            "success" if document.income_statement.is_valid else "warning"
         )
+    elif document.status == DocumentStatus.PROCESSING_COMPLETE:
+        doc_dict["income_statement_status"] = "error"  # Processed but not found
 
-    # GAAP Reconciliation Status
-    from app.models.amortization import Amortization
-    from app.models.gaap_reconciliation import GAAPReconciliation
+    # Organic Growth Status
+    from app.models.organic_growth import OrganicGrowth
 
-    # Check if either amortization or GAAP reconciliation exists
-    # If the document is an Earnings Announcement, we expect GAAP Reconciliation
-    # If it's a Filing, we typically look for Amortization (though both are checked in calculation)
-    gaap_recon = (
-        db.query(GAAPReconciliation).filter(GAAPReconciliation.document_id == document.id).first()
+    organic_growth = (
+        db.query(OrganicGrowth).filter(OrganicGrowth.document_id == document.id).first()
     )
-    amortization = db.query(Amortization).filter(Amortization.document_id == document.id).first()
+    if organic_growth:
+        # Check if it has meaningful data
+        has_data = (
+            organic_growth.prior_period_revenue is not None
+            or organic_growth.current_period_revenue is not None
+        )
+        doc_dict["organic_growth_status"] = "success" if has_data else "warning"
+    elif document.status == DocumentStatus.PROCESSING_COMPLETE:
+        doc_dict["organic_growth_status"] = "error"  # Processed but not found
 
-    if gaap_recon or amortization:
-        # If both exist or either is valid, we consider it found.
-        # However, if one exists but is explicitly marked as invalid (e.g. empty or calculation error),
-        # we might want to flag it. For now, "valid" if they exist.
-        doc_dict["gaap_reconciliation_status"] = "valid"
-    else:
-        # If document is processed but no reconciliation table was found, set to warning
-        if document.status == DocumentStatus.PROCESSING_COMPLETE:
-            doc_dict["gaap_reconciliation_status"] = "warning"
-        else:
-            doc_dict["gaap_reconciliation_status"] = "not_extracted"
+    # Shares Outstanding Status
+    from app.models.shares_outstanding import SharesOutstanding
+
+    shares = (
+        db.query(SharesOutstanding).filter(SharesOutstanding.document_id == document.id).first()
+    )
+    if shares:
+        # Check if at least one value exists
+        has_data = (
+            shares.basic_shares_outstanding is not None
+            or shares.diluted_shares_outstanding is not None
+        )
+        doc_dict["shares_outstanding_status"] = "success" if has_data else "warning"
+    elif document.status == DocumentStatus.PROCESSING_COMPLETE:
+        doc_dict["shares_outstanding_status"] = "error"  # Processed but not found
 
     return doc_dict
 
@@ -932,14 +955,19 @@ async def delete_document_permanent(
     Permanently delete a document and all associated data including financial statements.
     This is a destructive operation that cannot be undone.
     """
-    from app.models.amortization import Amortization
-    from app.models.balance_sheet import BalanceSheet
+    from app.models.amortization import Amortization, AmortizationLineItem
+    from app.models.balance_sheet import BalanceSheet, BalanceSheetLineItem
+    from app.models.gaap_reconciliation import GAAPReconciliation
     from app.models.historical_calculation import HistoricalCalculation
-    from app.models.income_statement import IncomeStatement
-    from app.models.non_operating_classification import NonOperatingClassification
+    from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
+    from app.models.non_operating_classification import (
+        NonOperatingClassification,
+        NonOperatingClassificationItem,
+    )
     from app.models.organic_growth import OrganicGrowth
-    from app.models.other_assets import OtherAssets
-    from app.models.other_liabilities import OtherLiabilities
+    from app.models.other_assets import OtherAssets, OtherAssetsLineItem
+    from app.models.other_liabilities import OtherLiabilities, OtherLiabilitiesLineItem
+    from app.models.shares_outstanding import SharesOutstanding
     from app.utils.financial_statement_progress import clear_progress
 
     document = db.query(Document).filter(Document.id == document_id).first()
@@ -950,54 +978,113 @@ async def delete_document_permanent(
     target_document_id = document.id
     print(f"Deleting document {target_document_id} and its associated data")
 
-    # Delete financial statements explicitly with proper filtering
-    # Use filter_by to ensure we're only deleting for this specific document
+    # Delete balance sheets and their line items
     balance_sheets = db.query(BalanceSheet).filter_by(document_id=target_document_id).all()
     print(f"Found {len(balance_sheets)} balance sheet(s) for document {target_document_id}")
     for balance_sheet in balance_sheets:
+        # Delete line items first
+        db.query(BalanceSheetLineItem).filter_by(balance_sheet_id=balance_sheet.id).delete()
         print(f"Deleting balance sheet {balance_sheet.id} for document {target_document_id}")
         db.delete(balance_sheet)
 
+    # Delete income statements and their line items
     income_statements = db.query(IncomeStatement).filter_by(document_id=target_document_id).all()
     print(f"Found {len(income_statements)} income statement(s) for document {target_document_id}")
     for income_statement in income_statements:
+        # Delete line items first
+        db.query(IncomeStatementLineItem).filter_by(
+            income_statement_id=income_statement.id
+        ).delete()
         print(f"Deleting income statement {income_statement.id} for document {target_document_id}")
         db.delete(income_statement)
 
+    # Delete amortizations and their line items
     amortizations = db.query(Amortization).filter_by(document_id=target_document_id).all()
+    print(f"Found {len(amortizations)} amortization(s) for document {target_document_id}")
     for amortization in amortizations:
+        # Delete line items first
+        db.query(AmortizationLineItem).filter_by(amortization_id=amortization.id).delete()
         db.delete(amortization)
 
+    # Delete organic growth entries
     organic_growth_entries = db.query(OrganicGrowth).filter_by(document_id=target_document_id).all()
+    print(
+        f"Found {len(organic_growth_entries)} organic growth entry(ies) for document {target_document_id}"
+    )
     for organic_growth in organic_growth_entries:
         db.delete(organic_growth)
 
+    # Delete other assets and their line items
     other_assets_entries = db.query(OtherAssets).filter_by(document_id=target_document_id).all()
+    print(
+        f"Found {len(other_assets_entries)} other assets entry(ies) for document {target_document_id}"
+    )
     for other_assets in other_assets_entries:
+        # Delete line items first
+        db.query(OtherAssetsLineItem).filter_by(other_assets_id=other_assets.id).delete()
         db.delete(other_assets)
 
+    # Delete other liabilities and their line items
     other_liabilities_entries = (
         db.query(OtherLiabilities).filter_by(document_id=target_document_id).all()
     )
+    print(
+        f"Found {len(other_liabilities_entries)} other liabilities entry(ies) for document {target_document_id}"
+    )
     for other_liabilities in other_liabilities_entries:
+        # Delete line items first
+        db.query(OtherLiabilitiesLineItem).filter_by(
+            other_liabilities_id=other_liabilities.id
+        ).delete()
         db.delete(other_liabilities)
 
+    # Delete non-operating classifications and their items
     non_operating_entries = (
         db.query(NonOperatingClassification).filter_by(document_id=target_document_id).all()
     )
+    print(
+        f"Found {len(non_operating_entries)} non-operating classification(s) for document {target_document_id}"
+    )
     for non_operating in non_operating_entries:
+        # Delete classification items first
+        db.query(NonOperatingClassificationItem).filter_by(
+            classification_id=non_operating.id
+        ).delete()
         db.delete(non_operating)
+
+    # Delete shares outstanding
+    shares_outstanding_entries = (
+        db.query(SharesOutstanding).filter_by(document_id=target_document_id).all()
+    )
+    print(
+        f"Found {len(shares_outstanding_entries)} shares outstanding entry(ies) for document {target_document_id}"
+    )
+    for shares in shares_outstanding_entries:
+        db.delete(shares)
+
+    # Delete GAAP reconciliations
+    gaap_reconciliations = (
+        db.query(GAAPReconciliation).filter_by(document_id=target_document_id).all()
+    )
+    print(
+        f"Found {len(gaap_reconciliations)} GAAP reconciliation(s) for document {target_document_id}"
+    )
+    for gaap_recon in gaap_reconciliations:
+        db.delete(gaap_recon)
 
     # Delete historical calculations
     historical_calculations = (
         db.query(HistoricalCalculation).filter_by(document_id=target_document_id).all()
+    )
+    print(
+        f"Found {len(historical_calculations)} historical calculation(s) for document {target_document_id}"
     )
     for historical_calculation in historical_calculations:
         db.delete(historical_calculation)
 
     # Commit financial statement deletions before deleting the document
     db.commit()
-    print(f"Committed deletions of financial statements for document {target_document_id}")
+    print(f"Committed deletions of all related data for document {target_document_id}")
 
     # Clear financial statement progress tracking
     clear_progress(target_document_id)
@@ -1006,15 +1093,21 @@ async def delete_document_permanent(
     if document.file_path and os.path.exists(document.file_path):
         try:
             os.remove(document.file_path)
+            print(f"Deleted file: {document.file_path}")
         except Exception as e:
             print(f"Warning: Failed to delete file {document.file_path}: {str(e)}")
 
     # Delete chunk embeddings if they exist
-    delete_chunk_embeddings(target_document_id)
+    try:
+        delete_chunk_embeddings(target_document_id)
+        print(f"Deleted chunk embeddings for document {target_document_id}")
+    except Exception as e:
+        print(f"Warning: Failed to delete chunk embeddings: {str(e)}")
 
     # Delete document from database
     db.delete(document)
     db.commit()
+    print(f"Successfully deleted document {target_document_id}")
 
     return {"message": "Document and all associated data deleted successfully"}
 
@@ -1026,14 +1119,19 @@ if DEBUG:
         """
         TEST ENDPOINT: Permanently delete a document without authentication.
         """
-        from app.models.amortization import Amortization
-        from app.models.balance_sheet import BalanceSheet
+        from app.models.amortization import Amortization, AmortizationLineItem
+        from app.models.balance_sheet import BalanceSheet, BalanceSheetLineItem
+        from app.models.gaap_reconciliation import GAAPReconciliation
         from app.models.historical_calculation import HistoricalCalculation
-        from app.models.income_statement import IncomeStatement
-        from app.models.non_operating_classification import NonOperatingClassification
+        from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
+        from app.models.non_operating_classification import (
+            NonOperatingClassification,
+            NonOperatingClassificationItem,
+        )
         from app.models.organic_growth import OrganicGrowth
-        from app.models.other_assets import OtherAssets
-        from app.models.other_liabilities import OtherLiabilities
+        from app.models.other_assets import OtherAssets, OtherAssetsLineItem
+        from app.models.other_liabilities import OtherLiabilities, OtherLiabilitiesLineItem
+        from app.models.shares_outstanding import SharesOutstanding
         from app.utils.financial_statement_progress import clear_progress
 
         document = db.query(Document).filter(Document.id == document_id).first()
@@ -1042,44 +1140,76 @@ if DEBUG:
 
         # Store document_id to ensure we're using the correct one
         target_document_id = document.id
+        print(f"[TEST] Deleting document {target_document_id} and its associated data")
 
-        # Delete financial statements explicitly with proper filtering
-        # Use filter_by to ensure we're only deleting for this specific document
+        # Delete balance sheets and their line items
         balance_sheets = db.query(BalanceSheet).filter_by(document_id=target_document_id).all()
         for balance_sheet in balance_sheets:
+            db.query(BalanceSheetLineItem).filter_by(balance_sheet_id=balance_sheet.id).delete()
             db.delete(balance_sheet)
 
+        # Delete income statements and their line items
         income_statements = (
             db.query(IncomeStatement).filter_by(document_id=target_document_id).all()
         )
         for income_statement in income_statements:
+            db.query(IncomeStatementLineItem).filter_by(
+                income_statement_id=income_statement.id
+            ).delete()
             db.delete(income_statement)
 
+        # Delete amortizations and their line items
         amortizations = db.query(Amortization).filter_by(document_id=target_document_id).all()
         for amortization in amortizations:
+            db.query(AmortizationLineItem).filter_by(amortization_id=amortization.id).delete()
             db.delete(amortization)
 
+        # Delete organic growth entries
         organic_growth_entries = (
             db.query(OrganicGrowth).filter_by(document_id=target_document_id).all()
         )
         for organic_growth in organic_growth_entries:
             db.delete(organic_growth)
 
+        # Delete other assets and their line items
         other_assets_entries = db.query(OtherAssets).filter_by(document_id=target_document_id).all()
         for other_assets in other_assets_entries:
+            db.query(OtherAssetsLineItem).filter_by(other_assets_id=other_assets.id).delete()
             db.delete(other_assets)
 
+        # Delete other liabilities and their line items
         other_liabilities_entries = (
             db.query(OtherLiabilities).filter_by(document_id=target_document_id).all()
         )
         for other_liabilities in other_liabilities_entries:
+            db.query(OtherLiabilitiesLineItem).filter_by(
+                other_liabilities_id=other_liabilities.id
+            ).delete()
             db.delete(other_liabilities)
 
+        # Delete non-operating classifications and their items
         non_operating_entries = (
             db.query(NonOperatingClassification).filter_by(document_id=target_document_id).all()
         )
         for non_operating in non_operating_entries:
+            db.query(NonOperatingClassificationItem).filter_by(
+                classification_id=non_operating.id
+            ).delete()
             db.delete(non_operating)
+
+        # Delete shares outstanding
+        shares_outstanding_entries = (
+            db.query(SharesOutstanding).filter_by(document_id=target_document_id).all()
+        )
+        for shares in shares_outstanding_entries:
+            db.delete(shares)
+
+        # Delete GAAP reconciliations
+        gaap_reconciliations = (
+            db.query(GAAPReconciliation).filter_by(document_id=target_document_id).all()
+        )
+        for gaap_recon in gaap_reconciliations:
+            db.delete(gaap_recon)
 
         # Delete historical calculations
         historical_calculations = (
@@ -1090,6 +1220,7 @@ if DEBUG:
 
         # Commit financial statement deletions before deleting the document
         db.commit()
+        print(f"[TEST] Committed deletions of all related data for document {target_document_id}")
 
         # Clear financial statement progress tracking
         clear_progress(target_document_id)
@@ -1102,11 +1233,15 @@ if DEBUG:
                 print(f"Warning: Failed to delete file {document.file_path}: {str(e)}")
 
         # Delete chunk embeddings if they exist
-        delete_chunk_embeddings(target_document_id)
+        try:
+            delete_chunk_embeddings(target_document_id)
+        except Exception as e:
+            print(f"Warning: Failed to delete chunk embeddings: {str(e)}")
 
         # Delete document from database
         db.delete(document)
         db.commit()
+        print(f"[TEST] Successfully deleted document {target_document_id}")
 
         return {"message": "Document and all associated data deleted successfully"}
 
