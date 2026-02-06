@@ -144,6 +144,7 @@ def test_company_historical_calculations_returns_sorted_entries(client, db_sessi
             id=str(uuid.uuid4()),
             income_statement_id=income_q1.id,
             line_name="Total Net Revenue",
+            standardized_name="revenue",  # Add standardized name
             line_value=Decimal("100.00"),
             line_category="Revenue",
             is_operating=True,
@@ -160,6 +161,7 @@ def test_company_historical_calculations_returns_sorted_entries(client, db_sessi
             id=str(uuid.uuid4()),
             income_statement_id=income_fy.id,
             line_name="Net Sales",
+            standardized_name="revenue",  # Add standardized name
             line_value=Decimal("250.00"),
             line_category="Revenue",
             is_operating=True,

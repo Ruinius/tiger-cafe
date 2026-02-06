@@ -41,72 +41,23 @@ def check_duplicate_document(
         }
     """
 
-    # Check for duplicates based on company, type, and time period
-    # For earnings, quarterly, and annual filings
-    checkable_types = [
-        DocumentType.EARNINGS_ANNOUNCEMENT,
-        DocumentType.QUARTERLY_FILING,
-        DocumentType.ANNUAL_FILING,
-    ]
-
-    if document_type in checkable_types:
-        # First check: same company, type, and time period
-        # IMPORTANT: Only check against documents that are already INDEXED (not still processing)
-        if time_period:
-            query = db.query(Document).filter(
-                Document.company_id == company_id,
-                Document.document_type == document_type,
-                Document.time_period == time_period,
-                Document.indexing_status
-                == ProcessingStatus.INDEXED,  # Only check indexed documents
-            )
-            if exclude_document_id:
-                query = query.filter(Document.id != exclude_document_id)
-            existing = query.first()
-
-            if existing:
-                return {
-                    "is_duplicate": True,
-                    "existing_document": existing,
-                    "match_reason": "same_company_type_period",
-                }
-
-        # Second check: same filename (case-insensitive)
-        # Only check against documents that are already INDEXED
+    # Universal check: same company and unique_id (hash of content)
+    # This works for ALL document types regardless of classification quirks
+    if unique_id:
         query = db.query(Document).filter(
             Document.company_id == company_id,
-            Document.filename.ilike(filename),
+            Document.unique_id == unique_id,
             Document.indexing_status == ProcessingStatus.INDEXED,  # Only check indexed documents
         )
         if exclude_document_id:
             query = query.filter(Document.id != exclude_document_id)
-        existing_by_filename = query.first()
+        existing_by_unique_id = query.first()
 
-        if existing_by_filename:
+        if existing_by_unique_id:
             return {
                 "is_duplicate": True,
-                "existing_document": existing_by_filename,
-                "match_reason": "same_filename",
+                "existing_document": existing_by_unique_id,
+                "match_reason": "same_unique_id",
             }
-    else:
-        # For all other document types, check by unique_id
-        # Only check against documents that are already INDEXED
-        if unique_id:
-            query = db.query(Document).filter(
-                Document.company_id == company_id,
-                Document.unique_id == unique_id,
-                Document.indexing_status
-                == ProcessingStatus.INDEXED,  # Only check indexed documents
-            )
-            if exclude_document_id:
-                query = query.filter(Document.id != exclude_document_id)
-            existing_by_unique_id = query.first()
-
-            if existing_by_unique_id:
-                return {
-                    "is_duplicate": True,
-                    "existing_document": existing_by_unique_id,
-                    "match_reason": "same_unique_id",
-                }
 
     return None

@@ -87,8 +87,8 @@ def _get_date_context(text: str) -> str:
     contexts = []
 
     for m in re.finditer(pattern, text, re.IGNORECASE):
-        start = max(0, m.start() - 200)
-        end = min(len(text), m.end() + 200)
+        start = max(0, m.start() - 250)
+        end = min(len(text), m.end() + 250)
         snippet = text[start:end].strip().replace("\n", " ").replace("  ", " ")
         contexts.append(snippet)
 
@@ -284,6 +284,214 @@ def _reflect_on_extraction(result: dict[str, str | None], text: str) -> dict[str
         return result
 
 
+def _extract_document_date(text: str, filename: str) -> str | None:
+    """
+    Extract document_date using dedicated LLM call with focused context.
+
+    Args:
+        text: Document text (first few pages)
+        filename: PDF filename for additional context
+
+    Returns:
+        Document date in YYYY-MM-DD format or None
+    """
+    date_context = _get_date_context(text)
+    first_1000 = text[:1000]
+
+    prompt = f"""Extract the document publication/release date from this financial document.
+
+CONTEXT:
+Filename: {filename}
+First 1000 characters: {first_1000}
+
+Date context (250 chars around each date found):
+{date_context}
+
+REQUIREMENTS:
+- The document_date is likely the most recent date mentioned in the document
+- UNLESS the date refers to an event that has not occurred
+- Must be in YYYY-MM-DD format
+- Return null unless you have high confidence
+
+Return ONLY a JSON object:
+{{"document_date": "YYYY-MM-DD" or null}}
+"""
+
+    try:
+        response_text = generate_content_safe(prompt, temperature=CLASSIFICATION_TEMPERATURE)
+        response_text = _clean_json_response(response_text)
+        result = json.loads(response_text)
+        return result.get("document_date")
+    except Exception as e:
+        print(f"Warning: Document date extraction failed: {e}")
+        return None
+
+
+def _extract_time_period(text: str, filename: str) -> str | None:
+    """
+    Extract time_period using dedicated LLM call with focused context.
+
+    Args:
+        text: Document text (first few pages)
+        filename: PDF filename for additional context
+
+    Returns:
+        Time period in "Qx YYYY" or "FY YYYY" format or None
+    """
+    date_context = _get_date_context(text)
+    first_1000 = text[:1000]
+
+    prompt = f"""Extract the financial reporting period from this document.
+
+CONTEXT:
+Filename: {filename}
+First 1000 characters: {first_1000}
+
+Date context (250 chars around each date found):
+{date_context}
+
+REQUIREMENTS:
+- Must be in format "Q1 YYYY", "Q2 YYYY", "Q3 YYYY", "Q4 YYYY", or "FY YYYY"
+- Key words such as "six months", "nine months", "twelve months", "annual" are important hints
+- Do not assume calendar year and fiscal year are the same
+- Return null unless you have high confidence
+
+EXAMPLES: "Q3 2024", "FY 2023", "Q1 2025"
+
+Return ONLY a JSON object:
+{{"time_period": "Qx YYYY" or "FY YYYY" or null}}
+"""
+
+    try:
+        response_text = generate_content_safe(prompt, temperature=CLASSIFICATION_TEMPERATURE)
+        response_text = _clean_json_response(response_text)
+        result = json.loads(response_text)
+        return result.get("time_period")
+    except Exception as e:
+        print(f"Warning: Time period extraction failed: {e}")
+        return None
+
+
+def _extract_period_end_date(text: str, filename: str) -> str | None:
+    """
+    Extract period_end_date using dedicated LLM call with focused context.
+
+    Args:
+        text: Document text (first few pages)
+        filename: PDF filename for additional context
+
+    Returns:
+        Period end date in YYYY-MM-DD format or None
+    """
+    date_context = _get_date_context(text)
+    first_1000 = text[:1000]
+
+    prompt = f"""Extract the financial period end date from this document.
+
+CONTEXT:
+Filename: {filename}
+First 1000 characters: {first_1000}
+
+Date context (250 chars around each date found):
+{date_context}
+
+REQUIREMENTS:
+- Must be in YYYY-MM-DD format
+- Often found in the first paragraph with "quarter ending" or "fiscal year ending" or "months ending"
+- Often found in the column header of financial statement tables (use the most recent date)
+- Return null unless you have high confidence
+
+EXAMPLES: "2024-03-31", "2023-12-31"
+
+Return ONLY a JSON object:
+{{"period_end_date": "YYYY-MM-DD" or null}}
+"""
+
+    try:
+        response_text = generate_content_safe(prompt, temperature=CLASSIFICATION_TEMPERATURE)
+        response_text = _clean_json_response(response_text)
+        result = json.loads(response_text)
+        return result.get("period_end_date")
+    except Exception as e:
+        print(f"Warning: Period end date extraction failed: {e}")
+        return None
+
+
+def _reflect_on_dates(
+    document_date: str | None,
+    time_period: str | None,
+    period_end_date: str | None,
+    text: str,
+    filename: str,
+) -> dict[str, str | None]:
+    """
+    Reflection step to validate and correct the three date fields together.
+
+    Args:
+        document_date: Extracted document date
+        time_period: Extracted time period
+        period_end_date: Extracted period end date
+        text: Original document text
+        filename: PDF filename
+
+    Returns:
+        Dictionary with validated/corrected date fields
+    """
+    date_context = _get_date_context(text)
+    first_1000 = text[:1000]
+
+    prompt = f"""Review and validate these extracted date fields from a financial document.
+
+CONTEXT:
+Filename: {filename}
+First 1000 characters: {first_1000}
+
+Date context (250 chars around each date found):
+{date_context}
+
+EXTRACTED VALUES:
+- document_date: {document_date or "null"}
+- time_period: {time_period or "null"}
+- period_end_date: {period_end_date or "null"}
+
+VALIDATION RULES:
+1. document_date and period_end_date cannot be the same
+2. period_end_date is usually 15-60 days BEFORE document_date
+3. time_period must match format "Q1 YYYY", "Q2 YYYY", "Q3 YYYY", "Q4 YYYY", or "FY YYYY"
+4. For FY or Q4, look for keywords like "twelve months" in income statement or "fiscal year ending"
+5. All dates must be in YYYY-MM-DD format
+
+Return ONLY a JSON object with corrected values. Only include fields that need correction.
+If all fields are correct, return an empty object {{}}.
+If a field cannot be corrected, set it to null.
+
+Example response:
+{{"time_period": "Q3 2024", "period_end_date": "2024-09-30"}}
+"""
+
+    try:
+        response_text = generate_content_safe(prompt, temperature=REFLECTION_TEMPERATURE)
+        response_text = _clean_json_response(response_text)
+        corrections = json.loads(response_text)
+
+        # Apply corrections
+        result = {
+            "document_date": corrections.get("document_date", document_date),
+            "time_period": corrections.get("time_period", time_period),
+            "period_end_date": corrections.get("period_end_date", period_end_date),
+        }
+        return result
+
+    except Exception as e:
+        print(f"Warning: Date reflection failed: {e}")
+        # Return original values if reflection fails
+        return {
+            "document_date": document_date,
+            "time_period": time_period,
+            "period_end_date": period_end_date,
+        }
+
+
 def _build_classification_prompt(text: str) -> str:
     """
     Build the main classification prompt.
@@ -462,7 +670,7 @@ def _create_empty_result() -> dict[str, str | None]:
     }
 
 
-def classify_document(text: str) -> dict[str, str | None]:
+def classify_document(text: str, filename: str = "") -> dict[str, str | None]:
     """
     Classify a document using Gemini LLM to determine:
     - Document type (earnings announcement, filing, etc.)
@@ -471,39 +679,55 @@ def classify_document(text: str) -> dict[str, str | None]:
 
     Args:
         text: Extracted text from the first few pages of the document
+        filename: PDF filename for additional context in date extraction
 
     Returns:
         Dictionary with:
         - document_type: DocumentType enum value or None
         - time_period: String like "Q3 2024" or "FY 2023" or None
         - document_date: Date string YYYY-MM-DD or None
+        - period_end_date: Date string YYYY-MM-DD or None
         - company_name: Company name or None
         - ticker: Ticker symbol or None
         - confidence: Confidence level (high/medium/low) or None
     """
     try:
-        # Step 1: Build and execute classification prompt
+        # Step 1: Base Classification (Document Type & Company Identity)
+        # Use existing prompt but focus on identity/type rather than dates
         prompt = _build_classification_prompt(text)
         response_text = generate_content_safe(prompt, temperature=CLASSIFICATION_TEMPERATURE)
-
-        # Step 2: Parse JSON response
         response_text = _clean_json_response(response_text)
-        result = json.loads(response_text)
+        base_result = json.loads(response_text)
 
-        # Step 3: Reflection step - validate and correct extracted fields (strictly from text)
-        result = _reflect_on_extraction(result, text)
+        # Step 2: Legacy Reflection on ticker (keep existing logic)
+        base_result = _reflect_on_extraction(base_result, text)
 
-        # Step 4: Identity Enrichment - normalize company name and ticker using LLM knowledge
+        # Step 3: NEW - Granular Date Extraction Pipeline
+        # Extract each date field separately with dedicated prompts
+        document_date = _extract_document_date(text, filename)
+        time_period = _extract_time_period(text, filename)
+        period_end_date = _extract_period_end_date(text, filename)
+
+        # Step 4: NEW - Validate dates together with cross-field reflection
+        validated_dates = _reflect_on_dates(
+            document_date, time_period, period_end_date, text, filename
+        )
+
+        # Step 5: Merge base classification with validated dates
+        result = base_result.copy()
+        result.update(validated_dates)
+
+        # Step 6: Identity Enrichment - normalize company name and ticker using LLM knowledge
         result = _enrich_identity_with_knowledge(result, text)
 
-        # Step 5: Apply post-processing rules
+        # Step 7: Apply post-processing rules (FY <-> Q4 conversion)
         doc_type = result.get("document_type")
-        time_period = result.get("time_period")
+        time_period_final = result.get("time_period")
 
-        if doc_type and time_period:
-            result["time_period"] = _apply_time_period_corrections(doc_type, time_period)
+        if doc_type and time_period_final:
+            result["time_period"] = _apply_time_period_corrections(doc_type, time_period_final)
 
-        # Step 6: Map document_type string to DocumentType enum
+        # Step 8: Map document_type string to DocumentType enum
         if result.get("document_type"):
             result["document_type"] = _map_document_type_to_enum(result["document_type"])
 

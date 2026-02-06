@@ -78,26 +78,32 @@ def call_llm_with_retry(
 def format_period_prompt_label(time_period: str | None, period_end_date: str | None) -> str:
     """
     Formats a descriptive string for the time period to be used in LLM prompts.
-    Handles 'fiscal' vs 'calendar' labeling and date formatting.
+    Returns a flexible set of search terms joined by 'OR'.
     """
-    period_info_parts = []
+    period_options = []
+
     if time_period:
-        period_info_parts.append(f"time period in fiscal: {time_period}")
+        tp = time_period.strip()
+        period_options.append(f"Fiscal {tp}")
+        period_options.append(f"{tp} Fiscal")
+        period_options.append(tp)
 
     if period_end_date:
-        formatted_date = period_end_date
         try:
-            # Format to "Dec 31, 2023" style to match global formatter
             dt = datetime.strptime(period_end_date, "%Y-%m-%d")
-            formatted_date = dt.strftime("%b %d, %Y")
+            # Use full month name as it's common in official docs (e.g. "December 31, 2023")
+            formatted_date = dt.strftime("%B %d, %Y")
         except (ValueError, TypeError):
-            pass
-        period_info_parts.append(f"(period ending in calendar {formatted_date})")
+            formatted_date = period_end_date
 
-    period_info = " ".join(period_info_parts)
-    if not period_info:
-        period_info = "specified period"
-    return period_info
+        period_options.append(f"quarter ending {formatted_date}")
+        period_options.append(f"three months ending {formatted_date}")
+        period_options.append(f"period ending {formatted_date}")
+
+    if not period_options:
+        return "current reporting period"
+
+    return " OR ".join(period_options)
 
 
 def check_section_completeness_llm(

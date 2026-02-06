@@ -14,11 +14,23 @@ def mock_call_llm():
 def test_extract_qualitative_assessment_two_step_flow(mock_call_llm):
     # Setup mock responses for the two steps
 
-    # Step 1: Rationale Generation response
-    rationale_response = {
-        "economic_moat_rationale": "Cases For: Strong network effects.\nCases Against: New entrants.\nConclusion: Wide moat.",
-        "near_term_growth_rationale": "Cases For: High demand.\nCases Against: Supply chain.\nConclusion: Faster growth.",
-        "revenue_predictability_rationale": "Cases For: Contracts.\nCases Against: Cancellations.\nConclusion: High predictability.",
+    # Step 1: Analysis response (structured JSON format)
+    analysis_response = {
+        "economic_moat": {
+            "cases_for": ["Strong network effects", "High switching costs"],
+            "cases_against": ["New entrants", "Regulatory risk"],
+            "conclusion": "Wide moat due to network effects.",
+        },
+        "near_term_growth": {
+            "cases_for": ["High demand", "Market expansion"],
+            "cases_against": ["Supply chain issues"],
+            "conclusion": "Faster growth expected.",
+        },
+        "revenue_predictability": {
+            "cases_for": ["Long-term contracts"],
+            "cases_against": ["Potential cancellations"],
+            "conclusion": "High predictability.",
+        },
     }
 
     # Step 2: Labeling response
@@ -29,7 +41,7 @@ def test_extract_qualitative_assessment_two_step_flow(mock_call_llm):
     }
 
     # Using side_effect to return different values for each call
-    mock_call_llm.side_effect = [rationale_response, labeling_response]
+    mock_call_llm.side_effect = [analysis_response, labeling_response]
 
     ticker = "GOOGL"
     company_name = "Alphabet Inc."
@@ -56,16 +68,14 @@ def test_extract_qualitative_assessment_two_step_flow(mock_call_llm):
     prompt2 = args2[0]
     assert "You are a strict grading assistant" in prompt2
     # Ensure rationales from step 1 were included in step 2's prompt
-    assert "Cases For: Strong network effects." in prompt2
+    assert "Strong network effects" in prompt2
     # Check temperature for step 2
     assert kwargs2.get("temperature") == 0.0
 
     # 3. Check Final Combined Result
     assert result["economic_moat_label"] == "Wide"
-    assert (
-        result["economic_moat_rationale"]
-        == "Cases For: Strong network effects.\nCases Against: New entrants.\nConclusion: Wide moat."
-    )
+    assert "Strong network effects" in result["economic_moat_rationale"]
+    assert "Wide moat" in result["economic_moat_rationale"]
     assert result["near_term_growth_label"] == "Faster"
     assert result["revenue_predictability_label"] == "High"
 
@@ -73,11 +83,15 @@ def test_extract_qualitative_assessment_two_step_flow(mock_call_llm):
 def test_extract_qualitative_assessment_missing_rationale(mock_call_llm):
     # Test fallback behavior when step 1 misses keys
 
-    # Step 1: Partial Rationale (missing growth)
-    rationale_response = {
-        "economic_moat_rationale": "Moat stuff."
-        # near_term_growth_rationale missing
-        # revenue_predictability_rationale missing
+    # Step 1: Partial Analysis (missing growth and predictability)
+    analysis_response = {
+        "economic_moat": {
+            "cases_for": ["Moat stuff"],
+            "cases_against": [],
+            "conclusion": "Narrow moat.",
+        }
+        # near_term_growth missing
+        # revenue_predictability missing
     }
 
     # Step 2: Labeling response
@@ -87,17 +101,15 @@ def test_extract_qualitative_assessment_missing_rationale(mock_call_llm):
         "revenue_predictability_label": "Mid",
     }
 
-    mock_call_llm.side_effect = [rationale_response, labeling_response]
+    mock_call_llm.side_effect = [analysis_response, labeling_response]
 
     result = extract_qualitative_assessment("TST", "Test")
 
-    # Verify strict grading prompt received "No rationale provided."
+    # Verify strict grading prompt received "No rationale."
     args2, _ = mock_call_llm.call_args_list[1]
     prompt2 = args2[0]
-    assert "No rationale provided." in prompt2
+    assert "No rationale." in prompt2
 
     # Verify result merge
     assert result["economic_moat_label"] == "Narrow"
-    assert (
-        "near_term_growth_rationale" not in result
-    )  # Should be missing from final result if missing from step 1
+    assert "Moat stuff" in result["economic_moat_rationale"]

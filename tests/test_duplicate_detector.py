@@ -39,7 +39,8 @@ def seed_company_and_user(session, company_id="company-1", user_id="user-1"):
         DocumentType.ANNUAL_FILING,
     ],
 )
-def test_duplicate_by_company_type_time_period(db_session, document_type):
+def test_duplicate_by_unique_id(db_session, document_type):
+    """Test that duplicates are detected by unique_id for all document types."""
     seed_company_and_user(db_session)
     existing = Document(
         id="doc-1",
@@ -49,6 +50,7 @@ def test_duplicate_by_company_type_time_period(db_session, document_type):
         file_path="/tmp/results.pdf",
         document_type=document_type,
         time_period="Q1 2024",
+        unique_id="hash-12345",
         indexing_status=ProcessingStatus.INDEXED,
     )
     db_session.add(existing)
@@ -60,14 +62,16 @@ def test_duplicate_by_company_type_time_period(db_session, document_type):
         document_type=document_type,
         time_period="Q1 2024",
         filename="new-results.pdf",
+        unique_id="hash-12345",  # Same unique_id
     )
 
     assert result is not None
-    assert result["match_reason"] == "same_company_type_period"
+    assert result["match_reason"] == "same_unique_id"
     assert result["existing_document"].id == existing.id
 
 
-def test_duplicate_by_filename_case_insensitive(db_session):
+def test_no_duplicate_different_unique_id(db_session):
+    """Test that documents with different unique_ids are not flagged as duplicates."""
     seed_company_and_user(db_session)
     existing = Document(
         id="doc-2",
@@ -77,22 +81,23 @@ def test_duplicate_by_filename_case_insensitive(db_session):
         file_path="/tmp/Quarterly-Report.PDF",
         document_type=DocumentType.QUARTERLY_FILING,
         time_period="Q4 2023",
+        unique_id="hash-old",
         indexing_status=ProcessingStatus.INDEXED,
     )
     db_session.add(existing)
     db_session.commit()
 
+    # Same filename and time period, but different unique_id (different content)
     result = check_duplicate_document(
         db_session,
         company_id="company-1",
         document_type=DocumentType.QUARTERLY_FILING,
-        time_period="Q1 2024",
+        time_period="Q4 2023",
         filename="quarterly-report.pdf",
+        unique_id="hash-new",  # Different unique_id
     )
 
-    assert result is not None
-    assert result["match_reason"] == "same_filename"
-    assert result["existing_document"].id == existing.id
+    assert result is None
 
 
 def test_duplicate_by_unique_id_for_other_types(db_session):

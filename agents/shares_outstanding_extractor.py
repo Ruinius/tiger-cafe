@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 
-from app.utils.document_section_finder import find_document_section
 from app.utils.financial_statement_progress import (
     FinancialStatementMilestone,
     add_log,
@@ -42,7 +41,8 @@ Return a JSON object:
   "basic_shares_outstanding": number (null if not found),
   "basic_shares_outstanding_unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (null if not stated),
   "diluted_shares_outstanding": number (null if not found),
-  "diluted_shares_outstanding_unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (null if not stated)
+  "diluted_shares_outstanding_unit": unit of measurement - one of ["ones", "thousands", "millions", "billions", "ten_thousands"] (null if not stated),
+  "not_found_reason": "brief explanation if specific values are missing or if the section is irrelevant"
 }}
 
 Document text:
@@ -59,66 +59,174 @@ Return only valid JSON, no additional text."""
     return json.loads(response_text)
 
 
+def _extract_context_around_keywords(
+    text: str, keywords: list[str], context_chars: int = 250
+) -> str:
+    """
+    Extracts snippets of text around the found keywords and joins them.
+    Deduplicates overlapping ranges.
+    """
+    text_lower = text.lower()
+    ranges = []
+
+    for keyword in keywords:
+        keyword = keyword.lower()
+        start = 0
+        while True:
+            idx = text_lower.find(keyword, start)
+            if idx == -1:
+                break
+
+            # Define range
+            range_start = max(0, idx - context_chars)
+            range_end = min(len(text), idx + len(keyword) + context_chars)
+            ranges.append((range_start, range_end))
+
+            start = idx + len(keyword)
+
+    if not ranges:
+        return ""
+
+    # Sort ranges by start
+    ranges.sort(key=lambda x: x[0])
+
+    # Merge overlapping ranges
+    merged_ranges = []
+    if ranges:
+        current_start, current_end = ranges[0]
+        for next_start, next_end in ranges[1:]:
+            if next_start <= current_end:
+                current_end = max(current_end, next_end)
+            else:
+                merged_ranges.append((current_start, current_end))
+                current_start, current_end = next_start, next_end
+        merged_ranges.append((current_start, current_end))
+
+    # Extract text
+    snippets = []
+    for start, end in merged_ranges:
+        snippets.append(text[start:end])
+
+    return "\n...\n".join(snippets)
+
+
 def extract_shares_outstanding(
     document_id: str,
     file_path: str,
     time_period: str,
     max_retries: int = 1,
     period_end_date: str | None = None,
+    income_statement_chunk_index: int | None = None,
 ) -> dict:
-    query_texts = ["weighted average", "shares", "basic", "diluted"]
+    from app.utils.document_indexer import load_full_document_text
+    from app.utils.document_section_finder import get_chunk_with_context
 
-    # Try ranks 0, 1, 2 in sequence (top 3 ranking chunks)
-    # Each attempt uses 1 chunk with 2500 chars before and 2500 chars after
-    for rank in [0, 1, 2]:
-        text, chunk_index, log_info = find_document_section(
+    # --- ATTEMPT 1: Check Income Statement Chunk (if available) ---
+    if income_statement_chunk_index is not None:
+        add_log(
+            document_id,
+            FinancialStatementMilestone.SHARES_OUTSTANDING,
+            "Checking Income Statement section for shares data...",
+        )
+        # Use generous context as EPS is often at the bottom of the IS
+        text, _, _ = get_chunk_with_context(
             document_id=document_id,
             file_path=file_path,
-            query_texts=query_texts,
+            chunk_index=income_statement_chunk_index,
             chars_before=2500,
             chars_after=2500,
-            rerank_top_k=3,
-            score_threshold=0.25,
-            chunk_rank=rank,
-            context_name="Shares Outstanding",
         )
 
-        add_log(
-            document_id,
-            FinancialStatementMilestone.SHARES_OUTSTANDING,
-            f"I'm searching for basic and diluted shares outstanding figures (attempt {rank + 1}).",
-        )
-
-        if not text:
-            continue
-
-        # Try extraction from this chunk
-        add_log(
-            document_id,
-            FinancialStatementMilestone.SHARES_OUTSTANDING,
-            f"I'm asking Gemini to find the weighted average shares (basic and diluted) for {time_period}.",
-        )
-        extraction = extract_shares_outstanding_llm(text, time_period, period_end_date)
-        if extraction.get("basic_shares_outstanding") or extraction.get(
-            "diluted_shares_outstanding"
-        ):
-            add_log(
-                document_id,
-                FinancialStatementMilestone.SHARES_OUTSTANDING,
-                f"Gemini response: Shares found. Basic: {extraction.get('basic_shares_outstanding')} {extraction.get('basic_shares_outstanding_unit', '')}, Diluted: {extraction.get('diluted_shares_outstanding')} {extraction.get('diluted_shares_outstanding_unit', '')}.",
-                source="gemini",
-            )
-        else:
-            add_log(
-                document_id,
-                FinancialStatementMilestone.SHARES_OUTSTANDING,
-                "Gemini response: No clear share counts identified in this document segment.",
-                source="gemini",
-            )
-        retries = 0
-        while retries < max_retries and not extraction:
-            retries += 1
+        if text:
+            # Try extraction on the raw IS chunk text
             extraction = extract_shares_outstanding_llm(text, time_period, period_end_date)
+
+            is_valid = any(
+                extraction.get(field) is not None
+                for field in ("basic_shares_outstanding", "diluted_shares_outstanding")
+            )
+
+            if is_valid:
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.SHARES_OUTSTANDING,
+                    f"Found shares in Income Statement chunk (Basic: {extraction.get('basic_shares_outstanding')}, Diluted: {extraction.get('diluted_shares_outstanding')})",
+                )
+                return {
+                    "basic_shares_outstanding": extraction.get("basic_shares_outstanding"),
+                    "basic_shares_outstanding_unit": extraction.get(
+                        "basic_shares_outstanding_unit"
+                    ),
+                    "diluted_shares_outstanding": extraction.get("diluted_shares_outstanding"),
+                    "diluted_shares_outstanding_unit": extraction.get(
+                        "diluted_shares_outstanding_unit"
+                    ),
+                    "chunk_index": income_statement_chunk_index,
+                    "is_valid": True,
+                    "validation_errors": [],
+                }
+            else:
+                if extraction.get("not_found_reason"):
+                    add_log(
+                        document_id,
+                        FinancialStatementMilestone.SHARES_OUTSTANDING,
+                        f"Gemini response: {extraction.get('not_found_reason')}",
+                        source="gemini",
+                    )
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.SHARES_OUTSTANDING,
+                    "Shares not found in Income Statement chunk. Proceeding to global search.",
+                )
+
+    # --- ATTEMPT 2: Global Keyword Search ---
+    add_log(
+        document_id,
+        FinancialStatementMilestone.SHARES_OUTSTANDING,
+        "Scanning entire document for shares-related keywords...",
+    )
+
+    full_text = load_full_document_text(document_id, file_path)
+    if not full_text:
+        return {
+            "basic_shares_outstanding": None,
+            "basic_shares_outstanding_unit": None,
+            "diluted_shares_outstanding": None,
+            "diluted_shares_outstanding_unit": None,
+            "chunk_index": None,
+            "is_valid": False,
+            "validation_errors": ["Could not load document text"],
+        }
+
+    keywords = ["weighted average", "shares outstanding", "basic", "diluted"]
+    # Get all relevant snippets from the document
+    focused_text = _extract_context_around_keywords(full_text, keywords, context_chars=250)
+
+    if not focused_text:
+        return {
+            "basic_shares_outstanding": None,
+            "basic_shares_outstanding_unit": None,
+            "diluted_shares_outstanding": None,
+            "diluted_shares_outstanding_unit": None,
+            "chunk_index": None,
+            "is_valid": False,
+            "validation_errors": ["No shares-related keywords found in document"],
+        }
+
+    # Split focused text into regular chunks to avoid context window issues
+    snippet_size = 2500
+    snippets = [
+        focused_text[i : i + snippet_size] for i in range(0, len(focused_text), snippet_size)
+    ]
+
+    add_log(
+        document_id,
+        FinancialStatementMilestone.SHARES_OUTSTANDING,
+        f"Found relevant text segments. Analyzing {len(snippets)} snippets...",
+    )
+
+    for i, snippet in enumerate(snippets):
+        extraction = extract_shares_outstanding_llm(snippet, time_period, period_end_date)
 
         is_valid = any(
             extraction.get(field) is not None
@@ -126,6 +234,11 @@ def extract_shares_outstanding(
         )
 
         if is_valid:
+            add_log(
+                document_id,
+                FinancialStatementMilestone.SHARES_OUTSTANDING,
+                f"Found shares in keyword snippet {i + 1} (Basic: {extraction.get('basic_shares_outstanding')}, Diluted: {extraction.get('diluted_shares_outstanding')})",
+            )
             return {
                 "basic_shares_outstanding": extraction.get("basic_shares_outstanding"),
                 "basic_shares_outstanding_unit": extraction.get("basic_shares_outstanding_unit"),
@@ -133,12 +246,25 @@ def extract_shares_outstanding(
                 "diluted_shares_outstanding_unit": extraction.get(
                     "diluted_shares_outstanding_unit"
                 ),
-                "chunk_index": chunk_index,
-                "is_valid": is_valid,
+                "chunk_index": None,  # Chunk index is ambiguous for keyword search results
+                "is_valid": True,
                 "validation_errors": [],
             }
+        else:
+            if extraction.get("not_found_reason"):
+                add_log(
+                    document_id,
+                    FinancialStatementMilestone.SHARES_OUTSTANDING,
+                    f"Gemini response (snippet {i + 1}): {extraction.get('not_found_reason')}",
+                    source="gemini",
+                )
 
-    # If all attempts failed, return error
+    # Final Failure
+    add_log(
+        document_id,
+        FinancialStatementMilestone.SHARES_OUTSTANDING,
+        "Failed to extract shares outstanding from any section.",
+    )
     return {
         "basic_shares_outstanding": None,
         "basic_shares_outstanding_unit": None,
@@ -146,5 +272,5 @@ def extract_shares_outstanding(
         "diluted_shares_outstanding_unit": None,
         "chunk_index": None,
         "is_valid": False,
-        "validation_errors": ["Shares outstanding section not found"],
+        "validation_errors": ["Shares outstanding not found in document"],
     }

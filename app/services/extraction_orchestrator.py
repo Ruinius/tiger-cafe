@@ -425,6 +425,11 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
                 "I'm looking for the shares outstanding data to help with valuation.",
             )
 
+            # Retrieve Income Statement chunk index if available
+            income_statement_chunk_index = None
+            if document.income_statement:
+                income_statement_chunk_index = document.income_statement.chunk_index
+
             shares_data = await loop.run_in_executor(
                 None,
                 functools.partial(
@@ -432,6 +437,7 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
                     document_id=document_id,
                     file_path=document.file_path,
                     time_period=document.time_period or "Unknown",
+                    income_statement_chunk_index=income_statement_chunk_index,
                 ),
             )
 
@@ -439,12 +445,30 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
             has_valid_shares = False
             if shares_data and shares_data.get("is_valid"):
                 basic = shares_data.get("basic_shares_outstanding")
+                basic_unit = shares_data.get("basic_shares_outstanding_unit")
                 diluted = shares_data.get("diluted_shares_outstanding")
+                diluted_unit = shares_data.get("diluted_shares_outstanding_unit")
 
-                # Validation rule: Must have at least one value > 1000 (to avoid small erroneous numbers)
-                if (basic is not None and float(basic) > 1000) or (
-                    diluted is not None and float(diluted) > 1000
-                ):
+                # Validation rule: Value in "ones" must be > 1,000,000 (1 million)
+                # This prevents small erroneous numbers (like page numbers or single digit typos)
+                # UNLESS it's explicitly marked as "millions" in the unit, in which case we trust the unit conversion.
+
+                basic_ones = 0
+                if basic:
+                    try:
+                        basic_ones = convert_to_ones(float(basic), basic_unit)
+                    except (ValueError, TypeError):
+                        basic_ones = float(basic)  # Fallback if unit conv fails
+
+                diluted_ones = 0
+                if diluted:
+                    try:
+                        diluted_ones = convert_to_ones(float(diluted), diluted_unit)
+                    except (ValueError, TypeError):
+                        diluted_ones = float(diluted)
+
+                # Threshold: 1 million shares
+                if basic_ones > 1_000_000 or diluted_ones > 1_000_000:
                     has_valid_shares = True
 
             if has_valid_shares:

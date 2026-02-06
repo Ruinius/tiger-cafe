@@ -15,6 +15,7 @@ from agents.document_summarizer import generate_document_summary
 from app.models.company import Company
 from app.models.document import Document, DocumentType, ProcessingStatus
 from app.models.document_status import DocumentStatus
+from app.services.timeline_service import heal_company_timelines
 from app.utils.document_hash import generate_document_hash
 from app.utils.document_indexer import index_document_chunks
 from app.utils.duplicate_detector import check_duplicate_document
@@ -134,7 +135,7 @@ def process_document(
             "I'm asking Gemini to identify the company name, ticker, and document type from the extracted text.",
         )
 
-    classification_data = classify_document(extracted_text)
+    classification_data = classify_document(extracted_text, filename=resolved_filename)
 
     if document:
         add_log(
@@ -235,6 +236,24 @@ def process_document(
         document.page_count = total_pages
         document.character_count = character_count
         db_session.commit()
+
+        # Stage 2: Cross-document timeline healing
+        # This validates and fills missing dates using the company's document timeline
+        try:
+            healing_result = heal_company_timelines(
+                company.id, db_session, current_document_id=document.id
+            )
+            if healing_result.get("healed") and healing_result.get("fields_healed", 0) > 0:
+                # Refresh document to get any healed values
+                db_session.refresh(document)
+                add_log(
+                    document.id,
+                    FinancialStatementMilestone.CLASSIFICATION,
+                    f"I've validated dates across {healing_result['documents_processed']} documents and healed {healing_result['fields_healed']} field(s).",
+                )
+        except Exception as e:
+            # Don't fail the entire pipeline if healing fails
+            print(f"Warning: Timeline healing failed: {e}")
 
     document_type = classification_data.get("document_type")
     time_period = classification_data.get("time_period")
