@@ -52,9 +52,6 @@ The system currently supports:
 - [x] ABNB case - cannot seem to extract shares outstanding any more
 - [x] EL case - cannot seem to extract diluted shares outstanding
 - [x] MA case - LLM is not finding the shares outstanding
-
-
-
 - [ ] Add reflection and healing step for when key totals are missing, such as total assets, total liabilities, total equity & liabilities
 - [ ] EL case - LLM extracting Non-GAAP table very strangely - look into the non-gaap reconciliation logic
 - [ ] EL case - add a reflection step to the Non-GAAP table on time period of line items
@@ -68,7 +65,9 @@ The system currently supports:
 - [ ] NVR case - tiger-transformer does not know how to handle special homebuilding case (WHY ARE ALL THE HOMEBUILDERS SO SPECIAL?!)
 - [ ] ULTA case - strange name for net income parent
 - [ ] YUMC case - strange name for net income (before parent)
-
+- [ ] WIX case - total revenue line is not labeled
+- [ ] CPB case - balance sheet is not being categorized correctly
+- [ ] CPB case - for the 10-Q, tiger-transformer does not recognize EBIT
 
 
 ### Phase 18: Research Reports
@@ -77,11 +76,16 @@ The system currently supports:
 
 
 ### Phase 19: 10-K and 10-Q
+- [x] Make 10-Q go through the same pipeline as earnings announcement for now
+- [ ] CPB case - 10-Q somehow got identified as JM Smucker company instead... how?! Try adding a reflection step
+- [ ] Need to harmonize when pulling financial statements from the same time period but from 10-Q vs earnings announcement
+- [ ] It looks like indexing is not async. Need to make it async
 - [ ] Extract financial statements more consistently
 - [ ] Improved organic growth analysis
 - [ ] Extract details on amortization, other assets, and other liabilities
 - [ ] Enable editing extracted values in Document Extraction View
 - [ ] GGG case - missing balance sheet in earnings announcement. Need to accelerate analyzing 10-Q and 10-K for complete picture
+
 
 
 ### Phase 20: Outstanding Refactor Opportunities

@@ -218,6 +218,15 @@ async def get_balance_sheet(
     if balance_sheet:
         # Convert to schema for proper serialization
         balance_sheet_schema = BalanceSheetSchema.model_validate(balance_sheet)
+
+        # DEBUG: Print first 5 line items
+        print(f"\n[DEBUG] Balance Sheet found for document {document_id}")
+        print(f"[DEBUG] Currency: {balance_sheet.currency}, Unit: {balance_sheet.unit}")
+        print(f"[DEBUG] Total line items: {len(balance_sheet.line_items)}")
+        print("[DEBUG] First 5 line items:")
+        for i, item in enumerate(balance_sheet.line_items[:5]):
+            print(f"  {i + 1}. {item.line_name}: {item.line_value}")
+
         return {"status": "exists", "data": balance_sheet_schema.model_dump()}
 
     # State 2: Processing

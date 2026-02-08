@@ -115,16 +115,42 @@ function DocumentExtractionView({ selectedDocument }) {
     // Coordination: Data Loading when milestones complete
     useEffect(() => {
         if (!selectedDocument?.id || !isEligibleForFinancialStatements) return
+
+        // DEBUG: Log all milestone statuses
+        console.log('[DocumentExtractionView] DEBUG - Milestone Statuses:', {
+            balance_sheet: financialStatementProgress?.milestones?.balance_sheet?.status,
+            income_statement: financialStatementProgress?.milestones?.income_statement?.status,
+            shares_outstanding: financialStatementProgress?.milestones?.shares_outstanding?.status,
+            overall_status: financialStatementProgress?.status
+        })
+        console.log('[DocumentExtractionView] DEBUG - Current State:', {
+            balanceSheet: balanceSheet ? 'LOADED' : 'NULL',
+            incomeStatement: incomeStatement ? 'LOADED' : 'NULL',
+            balanceSheetLoadAttempts,
+            incomeStatementLoadAttempts,
+            MAX_LOAD_ATTEMPTS
+        })
+
         const bsStatus = financialStatementProgress?.milestones?.balance_sheet?.status
         if (balanceSheetLoadAttempts < MAX_LOAD_ATTEMPTS && !balanceSheet) {
+            console.log('[DocumentExtractionView] DEBUG - BS Check:', {
+                bsStatus,
+                shouldLoad: bsStatus === 'completed' || bsStatus === 'error' || bsStatus === 'warning'
+            })
             if (bsStatus === 'completed' || bsStatus === 'error' || bsStatus === 'warning') {
+                console.log('[DocumentExtractionView] Calling loadBalanceSheet()')
                 loadBalanceSheet()
             }
         }
 
         const isStatus = financialStatementProgress?.milestones?.income_statement?.status
         if (incomeStatementLoadAttempts < MAX_LOAD_ATTEMPTS && !incomeStatement) {
+            console.log('[DocumentExtractionView] DEBUG - IS Check:', {
+                isStatus,
+                shouldLoad: isStatus === 'completed' || isStatus === 'error' || isStatus === 'warning'
+            })
             if (isStatus === 'completed' || isStatus === 'error' || isStatus === 'warning') {
+                console.log('[DocumentExtractionView] Calling loadIncomeStatement()')
                 loadIncomeStatement()
             }
         }
@@ -180,18 +206,18 @@ function DocumentExtractionView({ selectedDocument }) {
         const prevStatus = prevAnalysisStatusRef.current
 
         if (prevStatus === 'processing' && currentStatus !== 'processing') {
-            console.log('[DocumentExtractionView] Pipeline finished, refreshing all data...')
+            console.log('[DocumentExtractionView] Analysis pipeline finished, refreshing data...')
 
             if (selectedDocument && isEligibleForFinancialStatements) {
                 // 1. Refresh progress first
                 loadFinancialStatementProgress()
 
-                // 2. Clear stale data
-                clearFinancialStatements()
+                // 2. Clear and reload historical calculations only
+                // DO NOT clear financial statements (balance sheet, income statement)
+                // Those should only be cleared when explicitly rerunning extraction
                 clearHistoricalCalculations()
 
-                // 3. Reset load flags to allow re-fetching
-                setAdditionalItemsLoadAttempted(false)
+                // 3. Reset historical calculations load flag to allow re-fetching
                 setHistoricalCalculationsLoadAttempted(false)
             }
         }
@@ -202,9 +228,7 @@ function DocumentExtractionView({ selectedDocument }) {
         selectedDocument,
         isEligibleForFinancialStatements,
         loadFinancialStatementProgress,
-        clearFinancialStatements,
         clearHistoricalCalculations,
-        setAdditionalItemsLoadAttempted,
         setHistoricalCalculationsLoadAttempted
     ])
 
@@ -255,9 +279,9 @@ function DocumentExtractionView({ selectedDocument }) {
                                 if (statement && statement.is_valid === false) {
                                     // Check if milestone already has a warning with validation errors
                                     const milestoneWarning = milestones[milestoneKey];
-                                    const milestoneHasValidationWarnings = milestoneWarning?.status === 'warning' && 
+                                    const milestoneHasValidationWarnings = milestoneWarning?.status === 'warning' &&
                                         milestoneWarning?.message?.includes('Validation warnings:');
-                                    
+
                                     // Skip if milestone already reported validation warnings
                                     if (milestoneHasValidationWarnings) {
                                         return;
@@ -291,12 +315,18 @@ function DocumentExtractionView({ selectedDocument }) {
                             processStatementErrors(incomeStatement, 'Income Statement', 'income_statement');
 
                             // 3. Data Integrity & Health Checks
-                            // We run these if the pipeline is terminal OR if enough attempts have failed
+                            // Only show "missing" errors if we've actually tried to load the data and failed
                             const isDone = areAllMilestonesTerminal() || overallStatus === 'completed' || overallStatus === 'error';
+                            const isStillProcessing = overallStatus === 'processing' || overallStatus === 'not_started';
                             const primaryDataMissing = !balanceSheet || !incomeStatement;
-                            const attemptsExhausted = balanceSheetLoadAttempts >= MAX_LOAD_ATTEMPTS;
+                            const attemptsExhausted = balanceSheetLoadAttempts >= MAX_LOAD_ATTEMPTS && incomeStatementLoadAttempts >= MAX_LOAD_ATTEMPTS;
 
-                            if (isDone || (primaryDataMissing && attemptsExhausted)) {
+                            // Only show critical data errors if:
+                            // 1. We've exhausted all load attempts (data truly missing), OR
+                            // 2. Processing is done AND we have at least one failed load attempt
+                            const shouldShowMissingErrors = attemptsExhausted || (isDone && !isStillProcessing && (balanceSheetLoadAttempts > 0 || incomeStatementLoadAttempts > 0));
+
+                            if (shouldShowMissingErrors) {
                                 // Critical Path Errors (Red)
                                 if (!balanceSheet) {
                                     errors.push({ milestone: 'Critical Data', message: 'Balance Sheet is missing' });

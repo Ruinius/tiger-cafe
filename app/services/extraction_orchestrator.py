@@ -779,7 +779,10 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
             )
 
         # Extract Amortization, Other Assets, Other Liabilities (ONLY for quarterly/annual filings, NOT earnings announcements)
-        if document.document_type in [DocumentType.QUARTERLY_FILING, DocumentType.ANNUAL_FILING]:
+        # TEMPORARILY DISABLED: Skip these extractions for all document types for now
+        if (
+            False
+        ):  # document.document_type in [DocumentType.QUARTERLY_FILING, DocumentType.ANNUAL_FILING]:
             # Extract Amortization
             update_milestone(
                 document_id,
@@ -1070,29 +1073,29 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
                     source="gemini",
                 )
         else:
-            # Skip these for earnings announcements
+            # Skip these for all document types (temporarily disabled)
             update_milestone(
                 document_id,
                 FinancialStatementMilestone.AMORTIZATION,
                 MilestoneStatus.SKIPPED,
-                "Amortization skipped for earnings announcement",
+                "Amortization extraction temporarily disabled",
             )
             update_milestone(
                 document_id,
                 FinancialStatementMilestone.OTHER_ASSETS,
                 MilestoneStatus.SKIPPED,
-                "Other assets skipped for earnings announcement",
+                "Other assets extraction temporarily disabled",
             )
             update_milestone(
                 document_id,
                 FinancialStatementMilestone.OTHER_LIABILITIES,
                 MilestoneStatus.SKIPPED,
-                "Other liabilities skipped for earnings announcement",
+                "Other liabilities extraction temporarily disabled",
             )
             add_log(
                 document_id,
                 FinancialStatementMilestone.AMORTIZATION,
-                "Note: Skipping detailed asset/liability audits as these are typically absent from earnings announcements.",
+                "Note: Amortization, Other Assets, and Other Liabilities extractions are temporarily disabled.",
             )
 
     except Exception as e:

@@ -296,26 +296,17 @@ def process_document(
             company=company,
         )
 
-    # Check if document is an earnings announcement - only process those
-    if mode != DocumentProcessingMode.PREVIEW and document:
-        if document_type != DocumentType.EARNINGS_ANNOUNCEMENT:
-            document.indexing_status = ProcessingStatus.CLASSIFIED
-            db_session.commit()
-            add_log(
-                document.id,
-                FinancialStatementMilestone.CLASSIFICATION,
-                f"I'm skipping the full extraction because I currently only support earnings announcements (this is a {document_type}).",
-            )
-            return DocumentProcessingResult(
-                classification_data=classification_data,
-                duplicate_check=duplicate_check,
-                summary=None,
-                extracted_text_preview=extracted_text_preview,
-                document_hash=document_hash,
-                total_pages=total_pages,
-                character_count=character_count,
-                company=company,
-            )
+    # Define which document types are eligible for financial extraction
+    # All documents will be indexed, but only these will proceed to extraction
+    eligible_for_extraction = [
+        DocumentType.EARNINGS_ANNOUNCEMENT,
+        DocumentType.QUARTERLY_FILING,
+        DocumentType.ANNUAL_FILING,
+    ]
+
+    is_eligible_for_extraction = (
+        document_type in eligible_for_extraction if document_type else False
+    )
 
     summary = None
     try:
@@ -410,6 +401,24 @@ def process_document(
     document.indexed_at = datetime.utcnow()
     document.page_count = total_pages
     document.character_count = character_count
+
+    # Set final status based on extraction eligibility
+    if is_eligible_for_extraction:
+        # Eligible documents stay as INDEXED - the queue will pick them up for extraction
+        add_log(
+            document.id,
+            FinancialStatementMilestone.INDEX,
+            f"This {document_type} is eligible for financial extraction. I'll proceed to extract financial statements next.",
+        )
+    else:
+        # Non-eligible documents are marked as CLASSIFIED (terminal state)
+        document.indexing_status = ProcessingStatus.CLASSIFIED
+        add_log(
+            document.id,
+            FinancialStatementMilestone.INDEX,
+            f"This {document_type} has been indexed but is not eligible for financial statement extraction. Processing is complete.",
+        )
+
     db_session.commit()
 
     return DocumentProcessingResult(

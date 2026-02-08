@@ -130,10 +130,17 @@ class DocumentQueue:
                         )
                         return
 
-                    if document.document_type == DocumentType.EARNINGS_ANNOUNCEMENT:
+                    # Check if document type is eligible for financial extraction
+                    eligible_for_extraction = document.document_type in [
+                        DocumentType.EARNINGS_ANNOUNCEMENT,
+                        DocumentType.QUARTERLY_FILING,
+                        DocumentType.ANNUAL_FILING,
+                    ]
+
+                    if eligible_for_extraction:
                         self._update_status(db, document, DocumentStatus.INDEXED)
                     else:
-                        # Non-earnings documents are done after classification/indexing
+                        # Non-financial documents are done after classification/indexing
                         self._update_status(db, document, DocumentStatus.CLASSIFIED)
                         return  # Terminal state
 
@@ -152,8 +159,17 @@ class DocumentQueue:
                 print(
                     f"[Queue] Document status is {document.status}, checking if should process financials..."
                 )
-                if document.document_type == DocumentType.EARNINGS_ANNOUNCEMENT:
-                    print("[Queue] Document is EARNINGS_ANNOUNCEMENT, calling _process_financials")
+                # Check if document type is eligible for financial extraction
+                eligible_for_extraction = document.document_type in [
+                    DocumentType.EARNINGS_ANNOUNCEMENT,
+                    DocumentType.QUARTERLY_FILING,
+                    DocumentType.ANNUAL_FILING,
+                ]
+
+                if eligible_for_extraction:
+                    print(
+                        f"[Queue] Document is {document.document_type}, calling _process_financials"
+                    )
                     self._process_financials(document_id, db)
                 else:
                     print(

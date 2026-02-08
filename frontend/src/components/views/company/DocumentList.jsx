@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react'
 import { useDocumentData } from '../../../hooks/useDocumentData'
+import { formatDate } from '../../../utils/formatting'
 
 function DocumentList({ selectedCompany, onDocumentSelect, onBack, onOpenUploadModal, onShowUploadProgress }) {
     const {
@@ -107,7 +108,7 @@ function DocumentList({ selectedCompany, onDocumentSelect, onBack, onOpenUploadM
                                         <span className="document-time-period"> • {document.time_period}</span>
                                     )}
                                     {document.period_end_date ? (
-                                        <span className="document-time-period"> • {new Date(document.period_end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                        <span className="document-time-period"> • {formatDate(document.period_end_date)}</span>
                                     ) : !document.time_period && (
                                         <span className="document-time-period"> • N/A</span>
                                     )}
