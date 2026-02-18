@@ -54,6 +54,7 @@ PERIOD_END_DATE_EXAMPLES = '["2024-03-31", "2023-12-31"]'
 
 def _get_ticker_context(text: str) -> str:
     """Gather context around exchange names to help identify the ticker."""
+    print("\n[DEBUG] _get_ticker_context: Searching for ticker context...")
     contexts = []
     # Use case-insensitive search for popular exchanges
     for exchange in ["NASDAQ", "NYSE"]:
@@ -65,11 +66,17 @@ def _get_ticker_context(text: str) -> str:
             contexts.append(snippet)
 
     if not contexts:
+        print("[DEBUG] _get_ticker_context: No exchange mentions found")
         return ""
 
     # Unique and joined snippets
     unique_contexts = list(dict.fromkeys(contexts))
-    return "\n... ".join(unique_contexts[:10])  # Limit to top 10 to keep prompt size reasonable
+    ticker_context = "\n... ".join(
+        unique_contexts[:10]
+    )  # Limit to top 10 to keep prompt size reasonable
+    print(f"[DEBUG] _get_ticker_context: Found {len(unique_contexts)} unique contexts")
+    print(f"[DEBUG] _get_ticker_context: Context preview: {ticker_context[:300]}...")
+    return ticker_context
 
 
 def _get_date_context(text: str) -> str:
@@ -191,8 +198,10 @@ def _get_reflection_items(result: dict[str, Any], text: str) -> list[dict[str, s
 
     # Reflect on ticker - always reflect if it might be missing or to verify
     ticker_val = result.get("ticker", "null")
+    print(f"\n[DEBUG] _get_reflection_items: Ticker value before reflection: '{ticker_val}'")
     if not ticker_val or ticker_val == "null":
         # Even if null, we want to look for it specifically via reflection context
+        print("[DEBUG] _get_reflection_items: Ticker is null, adding reflection item to find it")
         reflection_items.append(
             {
                 "field": "ticker",
@@ -204,6 +213,9 @@ def _get_reflection_items(result: dict[str, Any], text: str) -> list[dict[str, s
         )
     else:
         # Verify existing ticker
+        print(
+            f"[DEBUG] _get_reflection_items: Ticker exists ('{ticker_val}'), adding reflection item to verify"
+        )
         reflection_items.append(
             {
                 "field": "ticker",
@@ -256,10 +268,15 @@ def _reflect_on_extraction(result: dict[str, str | None], text: str) -> dict[str
     Returns:
         Updated result dictionary with corrected fields
     """
+    print("\n[DEBUG] _reflect_on_extraction: Starting reflection step...")
+    print(f"[DEBUG] _reflect_on_extraction: Input company_name: '{result.get('company_name')}'")
+    print(f"[DEBUG] _reflect_on_extraction: Input ticker: '{result.get('ticker')}'")
+
     reflection_items = _get_reflection_items(result, text)
 
     # If no reflection items, return original result
     if not reflection_items:
+        print("[DEBUG] _reflect_on_extraction: No reflection items, returning original result")
         return result
 
     # Build and execute reflection prompt
@@ -268,13 +285,23 @@ def _reflect_on_extraction(result: dict[str, str | None], text: str) -> dict[str
     try:
         response_text = generate_content_safe(reflection_prompt, temperature=REFLECTION_TEMPERATURE)
         response_text = _clean_json_response(response_text)
+        print(f"[DEBUG] _reflect_on_extraction: LLM response: {response_text}")
         corrections = json.loads(response_text)
+        print(f"[DEBUG] _reflect_on_extraction: Parsed corrections: {corrections}")
 
         # Apply corrections to result
         for field, corrected_value in corrections.items():
             if field in result:
+                old_value = result[field]
                 result[field] = corrected_value
+                print(
+                    f"[DEBUG] _reflect_on_extraction: Corrected '{field}': '{old_value}' -> '{corrected_value}'"
+                )
 
+        print(
+            f"[DEBUG] _reflect_on_extraction: Output company_name: '{result.get('company_name')}'"
+        )
+        print(f"[DEBUG] _reflect_on_extraction: Output ticker: '{result.get('ticker')}'")
         return result
 
     except (json.JSONDecodeError, Exception) as e:
@@ -607,6 +634,13 @@ def _enrich_identity_with_knowledge(result: dict, text: str) -> dict:
     company_name = result.get("company_name")
     ticker = result.get("ticker")
 
+    print("\n[DEBUG] _enrich_identity_with_knowledge: Starting identity enrichment...")
+    print(f"[DEBUG] _enrich_identity_with_knowledge: Input company_name: '{company_name}'")
+    print(f"[DEBUG] _enrich_identity_with_knowledge: Input ticker: '{ticker}'")
+    print(
+        f"[DEBUG] _enrich_identity_with_knowledge: Document text preview (first 500 chars): {text[:500]}"
+    )
+
     # If both are missing, we definitely need help
     # If both are present, we want to normalize/verify
 
@@ -617,7 +651,7 @@ I have extracted the following identity information from a financial document:
 
 The document text snippet is:
 ---
-{text[:2000]}
+{text[:5000]}
 ---
 
 YOUR TASK:
@@ -628,7 +662,8 @@ RULES:
 2. If the company is public, provide its official full name and its primary trading ticker.
 3. If the extracted ticker and company name seem to belong to the same entity, ensure they are correct.
 4. If they seem to conflict, prioritize the one that matches the document context best.
-5. Return ONLY a JSON object with "company_name" and "ticker" keys.
+5. Do not hallucinate a new company unrelated to the extracted company name or extracted ticker.
+6. Return ONLY a JSON object with "company_name" and "ticker" keys.
 
 Response Format:
 {{
@@ -637,14 +672,30 @@ Response Format:
 }}
 """
     try:
+        print("[DEBUG] _enrich_identity_with_knowledge: Calling LLM for enrichment...")
         response_text = generate_content_safe(prompt, temperature=0.0)
         response_text = _clean_json_response(response_text)
+        print(f"[DEBUG] _enrich_identity_with_knowledge: LLM response: {response_text}")
         enrichment = json.loads(response_text)
+        print(f"[DEBUG] _enrich_identity_with_knowledge: Parsed enrichment: {enrichment}")
 
         if enrichment.get("company_name"):
+            old_name = result.get("company_name")
             result["company_name"] = enrichment["company_name"].strip()
+            print(
+                f"[DEBUG] _enrich_identity_with_knowledge: Updated company_name: '{old_name}' -> '{result['company_name']}'"
+            )
         if enrichment.get("ticker"):
+            old_ticker = result.get("ticker")
             result["ticker"] = enrichment["ticker"].strip().upper()
+            print(
+                f"[DEBUG] _enrich_identity_with_knowledge: Updated ticker: '{old_ticker}' -> '{result['ticker']}'"
+            )
+
+        print(
+            f"[DEBUG] _enrich_identity_with_knowledge: Final company_name: '{result.get('company_name')}'"
+        )
+        print(f"[DEBUG] _enrich_identity_with_knowledge: Final ticker: '{result.get('ticker')}'")
 
     except Exception as e:
         print(f"Warning: Identity enrichment failed: {e}")
@@ -692,35 +743,55 @@ def classify_document(text: str, filename: str = "") -> dict[str, str | None]:
         - confidence: Confidence level (high/medium/low) or None
     """
     try:
+        print("\n" + "=" * 80)
+        print("[DEBUG] classify_document: Starting document classification")
+        print("=" * 80)
+
         # Step 1: Base Classification (Document Type & Company Identity)
         # Use existing prompt but focus on identity/type rather than dates
+        print("\n[DEBUG] STEP 1: Base Classification")
         prompt = _build_classification_prompt(text)
         response_text = generate_content_safe(prompt, temperature=CLASSIFICATION_TEMPERATURE)
         response_text = _clean_json_response(response_text)
         base_result = json.loads(response_text)
+        print(f"[DEBUG] STEP 1 Result - company_name: '{base_result.get('company_name')}'")
+        print(f"[DEBUG] STEP 1 Result - ticker: '{base_result.get('ticker')}'")
+        print(f"[DEBUG] STEP 1 Result - document_type: '{base_result.get('document_type')}'")
 
         # Step 2: Legacy Reflection on ticker (keep existing logic)
+        print("\n[DEBUG] STEP 2: Reflection on Extraction")
         base_result = _reflect_on_extraction(base_result, text)
+        print(f"[DEBUG] STEP 2 Result - company_name: '{base_result.get('company_name')}'")
+        print(f"[DEBUG] STEP 2 Result - ticker: '{base_result.get('ticker')}'")
 
         # Step 3: NEW - Granular Date Extraction Pipeline
         # Extract each date field separately with dedicated prompts
+        print("\n[DEBUG] STEP 3: Date Extraction (skipping debug for dates)")
         document_date = _extract_document_date(text, filename)
         time_period = _extract_time_period(text, filename)
         period_end_date = _extract_period_end_date(text, filename)
 
         # Step 4: NEW - Validate dates together with cross-field reflection
+        print("\n[DEBUG] STEP 4: Date Validation (skipping debug for dates)")
         validated_dates = _reflect_on_dates(
             document_date, time_period, period_end_date, text, filename
         )
 
         # Step 5: Merge base classification with validated dates
+        print("\n[DEBUG] STEP 5: Merging Results")
         result = base_result.copy()
         result.update(validated_dates)
+        print(f"[DEBUG] STEP 5 Result - company_name: '{result.get('company_name')}'")
+        print(f"[DEBUG] STEP 5 Result - ticker: '{result.get('ticker')}'")
 
         # Step 6: Identity Enrichment - normalize company name and ticker using LLM knowledge
+        print("\n[DEBUG] STEP 6: Identity Enrichment")
         result = _enrich_identity_with_knowledge(result, text)
+        print(f"[DEBUG] STEP 6 Result - company_name: '{result.get('company_name')}'")
+        print(f"[DEBUG] STEP 6 Result - ticker: '{result.get('ticker')}'")
 
         # Step 7: Apply post-processing rules (FY <-> Q4 conversion)
+        print("\n[DEBUG] STEP 7: Post-processing Rules")
         doc_type = result.get("document_type")
         time_period_final = result.get("time_period")
 
@@ -728,8 +799,16 @@ def classify_document(text: str, filename: str = "") -> dict[str, str | None]:
             result["time_period"] = _apply_time_period_corrections(doc_type, time_period_final)
 
         # Step 8: Map document_type string to DocumentType enum
+        print("\n[DEBUG] STEP 8: Mapping Document Type to Enum")
         if result.get("document_type"):
             result["document_type"] = _map_document_type_to_enum(result["document_type"])
+
+        print("\n" + "=" * 80)
+        print("[DEBUG] FINAL RESULT:")
+        print(f"[DEBUG] company_name: '{result.get('company_name')}'")
+        print(f"[DEBUG] ticker: '{result.get('ticker')}'")
+        print(f"[DEBUG] document_type: '{result.get('document_type')}'")
+        print("=" * 80 + "\n")
 
         return result
 
