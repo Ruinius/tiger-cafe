@@ -218,3 +218,36 @@ def get_currency_rate(from_currency: str, to_currency: str = "USD") -> Decimal:
         return Decimal("1.0")
     except Exception:
         return Decimal("1.0")
+
+
+def get_yahoo_company_info(ticker: str) -> str | None:
+    """
+    Fetch the shortName for a given ticker from Yahoo Finance.
+    Falls back to longName if shortName is not available.
+    Returns None if the lookup fails for any reason.
+    Uses 24-hour cache to prevent throttling.
+
+    Args:
+        ticker: Stock ticker symbol (e.g. "AAPL")
+
+    Returns:
+        Yahoo Finance shortName (or longName) string, or None on failure
+    """
+    if not ticker:
+        return None
+
+    cache_key = f"shortname_{ticker}"
+    cached = _get_cached_value(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        ticker_obj = yf.Ticker(ticker)
+        info = ticker_obj.info
+        short_name = info.get("shortName") or info.get("longName")
+        if short_name:
+            _set_cached_value(cache_key, short_name)
+            return short_name
+        return None
+    except Exception:
+        return None

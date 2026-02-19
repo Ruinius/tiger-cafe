@@ -411,7 +411,7 @@ def extract_organic_growth(
             prior_revenue_unit = used_prior_unit  # Update for return
 
     # --- Step 2: Find Chunk (constant currency organic growth) ---
-    query_texts = ["constant currency organic growth"]
+    query_texts = ["constant currency organic growth", "constant currency", "organic growth"]
 
     text, chunk_index, _ = collect_top_chunk_texts(
         document_id=document_id,

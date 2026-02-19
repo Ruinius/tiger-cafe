@@ -201,14 +201,15 @@ def process_document(
             company.name = company_name
             name_updated = True
 
-        # update ticker if missing
-        if ticker and not company.ticker:
+        # update ticker if missing or corrected
+        if ticker and company.ticker != ticker:
+            old_ticker = company.ticker
             company.ticker = ticker
             ticker_updated = True
             add_log(
                 document.id,
                 FinancialStatementMilestone.CLASSIFICATION,
-                f"I've identified the ticker {ticker} for {company.name} and updated its record.",
+                f"I've updated the ticker for {company.name} from '{old_ticker}' to '{ticker}'.",
             )
 
         if name_updated or ticker_updated:

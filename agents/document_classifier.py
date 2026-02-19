@@ -8,6 +8,7 @@ from typing import Any
 
 from app.models.document import DocumentType
 from app.utils.gemini_client import generate_content_safe
+from app.utils.market_data import get_yahoo_company_info
 
 # Constants
 CLASSIFICATION_TEMPERATURE = 0.0
@@ -703,6 +704,56 @@ Response Format:
     return result
 
 
+def _validate_company_name_with_llm(
+    extracted_name: str | None,
+    yahoo_name: str,
+    text: str,
+) -> bool:
+    """
+    Use an LLM call to determine whether the extracted company name and the
+    Yahoo Finance shortName refer to the same entity.
+
+    Args:
+        extracted_name: Company name extracted from the document
+        yahoo_name: shortName returned by Yahoo Finance
+        text: Document text snippet for additional context
+
+    Returns:
+        True if the names refer to the same company, False otherwise
+    """
+    prompt = f"""You are validating company identity extracted from a financial document.
+
+Extracted company name (from document): "{extracted_name or "null"}"
+Yahoo Finance company name (for the extracted ticker): "{yahoo_name}"
+
+Document text snippet (first 2000 chars):
+---
+{text[:2000]}
+---
+
+Do these two names refer to the SAME company?
+Consider common abbreviations (e.g. "Apple" vs "Apple Inc."), subsidiaries, or alternate trading names.
+
+Return ONLY a JSON object:
+{{"same_company": true or false, "reason": "brief explanation"}}
+
+Return only valid JSON, no additional text."""
+
+    try:
+        response_text = generate_content_safe(prompt, temperature=0.0)
+        response_text = _clean_json_response(response_text)
+        data = json.loads(response_text)
+        result = bool(data.get("same_company", False))
+        print(
+            f"[DEBUG] _validate_company_name_with_llm: same_company={result}, reason={data.get('reason')}"
+        )
+        return result
+    except Exception as e:
+        print(f"[DEBUG] _validate_company_name_with_llm: Failed: {e}")
+        # If validation itself fails, assume mismatch so we fall back to enrichment
+        return False
+
+
 def _create_empty_result() -> dict[str, str | None]:
     """
     Create an empty classification result with all fields set to None.
@@ -758,21 +809,27 @@ def classify_document(text: str, filename: str = "") -> dict[str, str | None]:
         print(f"[DEBUG] STEP 1 Result - ticker: '{base_result.get('ticker')}'")
         print(f"[DEBUG] STEP 1 Result - document_type: '{base_result.get('document_type')}'")
 
-        # Step 2: Legacy Reflection on ticker (keep existing logic)
-        print("\n[DEBUG] STEP 2: Reflection on Extraction")
-        base_result = _reflect_on_extraction(base_result, text)
-        print(f"[DEBUG] STEP 2 Result - company_name: '{base_result.get('company_name')}'")
+        # Step 2: Conditional Ticker Reflection
+        # Only run reflection if ticker was not found in Step 1
+        print("\n[DEBUG] STEP 2: Conditional Ticker Reflection")
+        if not base_result.get("ticker"):
+            print("[DEBUG] STEP 2: No ticker from base classification. Running reflection...")
+            base_result = _reflect_on_extraction(base_result, text)
+        else:
+            print(
+                f"[DEBUG] STEP 2: Ticker already found ('{base_result.get('ticker')}'), skipping reflection."
+            )
         print(f"[DEBUG] STEP 2 Result - ticker: '{base_result.get('ticker')}'")
+        print(f"[DEBUG] STEP 2 Result - company_name: '{base_result.get('company_name')}'")
 
-        # Step 3: NEW - Granular Date Extraction Pipeline
-        # Extract each date field separately with dedicated prompts
-        print("\n[DEBUG] STEP 3: Date Extraction (skipping debug for dates)")
+        # Step 3: Granular Date Extraction Pipeline
+        print("\n[DEBUG] STEP 3: Date Extraction")
         document_date = _extract_document_date(text, filename)
         time_period = _extract_time_period(text, filename)
         period_end_date = _extract_period_end_date(text, filename)
 
-        # Step 4: NEW - Validate dates together with cross-field reflection
-        print("\n[DEBUG] STEP 4: Date Validation (skipping debug for dates)")
+        # Step 4: Validate dates together with cross-field reflection
+        print("\n[DEBUG] STEP 4: Date Validation")
         validated_dates = _reflect_on_dates(
             document_date, time_period, period_end_date, text, filename
         )
@@ -784,9 +841,75 @@ def classify_document(text: str, filename: str = "") -> dict[str, str | None]:
         print(f"[DEBUG] STEP 5 Result - company_name: '{result.get('company_name')}'")
         print(f"[DEBUG] STEP 5 Result - ticker: '{result.get('ticker')}'")
 
-        # Step 6: Identity Enrichment - normalize company name and ticker using LLM knowledge
-        print("\n[DEBUG] STEP 6: Identity Enrichment")
-        result = _enrich_identity_with_knowledge(result, text)
+        # Step 6: Identity Resolution via Yahoo Finance + conditional LLM enrichment
+        print("\n[DEBUG] STEP 6: Identity Resolution")
+        ticker_after_reflection = result.get("ticker")
+        extracted_company_name = result.get("company_name")  # Save as fallback
+
+        if ticker_after_reflection:
+            # We have a ticker — validate via Yahoo Finance
+            print(
+                f"[DEBUG] STEP 6: Ticker available ('{ticker_after_reflection}'). Fetching Yahoo Finance info..."
+            )
+            yahoo_name = get_yahoo_company_info(ticker_after_reflection)
+
+            if yahoo_name:
+                # Ask LLM if the extracted name matches Yahoo's name
+                print(
+                    f"[DEBUG] STEP 6: Yahoo returned '{yahoo_name}'. Validating against extracted name '{extracted_company_name}'..."
+                )
+                names_match = _validate_company_name_with_llm(
+                    extracted_company_name, yahoo_name, text
+                )
+
+                if names_match:
+                    # Step 5 (plan): Yahoo validation passed — use Yahoo shortName as final name
+                    print(
+                        f"[DEBUG] STEP 6: Names match. Using Yahoo shortName '{yahoo_name}' as company_name."
+                    )
+                    result["company_name"] = yahoo_name
+                else:
+                    # Mismatch — fall back to LLM enrichment to resolve the conflict
+                    print(
+                        "[DEBUG] STEP 6: Names do NOT match. Running LLM enrichment to resolve..."
+                    )
+                    result = _enrich_identity_with_knowledge(result, text)
+                    # After enrichment, attempt to get Yahoo shortName again with the (possibly corrected) ticker
+                    enriched_ticker = result.get("ticker")
+                    if enriched_ticker:
+                        final_yahoo_name = get_yahoo_company_info(enriched_ticker)
+                        if final_yahoo_name:
+                            print(
+                                f"[DEBUG] STEP 6: Overriding company_name with Yahoo shortName post-enrichment: '{final_yahoo_name}'"
+                            )
+                            result["company_name"] = final_yahoo_name
+                        else:
+                            print(
+                                "[DEBUG] STEP 6: Yahoo lookup failed post-enrichment. Keeping enriched company_name as fallback."
+                            )
+                    # If no ticker after enrichment, keep whatever enrichment returned
+            else:
+                # Yahoo Finance failed — fall back to LLM enrichment
+                print(
+                    "[DEBUG] STEP 6: Yahoo Finance lookup failed. Running LLM enrichment as fallback..."
+                )
+                result = _enrich_identity_with_knowledge(result, text)
+        else:
+            # No ticker at all — go straight to LLM enrichment
+            print("[DEBUG] STEP 6: No ticker available. Running LLM enrichment...")
+            result = _enrich_identity_with_knowledge(result, text)
+
+        # Final safety net: if company_name is still None, restore the originally extracted name
+        if not result.get("company_name") and extracted_company_name:
+            print(
+                f"[DEBUG] STEP 6: company_name is empty after all steps. Restoring extracted fallback: '{extracted_company_name}'"
+            )
+            result["company_name"] = extracted_company_name
+
+        # Always normalize the ticker — strip whitespace and uppercase regardless of which branch was taken
+        if result.get("ticker"):
+            result["ticker"] = result["ticker"].strip().upper()
+
         print(f"[DEBUG] STEP 6 Result - company_name: '{result.get('company_name')}'")
         print(f"[DEBUG] STEP 6 Result - ticker: '{result.get('ticker')}'")
 

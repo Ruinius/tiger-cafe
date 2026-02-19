@@ -133,10 +133,10 @@ def test_earnings_announcement_goes_through_full_processing(
                         assert result is not None
 
 
-def test_non_earnings_announcement_skips_indexing(
+def test_non_earnings_announcement_skips_extraction(
     db_session, test_user, test_company, mock_pdf_file
 ):
-    """Test that non-earnings announcements skip indexing"""
+    """Test that non-earnings announcements are indexed but not sent to extraction pipeline"""
     document = Document(
         id=str(uuid.uuid4()),
         user_id=test_user.id,
@@ -172,31 +172,35 @@ def test_non_earnings_announcement_skips_indexing(
                 ) as mock_duplicate:
                     mock_duplicate.return_value = {"is_duplicate": False}
 
-                    # Mock indexing (should NOT be called for non-earnings announcements)
+                    # Mock summary generation
                     with patch(
-                        "app.services.document_processing.index_document_chunks"
-                    ) as mock_index:
-                        # Process the document
-                        result = process_document(
-                            db_session=db_session,
-                            document_id=document.id,
-                            mode=DocumentProcessingMode.FULL,
-                        )
+                        "app.services.document_processing.generate_document_summary"
+                    ) as mock_summary:
+                        mock_summary.return_value = "Test summary"
 
-                        # Verify indexing was NOT called
-                        mock_index.assert_not_called()
+                        # Mock indexing — IS called (all FULL mode docs are indexed)
+                        with patch(
+                            "app.services.document_processing.index_document_chunks"
+                        ) as mock_index:
+                            # Process the document
+                            result = process_document(
+                                db_session=db_session,
+                                document_id=document.id,
+                                mode=DocumentProcessingMode.FULL,
+                            )
 
-                        # Verify document status is CLASSIFIED (not CLASSIFYING or INDEXED)
-                        db_session.refresh(document)
-                        assert document.indexing_status == ProcessingStatus.CLASSIFIED
-                        assert document.document_type == DocumentType.PRESS_RELEASE
-                        assert result is not None
-                        # Summary should be None since we skip it for non-earnings
-                        assert result.summary is None
+                            # Indexing IS called for all document types
+                            mock_index.assert_called_once()
+
+                            # Press releases are NOT eligible for financial extraction → CLASSIFIED
+                            db_session.refresh(document)
+                            assert document.indexing_status == ProcessingStatus.CLASSIFIED
+                            assert document.document_type == DocumentType.PRESS_RELEASE
+                            assert result is not None
 
 
-def test_quarterly_filing_skips_indexing(db_session, test_user, test_company, mock_pdf_file):
-    """Test that quarterly filings skip indexing (only earnings announcements are processed)"""
+def test_quarterly_filing_gets_indexed_status(db_session, test_user, test_company, mock_pdf_file):
+    """Test that quarterly filings are indexed and eligible for financial extraction"""
     document = Document(
         id=str(uuid.uuid4()),
         user_id=test_user.id,
@@ -232,24 +236,29 @@ def test_quarterly_filing_skips_indexing(db_session, test_user, test_company, mo
                 ) as mock_duplicate:
                     mock_duplicate.return_value = {"is_duplicate": False}
 
-                    # Mock indexing (should NOT be called)
+                    # Mock summary generation
                     with patch(
-                        "app.services.document_processing.index_document_chunks"
-                    ) as mock_index:
-                        # Process the document
-                        process_document(
-                            db_session=db_session,
-                            document_id=document.id,
-                            mode=DocumentProcessingMode.FULL,
-                        )
+                        "app.services.document_processing.generate_document_summary"
+                    ) as mock_summary:
+                        mock_summary.return_value = "Test summary"
 
-                        # Verify indexing was NOT called
-                        mock_index.assert_not_called()
+                        # Mock indexing — IS called (quarterly filings are eligible)
+                        with patch(
+                            "app.services.document_processing.index_document_chunks"
+                        ) as mock_index:
+                            process_document(
+                                db_session=db_session,
+                                document_id=document.id,
+                                mode=DocumentProcessingMode.FULL,
+                            )
 
-                        # Verify document status is CLASSIFIED (not CLASSIFYING or INDEXED)
-                        db_session.refresh(document)
-                        assert document.indexing_status == ProcessingStatus.CLASSIFIED
-                        assert document.document_type == DocumentType.QUARTERLY_FILING
+                            # Indexing IS called for quarterly filings
+                            mock_index.assert_called_once()
+
+                            # Quarterly filings ARE eligible for extraction → status INDEXED
+                            db_session.refresh(document)
+                            assert document.indexing_status == ProcessingStatus.INDEXED
+                            assert document.document_type == DocumentType.QUARTERLY_FILING
 
 
 def test_preview_mode_still_classifies_all_document_types(

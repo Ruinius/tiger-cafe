@@ -68,6 +68,7 @@ The system currently supports:
 - [ ] WIX case - total revenue line is not labeled
 - [ ] CPB case - balance sheet is not being categorized correctly
 - [ ] CPB case - for the 10-Q, tiger-transformer does not recognize EBIT
+- [ ] Improve classifier agent by adding a yf ticker name check before reflecting. The agent is hallucinating on the ticker
 
 
 ### Phase 18: Research Reports
@@ -77,7 +78,7 @@ The system currently supports:
 
 ### Phase 19: 10-K and 10-Q
 - [x] Make 10-Q go through the same pipeline as earnings announcement for now
-- [ ] CPB case - 10-Q somehow got identified as JM Smucker company instead... how?! Try adding a reflection step
+- [x] CPB case - 10-Q somehow got identified as JM Smucker company instead... how?! Try adding a reflection step
 - [ ] Need to harmonize when pulling financial statements from the same time period but from 10-Q vs earnings announcement
 - [ ] It looks like indexing is not async. Need to make it async
 - [ ] Extract financial statements more consistently
@@ -96,6 +97,7 @@ The system currently supports:
     - Use Gemini 3-flash for the difficult extractions and maintain flash-lite for easier tasks
     - [ ] GRND case - the financial statements are images instead of text
 - [ ] Consolidate batch upload tests
+- [ ] Remove indexing and replace with simple search and interpretation with LLM
 
 
 ## Ongoing List of UI Improvements and Bugs

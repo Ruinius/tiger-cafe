@@ -76,7 +76,7 @@ def mock_pdf_file():
 def test_quarterly_filing_gets_classified_status(
     db_session, test_user, test_company, mock_pdf_file
 ):
-    """Test that quarterly filings get CLASSIFIED status (not CLASSIFYING)"""
+    """Test that quarterly filings get INDEXED status and index_document_chunks is called"""
     document = Document(
         id=str(uuid.uuid4()),
         user_id=test_user.id,
@@ -112,29 +112,35 @@ def test_quarterly_filing_gets_classified_status(
                 ) as mock_duplicate:
                     mock_duplicate.return_value = {"is_duplicate": False}
 
-                    # Mock indexing (should NOT be called)
+                    # Mock summary generation
                     with patch(
-                        "app.services.document_processing.index_document_chunks"
-                    ) as mock_index:
-                        # Process the document
-                        result = process_document(
-                            db_session=db_session,
-                            document_id=document.id,
-                            mode=DocumentProcessingMode.FULL,
-                        )
+                        "app.services.document_processing.generate_document_summary"
+                    ) as mock_summary:
+                        mock_summary.return_value = "Test summary"
 
-                        # Verify indexing was NOT called
-                        mock_index.assert_not_called()
+                        # Mock indexing (SHOULD be called — all FULL mode docs are indexed)
+                        with patch(
+                            "app.services.document_processing.index_document_chunks"
+                        ) as mock_index:
+                            # Process the document
+                            result = process_document(
+                                db_session=db_session,
+                                document_id=document.id,
+                                mode=DocumentProcessingMode.FULL,
+                            )
 
-                        # Verify document status is CLASSIFIED (not CLASSIFYING or INDEXED)
-                        db_session.refresh(document)
-                        assert document.indexing_status == ProcessingStatus.CLASSIFIED
-                        assert document.document_type == DocumentType.QUARTERLY_FILING
-                        assert result is not None
+                            # Quarterly filings ARE indexed
+                            mock_index.assert_called_once()
+
+                            # Quarterly filings are eligible for extraction → status INDEXED
+                            db_session.refresh(document)
+                            assert document.indexing_status == ProcessingStatus.INDEXED
+                            assert document.document_type == DocumentType.QUARTERLY_FILING
+                            assert result is not None
 
 
-def test_annual_filing_gets_classified_status(db_session, test_user, test_company, mock_pdf_file):
-    """Test that annual filings get CLASSIFIED status (not CLASSIFYING)"""
+def test_annual_filing_gets_indexed_status(db_session, test_user, test_company, mock_pdf_file):
+    """Test that annual filings get INDEXED status and index_document_chunks is called"""
     document = Document(
         id=str(uuid.uuid4()),
         user_id=test_user.id,
@@ -170,28 +176,33 @@ def test_annual_filing_gets_classified_status(db_session, test_user, test_compan
                 ) as mock_duplicate:
                     mock_duplicate.return_value = {"is_duplicate": False}
 
-                    # Mock indexing (should NOT be called)
+                    # Mock summary generation
                     with patch(
-                        "app.services.document_processing.index_document_chunks"
-                    ) as mock_index:
-                        # Process the document
-                        process_document(
-                            db_session=db_session,
-                            document_id=document.id,
-                            mode=DocumentProcessingMode.FULL,
-                        )
+                        "app.services.document_processing.generate_document_summary"
+                    ) as mock_summary:
+                        mock_summary.return_value = "Test summary"
 
-                        # Verify indexing was NOT called
-                        mock_index.assert_not_called()
+                        # Mock indexing (SHOULD be called — annual filings ARE eligible)
+                        with patch(
+                            "app.services.document_processing.index_document_chunks"
+                        ) as mock_index:
+                            process_document(
+                                db_session=db_session,
+                                document_id=document.id,
+                                mode=DocumentProcessingMode.FULL,
+                            )
 
-                        # Verify document status is CLASSIFIED
-                        db_session.refresh(document)
-                        assert document.indexing_status == ProcessingStatus.CLASSIFIED
-                        assert document.document_type == DocumentType.ANNUAL_FILING
+                            # Annual filings ARE indexed
+                            mock_index.assert_called_once()
+
+                            # Annual filings are eligible for extraction → status INDEXED
+                            db_session.refresh(document)
+                            assert document.indexing_status == ProcessingStatus.INDEXED
+                            assert document.document_type == DocumentType.ANNUAL_FILING
 
 
 def test_transcript_gets_classified_status(db_session, test_user, test_company, mock_pdf_file):
-    """Test that transcripts get CLASSIFIED status (not CLASSIFYING)"""
+    """Test that transcripts get CLASSIFIED status after indexing (not eligible for extraction)"""
     document = Document(
         id=str(uuid.uuid4()),
         user_id=test_user.id,
@@ -227,28 +238,34 @@ def test_transcript_gets_classified_status(db_session, test_user, test_company, 
                 ) as mock_duplicate:
                     mock_duplicate.return_value = {"is_duplicate": False}
 
-                    # Mock indexing (should NOT be called)
+                    # Mock summary generation
                     with patch(
-                        "app.services.document_processing.index_document_chunks"
-                    ) as mock_index:
-                        # Process the document
-                        process_document(
-                            db_session=db_session,
-                            document_id=document.id,
-                            mode=DocumentProcessingMode.FULL,
-                        )
+                        "app.services.document_processing.generate_document_summary"
+                    ) as mock_summary:
+                        mock_summary.return_value = "Test summary"
 
-                        # Verify indexing was NOT called
-                        mock_index.assert_not_called()
+                        # Mock indexing — IS called for all FULL mode docs
+                        with patch(
+                            "app.services.document_processing.index_document_chunks"
+                        ) as mock_index:
+                            # Process the document
+                            process_document(
+                                db_session=db_session,
+                                document_id=document.id,
+                                mode=DocumentProcessingMode.FULL,
+                            )
 
-                        # Verify document status is CLASSIFIED
-                        db_session.refresh(document)
-                        assert document.indexing_status == ProcessingStatus.CLASSIFIED
-                        assert document.document_type == DocumentType.TRANSCRIPT
+                            # Indexing IS called (all docs are indexed)
+                            mock_index.assert_called_once()
+
+                            # Transcripts are NOT eligible for extraction → status CLASSIFIED
+                            db_session.refresh(document)
+                            assert document.indexing_status == ProcessingStatus.CLASSIFIED
+                            assert document.document_type == DocumentType.TRANSCRIPT
 
 
 def test_press_release_gets_classified_status(db_session, test_user, test_company, mock_pdf_file):
-    """Test that press releases get CLASSIFIED status (not CLASSIFYING)"""
+    """Test that press releases get CLASSIFIED status after indexing (not eligible for extraction)"""
     document = Document(
         id=str(uuid.uuid4()),
         user_id=test_user.id,
@@ -284,24 +301,30 @@ def test_press_release_gets_classified_status(db_session, test_user, test_compan
                 ) as mock_duplicate:
                     mock_duplicate.return_value = {"is_duplicate": False}
 
-                    # Mock indexing (should NOT be called)
+                    # Mock summary generation
                     with patch(
-                        "app.services.document_processing.index_document_chunks"
-                    ) as mock_index:
-                        # Process the document
-                        process_document(
-                            db_session=db_session,
-                            document_id=document.id,
-                            mode=DocumentProcessingMode.FULL,
-                        )
+                        "app.services.document_processing.generate_document_summary"
+                    ) as mock_summary:
+                        mock_summary.return_value = "Test summary"
 
-                        # Verify indexing was NOT called
-                        mock_index.assert_not_called()
+                        # Mock indexing — IS called for all FULL mode docs
+                        with patch(
+                            "app.services.document_processing.index_document_chunks"
+                        ) as mock_index:
+                            # Process the document
+                            process_document(
+                                db_session=db_session,
+                                document_id=document.id,
+                                mode=DocumentProcessingMode.FULL,
+                            )
 
-                        # Verify document status is CLASSIFIED
-                        db_session.refresh(document)
-                        assert document.indexing_status == ProcessingStatus.CLASSIFIED
-                        assert document.document_type == DocumentType.PRESS_RELEASE
+                            # Indexing IS called (all docs are indexed)
+                            mock_index.assert_called_once()
+
+                            # Press releases are NOT eligible for extraction → status CLASSIFIED
+                            db_session.refresh(document)
+                            assert document.indexing_status == ProcessingStatus.CLASSIFIED
+                            assert document.document_type == DocumentType.PRESS_RELEASE
 
 
 def test_earnings_announcement_does_not_get_classified_status(
