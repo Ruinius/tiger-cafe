@@ -381,7 +381,13 @@ def calculate_ebita(
                 continue
 
             # Skip if already captured in explicit non-gaap items (prevent double counting)
-            if any(adj["line_name"] == item.line_name for adj in adjustments):
+            # Check both name and absolute value to catch cases where names differ but the
+            # item is the same (e.g. "D&A Addback" in GAAP table vs "Depreciation" in IS).
+            item_abs_value = abs(float(item.line_value))
+            if any(
+                adj["line_name"] == item.line_name or abs(adj["line_value"]) == item_abs_value
+                for adj in adjustments
+            ):
                 continue
 
             # Skip totals

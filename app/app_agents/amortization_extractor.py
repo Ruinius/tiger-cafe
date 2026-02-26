@@ -6,7 +6,7 @@ Earnings announcements use the separate GAAP reconciliation extractor.
 
 from __future__ import annotations
 
-from agents.extractor_utils import call_llm_and_parse_json
+from app.app_agents.extractor_utils import call_llm_and_parse_json
 from app.utils.document_section_finder import collect_top_chunk_texts
 from app.utils.financial_statement_progress import (
     FinancialStatementMilestone,

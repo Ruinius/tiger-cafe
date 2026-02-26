@@ -30,7 +30,7 @@ async def classify_non_operating_items_task(document_id: str, db: Session) -> No
     import functools
     import uuid
 
-    from agents.non_operating_classifier import classify_non_operating_items
+    from app.app_agents.non_operating_classifier import classify_non_operating_items
     from app.models.balance_sheet import BalanceSheet
     from app.models.income_statement import IncomeStatement
     from app.models.non_operating_classification import (

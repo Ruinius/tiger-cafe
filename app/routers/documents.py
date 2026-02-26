@@ -12,7 +12,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Up
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 
-from agents.document_classifier import classify_document
+from app.app_agents.document_classifier import classify_document
 from app.database import get_db
 from app.models.company import Company
 from app.models.document import Document, DocumentType, ProcessingStatus

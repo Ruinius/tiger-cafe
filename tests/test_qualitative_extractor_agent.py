@@ -2,12 +2,12 @@ from unittest.mock import patch
 
 import pytest
 
-from agents.qualitative_extractor import extract_qualitative_assessment
+from app.app_agents.qualitative_extractor import extract_qualitative_assessment
 
 
 @pytest.fixture
 def mock_call_llm():
-    with patch("agents.qualitative_extractor.call_llm_with_retry") as mock:
+    with patch("app.app_agents.qualitative_extractor.call_llm_with_retry") as mock:
         yield mock
 
 

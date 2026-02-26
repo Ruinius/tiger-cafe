@@ -38,7 +38,7 @@ async def extract_balance_sheet_task(document_id: str, db: Session) -> None:
     import functools
     import json
 
-    from agents.balance_sheet_extractor import extract_balance_sheet
+    from app.app_agents.balance_sheet_extractor import extract_balance_sheet
     from app.models.balance_sheet import BalanceSheet, BalanceSheetLineItem
     from app.models.document import DocumentType
 
@@ -213,7 +213,7 @@ async def extract_income_statement_task(document_id: str, db: Session) -> None:
     import json
     import uuid
 
-    from agents.income_statement_extractor import extract_income_statement
+    from app.app_agents.income_statement_extractor import extract_income_statement
     from app.models.document import DocumentType
     from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
 
@@ -388,12 +388,12 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
     import uuid
 
     # Corrected imports
-    from agents.amortization_extractor import extract_amortization
-    from agents.gaap_reconciliation_extractor import extract_gaap_reconciliation
-    from agents.organic_growth_extractor import extract_organic_growth
-    from agents.other_assets_extractor import extract_other_assets
-    from agents.other_liabilities_extractor import extract_other_liabilities
-    from agents.shares_outstanding_extractor import extract_shares_outstanding
+    from app.app_agents.amortization_extractor import extract_amortization
+    from app.app_agents.gaap_reconciliation_extractor import extract_gaap_reconciliation
+    from app.app_agents.organic_growth_extractor import extract_organic_growth
+    from app.app_agents.other_assets_extractor import extract_other_assets
+    from app.app_agents.other_liabilities_extractor import extract_other_liabilities
+    from app.app_agents.shares_outstanding_extractor import extract_shares_outstanding
     from app.models.amortization import Amortization, AmortizationLineItem
     from app.models.document import DocumentType
     from app.models.gaap_reconciliation import GAAPReconciliation, GAAPReconciliationLineItem

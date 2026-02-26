@@ -107,16 +107,21 @@ async def test_extraction_pipeline_partial_failure_balance_sheet(db_session, tes
     # Mock Balance Sheet extraction to fail
     with (
         patch(
-            "agents.balance_sheet_extractor.extract_balance_sheet",
+            "app.app_agents.balance_sheet_extractor.extract_balance_sheet",
             side_effect=Exception("BS Extraction Failed"),
         ),
         patch(
-            "agents.income_statement_extractor.extract_income_statement",
+            "app.app_agents.income_statement_extractor.extract_income_statement",
             return_value={"line_items": [], "is_valid": True},
         ),
-        patch("agents.shares_outstanding_extractor.extract_shares_outstanding", return_value={}),
-        patch("agents.organic_growth_extractor.extract_organic_growth", return_value={}),
-        patch("agents.non_operating_classifier.classify_non_operating_items", return_value={}),
+        patch(
+            "app.app_agents.shares_outstanding_extractor.extract_shares_outstanding",
+            return_value={},
+        ),
+        patch("app.app_agents.organic_growth_extractor.extract_organic_growth", return_value={}),
+        patch(
+            "app.app_agents.non_operating_classifier.classify_non_operating_items", return_value={}
+        ),
         patch(
             "app.models.document.Document.company_id", new_callable=lambda: test_document.company_id
         ),
@@ -152,16 +157,21 @@ async def test_extraction_pipeline_partial_failure_income_statement(db_session, 
 
     with (
         patch(
-            "agents.balance_sheet_extractor.extract_balance_sheet",
+            "app.app_agents.balance_sheet_extractor.extract_balance_sheet",
             return_value={"line_items": [], "is_valid": True},
         ),
         patch(
-            "agents.income_statement_extractor.extract_income_statement",
+            "app.app_agents.income_statement_extractor.extract_income_statement",
             side_effect=Exception("IS Extraction Failed"),
         ),
-        patch("agents.shares_outstanding_extractor.extract_shares_outstanding", return_value={}),
-        patch("agents.organic_growth_extractor.extract_organic_growth", return_value={}),
-        patch("agents.non_operating_classifier.classify_non_operating_items", return_value={}),
+        patch(
+            "app.app_agents.shares_outstanding_extractor.extract_shares_outstanding",
+            return_value={},
+        ),
+        patch("app.app_agents.organic_growth_extractor.extract_organic_growth", return_value={}),
+        patch(
+            "app.app_agents.non_operating_classifier.classify_non_operating_items", return_value={}
+        ),
         patch(
             "app.services.extraction_orchestrator.run_analysis_pipeline", new_callable=AsyncMock
         ) as mock_analysis,
@@ -198,18 +208,24 @@ async def test_extraction_pipeline_critical_failure(db_session, test_document):
 
         with (
             patch(
-                "agents.balance_sheet_extractor.extract_balance_sheet",
+                "app.app_agents.balance_sheet_extractor.extract_balance_sheet",
                 return_value={"line_items": [], "is_valid": True},
             ),
             patch(
-                "agents.income_statement_extractor.extract_income_statement",
+                "app.app_agents.income_statement_extractor.extract_income_statement",
                 return_value={"line_items": [], "is_valid": True},
             ),
             patch(
-                "agents.shares_outstanding_extractor.extract_shares_outstanding", return_value={}
+                "app.app_agents.shares_outstanding_extractor.extract_shares_outstanding",
+                return_value={},
             ),
-            patch("agents.organic_growth_extractor.extract_organic_growth", return_value={}),
-            patch("agents.non_operating_classifier.classify_non_operating_items", return_value={}),
+            patch(
+                "app.app_agents.organic_growth_extractor.extract_organic_growth", return_value={}
+            ),
+            patch(
+                "app.app_agents.non_operating_classifier.classify_non_operating_items",
+                return_value={},
+            ),
         ):
             with pytest.raises(Exception, match="Analysis Crashed"):
                 await run_full_extraction_pipeline(test_document.id, db_session)
@@ -233,19 +249,21 @@ async def test_shares_outstanding_failure_is_error(db_session, test_document):
 
     with (
         patch(
-            "agents.balance_sheet_extractor.extract_balance_sheet",
+            "app.app_agents.balance_sheet_extractor.extract_balance_sheet",
             return_value={"line_items": [], "is_valid": True},
         ),
         patch(
-            "agents.income_statement_extractor.extract_income_statement",
+            "app.app_agents.income_statement_extractor.extract_income_statement",
             return_value={"line_items": [], "is_valid": True},
         ),
         patch(
-            "agents.shares_outstanding_extractor.extract_shares_outstanding",
+            "app.app_agents.shares_outstanding_extractor.extract_shares_outstanding",
             side_effect=Exception("Shares Extraction Failed"),
         ),
-        patch("agents.organic_growth_extractor.extract_organic_growth", return_value={}),
-        patch("agents.non_operating_classifier.classify_non_operating_items", return_value={}),
+        patch("app.app_agents.organic_growth_extractor.extract_organic_growth", return_value={}),
+        patch(
+            "app.app_agents.non_operating_classifier.classify_non_operating_items", return_value={}
+        ),
         patch(
             "app.models.document.Document.company_id", new_callable=lambda: test_document.company_id
         ),
@@ -284,19 +302,24 @@ async def test_organic_growth_failure_is_error(db_session, test_document):
 
     with (
         patch(
-            "agents.balance_sheet_extractor.extract_balance_sheet",
+            "app.app_agents.balance_sheet_extractor.extract_balance_sheet",
             return_value={"line_items": [], "is_valid": True},
         ),
         patch(
-            "agents.income_statement_extractor.extract_income_statement",
+            "app.app_agents.income_statement_extractor.extract_income_statement",
             return_value={"line_items": [], "is_valid": True},
         ),
-        patch("agents.shares_outstanding_extractor.extract_shares_outstanding", return_value={}),
         patch(
-            "agents.organic_growth_extractor.extract_organic_growth",
+            "app.app_agents.shares_outstanding_extractor.extract_shares_outstanding",
+            return_value={},
+        ),
+        patch(
+            "app.app_agents.organic_growth_extractor.extract_organic_growth",
             side_effect=Exception("Organic Growth Extraction Failed"),
         ),
-        patch("agents.non_operating_classifier.classify_non_operating_items", return_value={}),
+        patch(
+            "app.app_agents.non_operating_classifier.classify_non_operating_items", return_value={}
+        ),
         patch(
             "app.models.document.Document.company_id", new_callable=lambda: test_document.company_id
         ),
@@ -335,20 +358,25 @@ async def test_gaap_reconciliation_failure_is_warning(db_session, test_document)
 
     with (
         patch(
-            "agents.balance_sheet_extractor.extract_balance_sheet",
+            "app.app_agents.balance_sheet_extractor.extract_balance_sheet",
             return_value={"line_items": [], "is_valid": True},
         ),
         patch(
-            "agents.income_statement_extractor.extract_income_statement",
+            "app.app_agents.income_statement_extractor.extract_income_statement",
             return_value={"line_items": [], "is_valid": True},
         ),
-        patch("agents.shares_outstanding_extractor.extract_shares_outstanding", return_value={}),
-        patch("agents.organic_growth_extractor.extract_organic_growth", return_value={}),
         patch(
-            "agents.gaap_reconciliation_extractor.extract_gaap_reconciliation",
+            "app.app_agents.shares_outstanding_extractor.extract_shares_outstanding",
+            return_value={},
+        ),
+        patch("app.app_agents.organic_growth_extractor.extract_organic_growth", return_value={}),
+        patch(
+            "app.app_agents.gaap_reconciliation_extractor.extract_gaap_reconciliation",
             side_effect=Exception("GAAP Extraction Failed"),
         ),
-        patch("agents.non_operating_classifier.classify_non_operating_items", return_value={}),
+        patch(
+            "app.app_agents.non_operating_classifier.classify_non_operating_items", return_value={}
+        ),
         patch(
             "app.models.document.Document.company_id", new_callable=lambda: test_document.company_id
         ),

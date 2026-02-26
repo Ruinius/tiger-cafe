@@ -2,7 +2,7 @@
 Unit tests for validation logic including section fallback and calculation validation
 """
 
-from agents.balance_sheet_extractor import (
+from app.app_agents.balance_sheet_extractor import (
     validate_balance_sheet_calculations,
 )
 

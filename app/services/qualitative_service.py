@@ -4,7 +4,7 @@ Service for managing qualitative company assessments.
 
 from sqlalchemy.orm import Session
 
-from agents.qualitative_extractor import extract_qualitative_assessment
+from app.app_agents.qualitative_extractor import extract_qualitative_assessment
 from app.models.company import Company
 from app.models.qualitative_assessment import QualitativeAssessment
 

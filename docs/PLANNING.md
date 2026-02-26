@@ -52,6 +52,8 @@ The system currently supports:
 - [x] ABNB case - cannot seem to extract shares outstanding any more
 - [x] EL case - cannot seem to extract diluted shares outstanding
 - [x] MA case - LLM is not finding the shares outstanding
+- [x] Improve classifier agent by adding a yf ticker name check before reflecting. The agent is hallucinating on the ticker
+- [x] BMBL case - check for duplicates in the EBITA calculation
 - [ ] Add reflection and healing step for when key totals are missing, such as total assets, total liabilities, total equity & liabilities
 - [ ] EL case - LLM extracting Non-GAAP table very strangely - look into the non-gaap reconciliation logic
 - [ ] EL case - add a reflection step to the Non-GAAP table on time period of line items
@@ -68,7 +70,7 @@ The system currently supports:
 - [ ] WIX case - total revenue line is not labeled
 - [ ] CPB case - balance sheet is not being categorized correctly
 - [ ] CPB case - for the 10-Q, tiger-transformer does not recognize EBIT
-- [ ] Improve classifier agent by adding a yf ticker name check before reflecting. The agent is hallucinating on the ticker
+- [ ] Improve organic growth extraction. Constant currency growth is being ignored during extraction
 
 
 ### Phase 18: Research Reports
@@ -88,7 +90,6 @@ The system currently supports:
 - [ ] GGG case - missing balance sheet in earnings announcement. Need to accelerate analyzing 10-Q and 10-K for complete picture
 
 
-
 ### Phase 20: Outstanding Refactor Opportunities
 - [ ] Refactor all the different status (legacy and new)
 - [ ] Refactor opportunity. Send raw pdf using Files API instead of processed text to Gemini
@@ -98,6 +99,7 @@ The system currently supports:
     - [ ] GRND case - the financial statements are images instead of text
 - [ ] Consolidate batch upload tests
 - [ ] Remove indexing and replace with simple search and interpretation with LLM
+- [ ] Allow for adding documents to the queue even when there's a running one
 
 
 ## Ongoing List of UI Improvements and Bugs

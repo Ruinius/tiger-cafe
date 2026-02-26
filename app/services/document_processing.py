@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
-from agents.document_classifier import classify_document
-from agents.document_summarizer import generate_document_summary
+from app.app_agents.document_classifier import classify_document
+from app.app_agents.document_summarizer import generate_document_summary
 from app.models.company import Company
 from app.models.document import Document, DocumentType, ProcessingStatus
 from app.models.document_status import DocumentStatus

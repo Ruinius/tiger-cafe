@@ -5,7 +5,7 @@ Uses LLM's internal knowledge base to assess economic moat, growth, and predicta
 
 from typing import Any
 
-from agents.extractor_utils import call_llm_with_retry
+from app.app_agents.extractor_utils import call_llm_with_retry
 
 
 def extract_qualitative_assessment(ticker: str, company_name: str) -> dict[str, Any]:

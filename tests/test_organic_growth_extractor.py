@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agents.organic_growth_extractor import (
+from app.app_agents.organic_growth_extractor import (
     _reflect_on_prior_revenue,
     extract_organic_growth,
     extract_prior_year_revenue,
@@ -12,7 +12,8 @@ from agents.organic_growth_extractor import (
 def test_reflect_on_prior_revenue_raises_error_on_failure():
     """Test that reflection raises RuntimeError instead of returning error string."""
     with patch(
-        "agents.organic_growth_extractor.call_llm_with_retry", side_effect=Exception("LLM Error")
+        "app.app_agents.organic_growth_extractor.call_llm_with_retry",
+        side_effect=Exception("LLM Error"),
     ):
         with pytest.raises(RuntimeError) as excinfo:
             _reflect_on_prior_revenue(100, "millions", "Q2 2024", "Q2 2023", 110, "Document text")
@@ -22,7 +23,7 @@ def test_reflect_on_prior_revenue_raises_error_on_failure():
 def test_extract_prior_year_revenue_raises_error_on_failure():
     """Test that extraction raises RuntimeError on exception."""
     with patch(
-        "agents.organic_growth_extractor.call_llm_and_parse_json",
+        "app.app_agents.organic_growth_extractor.call_llm_and_parse_json",
         side_effect=Exception("Parsing Error"),
     ):
         with pytest.raises(RuntimeError) as excinfo:
@@ -37,13 +38,15 @@ def test_extract_organic_growth_returns_invalid_if_chunk_index_missing():
     mock_collect = MagicMock(return_value=("Organic Growth Text", 1, 0.9))
 
     with (
-        patch("agents.organic_growth_extractor.collect_top_chunk_texts", mock_collect),
+        patch("app.app_agents.organic_growth_extractor.collect_top_chunk_texts", mock_collect),
         patch(
-            "agents.organic_growth_extractor.extract_organic_growth_percentage_only",
+            "app.app_agents.organic_growth_extractor.extract_organic_growth_percentage_only",
             return_value=None,
         ),
-        patch("agents.organic_growth_extractor.find_revenue_line_value", return_value=100.0),
-        patch("agents.organic_growth_extractor.add_log"),
+        patch(
+            "app.app_agents.organic_growth_extractor.find_revenue_line_value", return_value=100.0
+        ),
+        patch("app.app_agents.organic_growth_extractor.add_log"),
     ):
         # Missing chunk_index in income_statement_data
         income_statement_data = {
@@ -67,22 +70,24 @@ def test_extract_organic_growth_uses_provided_chunk_index():
     mock_get_chunk = MagicMock(return_value=("IS Text", 2, 0.95))
 
     with (
-        patch("agents.organic_growth_extractor.collect_top_chunk_texts", mock_collect),
+        patch("app.app_agents.organic_growth_extractor.collect_top_chunk_texts", mock_collect),
         patch(
-            "agents.organic_growth_extractor.extract_organic_growth_percentage_only",
+            "app.app_agents.organic_growth_extractor.extract_organic_growth_percentage_only",
             return_value=5.5,
         ),
         patch(
-            "agents.organic_growth_extractor.reflect_on_organic_growth",
+            "app.app_agents.organic_growth_extractor.reflect_on_organic_growth",
             return_value={"is_valid": True, "reason": "Valid"},
         ),
-        patch("agents.organic_growth_extractor.find_revenue_line_value", return_value=100.0),
-        patch("agents.organic_growth_extractor.get_chunk_with_context", mock_get_chunk),
         patch(
-            "agents.organic_growth_extractor.extract_prior_year_revenue",
+            "app.app_agents.organic_growth_extractor.find_revenue_line_value", return_value=100.0
+        ),
+        patch("app.app_agents.organic_growth_extractor.get_chunk_with_context", mock_get_chunk),
+        patch(
+            "app.app_agents.organic_growth_extractor.extract_prior_year_revenue",
             return_value=(90.0, "millions", None),
         ),
-        patch("agents.organic_growth_extractor.add_log"),
+        patch("app.app_agents.organic_growth_extractor.add_log"),
     ):
         income_statement_data = {
             "line_items": [

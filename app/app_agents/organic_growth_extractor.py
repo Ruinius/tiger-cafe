@@ -8,7 +8,7 @@ import json
 import re
 from datetime import datetime
 
-from agents.extractor_utils import call_llm_and_parse_json, call_llm_with_retry
+from app.app_agents.extractor_utils import call_llm_and_parse_json, call_llm_with_retry
 from app.utils.document_section_finder import (
     collect_top_chunk_texts,
     get_chunk_with_context,
@@ -229,7 +229,7 @@ def extract_organic_growth_percentage_only(
     text: str, time_period: str, period_end_date: str | None = None
 ) -> float | None:
     """Step 1: Extract the organic growth percentage figure only."""
-    from agents.extractor_utils import format_period_prompt_label
+    from app.app_agents.extractor_utils import format_period_prompt_label
 
     period_info = format_period_prompt_label(time_period, period_end_date)
     prompt = f"""Analyze the provided document text for the {period_info}.

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 
-from agents.extractor_utils import (
+from app.app_agents.extractor_utils import (
     call_llm_with_retry,
     check_section_completeness_llm,
     format_period_prompt_label,

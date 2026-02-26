@@ -16,7 +16,7 @@ from app.utils.gemini_client import generate_content_safe
 def extract_shares_outstanding_llm(
     text: str, time_period: str, period_end_date: str | None = None
 ) -> dict:
-    from agents.extractor_utils import format_period_prompt_label
+    from app.app_agents.extractor_utils import format_period_prompt_label
 
     period_info = format_period_prompt_label(time_period, period_end_date)
     prompt = f"""Extract basic and diluted shares outstanding from the following document text for the {period_info}.

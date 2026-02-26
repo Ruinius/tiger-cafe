@@ -84,7 +84,9 @@ async def test_extract_balance_sheet_task_success(db_session, test_document):
         "unit": "millions",
     }
 
-    with patch("agents.balance_sheet_extractor.extract_balance_sheet", return_value=mock_bs_data):
+    with patch(
+        "app.app_agents.balance_sheet_extractor.extract_balance_sheet", return_value=mock_bs_data
+    ):
         await extract_balance_sheet_task(test_document.id, db_session)
 
     # Verify balance sheet was created
@@ -105,7 +107,7 @@ async def test_extract_balance_sheet_task_skips_ineligible_types(db_session, tes
     test_document.document_type = DocumentType.PRESS_RELEASE
     db_session.commit()
 
-    with patch("agents.balance_sheet_extractor.extract_balance_sheet") as mock_extract:
+    with patch("app.app_agents.balance_sheet_extractor.extract_balance_sheet") as mock_extract:
         await extract_balance_sheet_task(test_document.id, db_session)
 
     # Verify extraction was not called
@@ -133,7 +135,8 @@ async def test_extract_income_statement_task_success(db_session, test_document):
     }
 
     with patch(
-        "agents.income_statement_extractor.extract_income_statement", return_value=mock_is_data
+        "app.app_agents.income_statement_extractor.extract_income_statement",
+        return_value=mock_is_data,
     ):
         await extract_income_statement_task(test_document.id, db_session)
 
@@ -156,7 +159,7 @@ async def test_extract_income_statement_task_success(db_session, test_document):
 async def test_extract_balance_sheet_task_handles_errors(db_session, test_document):
     """Test that balance sheet extraction handles errors gracefully."""
     with patch(
-        "agents.balance_sheet_extractor.extract_balance_sheet",
+        "app.app_agents.balance_sheet_extractor.extract_balance_sheet",
         side_effect=Exception("Extraction failed"),
     ):
         with pytest.raises(Exception, match="Extraction failed"):
@@ -217,13 +220,22 @@ async def test_run_full_extraction_pipeline_orchestration(db_session, test_docum
     }
 
     with (
-        patch("agents.balance_sheet_extractor.extract_balance_sheet", return_value=mock_bs_data),
         patch(
-            "agents.income_statement_extractor.extract_income_statement", return_value=mock_is_data
+            "app.app_agents.balance_sheet_extractor.extract_balance_sheet",
+            return_value=mock_bs_data,
         ),
-        patch("agents.shares_outstanding_extractor.extract_shares_outstanding", return_value={}),
-        patch("agents.organic_growth_extractor.extract_organic_growth", return_value={}),
-        patch("agents.non_operating_classifier.classify_non_operating_items", return_value={}),
+        patch(
+            "app.app_agents.income_statement_extractor.extract_income_statement",
+            return_value=mock_is_data,
+        ),
+        patch(
+            "app.app_agents.shares_outstanding_extractor.extract_shares_outstanding",
+            return_value={},
+        ),
+        patch("app.app_agents.organic_growth_extractor.extract_organic_growth", return_value={}),
+        patch(
+            "app.app_agents.non_operating_classifier.classify_non_operating_items", return_value={}
+        ),
     ):
         await run_full_extraction_pipeline(test_document.id, db_session)
 
@@ -257,11 +269,21 @@ async def test_extraction_pipeline_updates_document_status(db_session, test_docu
     }
 
     with (
-        patch("agents.balance_sheet_extractor.extract_balance_sheet", return_value=mock_data),
-        patch("agents.income_statement_extractor.extract_income_statement", return_value=mock_data),
-        patch("agents.shares_outstanding_extractor.extract_shares_outstanding", return_value={}),
-        patch("agents.organic_growth_extractor.extract_organic_growth", return_value={}),
-        patch("agents.non_operating_classifier.classify_non_operating_items", return_value={}),
+        patch(
+            "app.app_agents.balance_sheet_extractor.extract_balance_sheet", return_value=mock_data
+        ),
+        patch(
+            "app.app_agents.income_statement_extractor.extract_income_statement",
+            return_value=mock_data,
+        ),
+        patch(
+            "app.app_agents.shares_outstanding_extractor.extract_shares_outstanding",
+            return_value={},
+        ),
+        patch("app.app_agents.organic_growth_extractor.extract_organic_growth", return_value={}),
+        patch(
+            "app.app_agents.non_operating_classifier.classify_non_operating_items", return_value={}
+        ),
     ):
         await run_full_extraction_pipeline(test_document.id, db_session)
 
@@ -308,7 +330,9 @@ async def test_extraction_task_deletes_existing_data(db_session, test_document):
         "unit": "millions",
     }
 
-    with patch("agents.balance_sheet_extractor.extract_balance_sheet", return_value=mock_bs_data):
+    with patch(
+        "app.app_agents.balance_sheet_extractor.extract_balance_sheet", return_value=mock_bs_data
+    ):
         await extract_balance_sheet_task(test_document.id, db_session)
 
     # Verify old data was deleted and new data was created

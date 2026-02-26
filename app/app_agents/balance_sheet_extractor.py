@@ -4,7 +4,7 @@ Balance sheet extraction agent using Gemini LLM and embeddings
 
 import json
 
-from agents.extractor_utils import (
+from app.app_agents.extractor_utils import (
     call_llm_and_parse_json,
     call_llm_with_retry,
     check_section_completeness_llm,
