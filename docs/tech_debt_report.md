@@ -110,11 +110,8 @@ Coordinates entire pipeline but should be split into separate pipeline classes:
 
 ### Immediate (P0)
 
-1. **Remove all debug print statements** - Search for `print("[DEBUG]` and remove
-
 ### High (P1)
 
-2. **Move test endpoints to `tests/e2e/` directory** - Create proper test-only routes
 3. **Extract duplicate helper functions** - Create `app_agents/extractor_helpers.py`
 
 ### Medium (P2)
