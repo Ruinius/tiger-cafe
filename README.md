@@ -246,4 +246,4 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ## License
 
-[To be determined]
+This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
