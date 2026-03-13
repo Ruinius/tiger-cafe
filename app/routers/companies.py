@@ -187,14 +187,6 @@ async def get_company_historical_calculations(
     return historical_data
 
 
-@router.get(
-    "/{company_id}/historical-calculations/test", response_model=CompanyHistoricalCalculations
-)
-async def get_company_historical_calculations_test(company_id: str, db: Session = Depends(get_db)):
-    """Test endpoint for company historical calculations (no auth required)."""
-    return await get_company_historical_calculations(company_id, db, current_user=None)
-
-
 @router.get("/{company_id}/assumptions", response_model=FinancialAssumptionSchema)
 async def get_financial_assumptions(
     company_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)

@@ -33,7 +33,7 @@ from app.utils.document_indexer import (
     load_full_document_text,
 )
 from app.utils.pdf_extractor import extract_text_from_pdf
-from config.config import DEBUG, UPLOAD_DIR
+from config.config import UPLOAD_DIR
 
 router = APIRouter()
 
@@ -222,47 +222,6 @@ async def upload_batch(
     return {"document_ids": results, "message": f"Queued {len(results)} documents"}
 
 
-if DEBUG:
-
-    @router.post("/upload-batch-test")
-    async def upload_batch_test(
-        files: list[UploadFile] = File(...),
-        db: Session = Depends(get_db),
-    ):
-        """
-        TEST ENDPOINT: Upload multiple documents without authentication.
-        Only available when DEBUG=true or ENVIRONMENT=development.
-        """
-        # Create a dummy user for testing
-        test_user = db.query(User).filter(User.email == "test@example.com").first()
-        if not test_user:
-            test_user = User(id="test-user-id", email="test@example.com", name="Test User")
-            db.add(test_user)
-            db.commit()
-            db.refresh(test_user)
-
-        if len(files) > 10:
-            raise HTTPException(status_code=400, detail="Maximum 10 files allowed per upload")
-
-        results = []
-        for file in files:
-            if not file.filename.endswith(".pdf"):
-                continue
-
-            try:
-                result = await upload_document_internal(file, db, test_user)
-                results.append(result.document_id)
-            except Exception as e:
-                print(f"Test batch upload error for {file.filename}: {e}")
-
-        if not results:
-            raise HTTPException(
-                status_code=400, detail="No valid PDF files processed or all failed"
-            )
-
-        return {"document_ids": results, "message": f"Queued {len(results)} documents"}
-
-
 @router.get("/upload-progress", response_model=list[DocumentSchema])
 async def get_upload_progress(
     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
@@ -295,56 +254,7 @@ async def get_queue_status():
     return queue_service.get_status()
 
 
-if DEBUG:
-
-    @router.get("/upload-progress-test", response_model=list[DocumentSchema])
-    async def get_upload_progress_test(db: Session = Depends(get_db)):
-        """
-        TEST ENDPOINT: Get upload progress without authentication.
-        Only available when DEBUG=true or ENVIRONMENT=development.
-        """
-        active_statuses = [
-            ProcessingStatus.UPLOADING,
-            ProcessingStatus.CLASSIFYING,
-            ProcessingStatus.INDEXING,
-            ProcessingStatus.PENDING,
-        ]
-        documents = (
-            db.query(Document)
-            .filter(Document.indexing_status.in_(active_statuses))
-            .order_by(Document.uploaded_at.desc())
-            .all()
-        )
-        return [add_uploader_name_to_document(db, doc) for doc in documents]
-
-
 # Temporary test endpoint without authentication (for development/testing only)
-if DEBUG:
-
-    @router.post("/upload-test", response_model=DocumentUploadResponse)
-    async def upload_document_test(file: UploadFile = File(...), db: Session = Depends(get_db)):
-        """
-        TEST ENDPOINT: Upload a PDF document without authentication.
-        Only available when DEBUG=true or ENVIRONMENT=development.
-        """
-        # Create a dummy user for testing
-        from app.models.user import User
-
-        test_user = db.query(User).filter(User.email == "test@example.com").first()
-        if not test_user:
-            test_user = User(id="test-user-id", email="test@example.com", name="Test User")
-            db.add(test_user)
-            db.commit()
-            db.refresh(test_user)
-
-        # Initialize progress tracking for test uploads as well
-        str(uuid.uuid4())  # Note: logic in internal func generates ID too
-        # To avoid double generation or mismatched IDs, we rely on upload_document_internal
-        # But we can't easily hook in there if we want test-specific behavior unless we pass a flag.
-        # Actually, upload_document_internal now handles init/update, so we just call it.
-
-        # Use the same logic as the authenticated endpoint
-        return await upload_document_internal(file, db, test_user)
 
 
 async def upload_document_internal(file: UploadFile, db: Session, current_user: User):
@@ -433,29 +343,6 @@ async def upload_document_internal(file: UploadFile, db: Session, current_user: 
     )
 
 
-if DEBUG:
-
-    @router.get("/test", response_model=list[DocumentSchema])
-    async def list_documents_test(
-        company_id: str | None = None,
-        skip: int = 0,
-        limit: int = 100,
-        db: Session = Depends(get_db),
-    ):
-        """
-        TEST ENDPOINT: List documents without authentication.
-        Only available when DEBUG=true or ENVIRONMENT=development.
-        """
-        query = db.query(Document).options(
-            joinedload(Document.balance_sheet),
-            joinedload(Document.income_statement),
-        )
-        if company_id:
-            query = query.filter(Document.company_id == company_id)
-        documents = query.order_by(Document.uploaded_at.desc()).offset(skip).limit(limit).all()
-        return [add_uploader_name_to_document(db, doc) for doc in documents]
-
-
 @router.get("/", response_model=list[DocumentSchema])
 async def list_documents(
     company_id: str | None = None,
@@ -513,26 +400,6 @@ async def get_document_file(
     )
 
 
-if DEBUG:
-
-    @router.get("/{document_id}/file-test")
-    async def get_document_file_test(document_id: str, db: Session = Depends(get_db)):
-        """
-        TEST ENDPOINT: Serve the PDF file for a document without authentication.
-        Only available when DEBUG=true or ENVIRONMENT=development.
-        """
-        document = db.query(Document).filter(Document.id == document_id).first()
-        if not document:
-            raise HTTPException(status_code=404, detail="Document not found")
-
-        if not os.path.exists(document.file_path):
-            raise HTTPException(status_code=404, detail="Document file not found")
-
-        return FileResponse(
-            document.file_path, media_type="application/pdf", filename=document.filename
-        )
-
-
 @router.post("/upload", response_model=DocumentUploadResponse)
 async def upload_document(
     file: UploadFile = File(...),
@@ -544,35 +411,6 @@ async def upload_document(
     User must confirm before document is indexed.
     """
     return await upload_document_internal(file, db, current_user)
-
-
-if DEBUG:
-
-    @router.post("/confirm-upload-test", response_model=DocumentSchema)
-    async def confirm_upload_test(
-        document_id: str,
-        existing_document_id: str | None = None,
-        background_tasks: BackgroundTasks = BackgroundTasks(),
-        db: Session = Depends(get_db),
-    ):
-        """
-        TEST ENDPOINT: Confirm document upload without authentication.
-        Only available when DEBUG=true or ENVIRONMENT=development.
-        This creates the document record and starts the indexing process.
-        If existing_document_id is provided, replaces that document instead.
-        """
-        # Create a dummy user for testing
-        test_user = db.query(User).filter(User.email == "test@example.com").first()
-        if not test_user:
-            test_user = User(id="test-user-id", email="test@example.com", name="Test User")
-            db.add(test_user)
-            db.commit()
-            db.refresh(test_user)
-
-        # Use the same logic as the authenticated endpoint
-        return await confirm_upload_internal(
-            document_id, db, test_user, background_tasks, existing_document_id
-        )
 
 
 async def confirm_upload_internal(
@@ -837,81 +675,6 @@ async def rerun_indexing(
     return document
 
 
-if DEBUG:
-
-    @router.post("/{document_id}/replace-and-index-test", response_model=DocumentSchema)
-    async def replace_and_index_test(
-        document_id: str,
-        background_tasks: BackgroundTasks = BackgroundTasks(),
-        db: Session = Depends(get_db),
-    ):
-        """
-        TEST ENDPOINT: Replace and index without authentication.
-        Only available when DEBUG=true or ENVIRONMENT=development.
-        """
-        # Create a dummy user for testing
-        test_user = db.query(User).filter(User.email == "test@example.com").first()
-        if not test_user:
-            test_user = User(id="test-user-id", email="test@example.com", name="Test User")
-            db.add(test_user)
-            db.commit()
-            db.refresh(test_user)
-
-        return await replace_and_index(document_id, background_tasks, db, test_user)
-
-    @router.post("/{document_id}/rerun-indexing-test", response_model=DocumentSchema)
-    async def rerun_indexing_test(
-        document_id: str,
-        db: Session = Depends(get_db),
-    ):
-        """
-        TEST ENDPOINT: Re-run indexing without authentication.
-        Only available when DEBUG=true or ENVIRONMENT=development.
-        """
-        # Create a dummy user for testing
-        test_user = db.query(User).filter(User.email == "test@example.com").first()
-        if not test_user:
-            test_user = User(id="test-user-id", email="test@example.com", name="Test User")
-            db.add(test_user)
-            db.commit()
-            db.refresh(test_user)
-
-        return await rerun_indexing(document_id, db, test_user)
-
-    @router.delete("/{document_id}/test")
-    async def delete_document_test(document_id: str, db: Session = Depends(get_db)):
-        """
-        TEST ENDPOINT: Delete document without authentication.
-        Only available when DEBUG=true or ENVIRONMENT=development.
-        """
-        document = db.query(Document).filter(Document.id == document_id).first()
-        if not document:
-            raise HTTPException(status_code=404, detail="Document not found")
-
-        # Only allow deletion if document is not yet indexed or is a duplicate
-        if document.indexing_status == ProcessingStatus.INDEXED and not document.duplicate_detected:
-            raise HTTPException(
-                status_code=400,
-                detail="Cannot delete indexed document. Only unprocessed or duplicate documents can be deleted.",
-            )
-
-        # Delete file if it exists
-        if document.file_path and os.path.exists(document.file_path):
-            try:
-                os.remove(document.file_path)
-            except Exception as e:
-                print(f"Warning: Failed to delete file {document.file_path}: {str(e)}")
-
-        # Delete chunk embeddings if they exist
-        delete_chunk_embeddings(document_id)
-
-        # Delete document from database
-        db.delete(document)
-        db.commit()
-
-        return {"message": "Document deleted successfully"}
-
-
 @router.delete("/{document_id}")
 async def delete_document(
     document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
@@ -1110,140 +873,6 @@ async def delete_document_permanent(
     print(f"Successfully deleted document {target_document_id}")
 
     return {"message": "Document and all associated data deleted successfully"}
-
-
-if DEBUG:
-
-    @router.delete("/{document_id}/permanent/test")
-    async def delete_document_permanent_test(document_id: str, db: Session = Depends(get_db)):
-        """
-        TEST ENDPOINT: Permanently delete a document without authentication.
-        """
-        from app.models.amortization import Amortization, AmortizationLineItem
-        from app.models.balance_sheet import BalanceSheet, BalanceSheetLineItem
-        from app.models.gaap_reconciliation import GAAPReconciliation
-        from app.models.historical_calculation import HistoricalCalculation
-        from app.models.income_statement import IncomeStatement, IncomeStatementLineItem
-        from app.models.non_operating_classification import (
-            NonOperatingClassification,
-            NonOperatingClassificationItem,
-        )
-        from app.models.organic_growth import OrganicGrowth
-        from app.models.other_assets import OtherAssets, OtherAssetsLineItem
-        from app.models.other_liabilities import OtherLiabilities, OtherLiabilitiesLineItem
-        from app.models.shares_outstanding import SharesOutstanding
-        from app.utils.financial_statement_progress import clear_progress
-
-        document = db.query(Document).filter(Document.id == document_id).first()
-        if not document:
-            raise HTTPException(status_code=404, detail="Document not found")
-
-        # Store document_id to ensure we're using the correct one
-        target_document_id = document.id
-        print(f"[TEST] Deleting document {target_document_id} and its associated data")
-
-        # Delete balance sheets and their line items
-        balance_sheets = db.query(BalanceSheet).filter_by(document_id=target_document_id).all()
-        for balance_sheet in balance_sheets:
-            db.query(BalanceSheetLineItem).filter_by(balance_sheet_id=balance_sheet.id).delete()
-            db.delete(balance_sheet)
-
-        # Delete income statements and their line items
-        income_statements = (
-            db.query(IncomeStatement).filter_by(document_id=target_document_id).all()
-        )
-        for income_statement in income_statements:
-            db.query(IncomeStatementLineItem).filter_by(
-                income_statement_id=income_statement.id
-            ).delete()
-            db.delete(income_statement)
-
-        # Delete amortizations and their line items
-        amortizations = db.query(Amortization).filter_by(document_id=target_document_id).all()
-        for amortization in amortizations:
-            db.query(AmortizationLineItem).filter_by(amortization_id=amortization.id).delete()
-            db.delete(amortization)
-
-        # Delete organic growth entries
-        organic_growth_entries = (
-            db.query(OrganicGrowth).filter_by(document_id=target_document_id).all()
-        )
-        for organic_growth in organic_growth_entries:
-            db.delete(organic_growth)
-
-        # Delete other assets and their line items
-        other_assets_entries = db.query(OtherAssets).filter_by(document_id=target_document_id).all()
-        for other_assets in other_assets_entries:
-            db.query(OtherAssetsLineItem).filter_by(other_assets_id=other_assets.id).delete()
-            db.delete(other_assets)
-
-        # Delete other liabilities and their line items
-        other_liabilities_entries = (
-            db.query(OtherLiabilities).filter_by(document_id=target_document_id).all()
-        )
-        for other_liabilities in other_liabilities_entries:
-            db.query(OtherLiabilitiesLineItem).filter_by(
-                other_liabilities_id=other_liabilities.id
-            ).delete()
-            db.delete(other_liabilities)
-
-        # Delete non-operating classifications and their items
-        non_operating_entries = (
-            db.query(NonOperatingClassification).filter_by(document_id=target_document_id).all()
-        )
-        for non_operating in non_operating_entries:
-            db.query(NonOperatingClassificationItem).filter_by(
-                classification_id=non_operating.id
-            ).delete()
-            db.delete(non_operating)
-
-        # Delete shares outstanding
-        shares_outstanding_entries = (
-            db.query(SharesOutstanding).filter_by(document_id=target_document_id).all()
-        )
-        for shares in shares_outstanding_entries:
-            db.delete(shares)
-
-        # Delete GAAP reconciliations
-        gaap_reconciliations = (
-            db.query(GAAPReconciliation).filter_by(document_id=target_document_id).all()
-        )
-        for gaap_recon in gaap_reconciliations:
-            db.delete(gaap_recon)
-
-        # Delete historical calculations
-        historical_calculations = (
-            db.query(HistoricalCalculation).filter_by(document_id=target_document_id).all()
-        )
-        for historical_calculation in historical_calculations:
-            db.delete(historical_calculation)
-
-        # Commit financial statement deletions before deleting the document
-        db.commit()
-        print(f"[TEST] Committed deletions of all related data for document {target_document_id}")
-
-        # Clear financial statement progress tracking
-        clear_progress(target_document_id)
-
-        # Delete file if it exists
-        if document.file_path and os.path.exists(document.file_path):
-            try:
-                os.remove(document.file_path)
-            except Exception as e:
-                print(f"Warning: Failed to delete file {document.file_path}: {str(e)}")
-
-        # Delete chunk embeddings if they exist
-        try:
-            delete_chunk_embeddings(target_document_id)
-        except Exception as e:
-            print(f"Warning: Failed to delete chunk embeddings: {str(e)}")
-
-        # Delete document from database
-        db.delete(document)
-        db.commit()
-        print(f"[TEST] Successfully deleted document {target_document_id}")
-
-        return {"message": "Document and all associated data deleted successfully"}
 
 
 def _build_financial_statement_progress(document_id: str, db: Session) -> dict:
@@ -1525,38 +1154,6 @@ async def get_document_status(
     return add_uploader_name_to_document(db, document)
 
 
-if DEBUG:
-
-    @router.get("/{document_id}/financial-statement-progress-test")
-    async def get_financial_statement_progress_test(
-        document_id: str, db: Session = Depends(get_db)
-    ):
-        """TEST ENDPOINT: Get financial statement processing progress without authentication"""
-        document = db.query(Document).filter(Document.id == document_id).first()
-        if not document:
-            raise HTTPException(status_code=404, detail="Document not found")
-        return _build_financial_statement_progress(document_id, db)
-
-    @router.get("/{document_id}/status-test", response_model=DocumentSchema)
-    async def get_document_status_test(document_id: str, db: Session = Depends(get_db)):
-        """
-        TEST ENDPOINT: Get document status without authentication.
-        Only available when DEBUG=true or ENVIRONMENT=development.
-        """
-        document = (
-            db.query(Document)
-            .options(
-                joinedload(Document.balance_sheet),
-                joinedload(Document.income_statement),
-            )
-            .filter(Document.id == document_id)
-            .first()
-        )
-        if not document:
-            raise HTTPException(status_code=404, detail="Document not found")
-        return add_uploader_name_to_document(db, document)
-
-
 @router.get("/{document_id}/chunks")
 async def get_document_chunks(
     document_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
@@ -1651,98 +1248,6 @@ async def get_document_chunks(
         "total_pages": chunk_metadata.get("total_pages", 0),
         "chunks": chunks,
     }
-
-
-if DEBUG:
-
-    @router.get("/{document_id}/chunks-test")
-    async def get_document_chunks_test(document_id: str, db: Session = Depends(get_db)):
-        """
-        TEST ENDPOINT: Get all chunks for an indexed document without authentication.
-        Only available when DEBUG=true or ENVIRONMENT=development.
-        """
-        document = db.query(Document).filter(Document.id == document_id).first()
-        if not document:
-            raise HTTPException(status_code=404, detail="Document not found")
-
-        # Only return chunks for indexed documents
-        if document.indexing_status != ProcessingStatus.INDEXED:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Document is not indexed. Current status: {document.indexing_status.value}",
-            )
-
-        # Get chunk metadata
-        chunk_metadata = get_chunk_metadata(document_id)
-        if not chunk_metadata:
-            raise HTTPException(
-                status_code=404, detail="Chunk metadata not found. Document may not be indexed."
-            )
-
-        num_chunks = chunk_metadata.get("num_chunks", 0)
-        chunk_size = chunk_metadata.get("chunk_size", 2)
-
-        is_legacy_page_based = chunk_size < 100
-
-        chunks = []
-
-        if is_legacy_page_based:
-            # Legacy: Page-based chunks
-            # Return a simple message instead of trying to load content
-            for chunk_index in range(num_chunks):
-                start_page = chunk_index * chunk_size
-                end_page = start_page + chunk_size
-
-                chunks.append(
-                    {
-                        "chunk_index": chunk_index,
-                        "text": "Legacy chunk (page-based), please re-index document to view content.",
-                        "start_page": start_page,
-                        "end_page": end_page - 1,
-                        "character_count": 0,
-                        "note": "Legacy page-based chunk",
-                    }
-                )
-        else:
-            full_text = load_full_document_text(document_id, document.file_path)
-            total_chars = len(full_text)
-
-            for chunk_index in range(num_chunks):
-                try:
-                    start_char = chunk_index * chunk_size
-                    end_char = min(start_char + chunk_size, total_chars)
-                    chunk_text = full_text[start_char:end_char]
-
-                    chunks.append(
-                        {
-                            "chunk_index": chunk_index,
-                            "text": chunk_text,
-                            "start_char": start_char,
-                            "end_char": end_char,
-                            "start_page": None,
-                            "end_page": None,
-                            "character_count": len(chunk_text),
-                        }
-                    )
-                except Exception as e:
-                    chunks.append(
-                        {
-                            "chunk_index": chunk_index,
-                            "text": None,
-                            "start_char": chunk_index * chunk_size,
-                            "end_char": (chunk_index + 1) * chunk_size,
-                            "character_count": 0,
-                            "error": str(e),
-                        }
-                    )
-
-        return {
-            "document_id": document_id,
-            "num_chunks": num_chunks,
-            "chunk_size": chunk_size,
-            "total_pages": chunk_metadata.get("total_pages", 0),
-            "chunks": chunks,
-        }
 
 
 @router.post("/", response_model=DocumentSchema)

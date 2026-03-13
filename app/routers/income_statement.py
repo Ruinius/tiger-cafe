@@ -38,15 +38,6 @@ async def get_income_statement(
     if income_statement:
         # Convert to schema for proper serialization
         income_statement_schema = IncomeStatementSchema.model_validate(income_statement)
-
-        # DEBUG: Print first 5 line items
-        print(f"\n[DEBUG] Income Statement found for document {document_id}")
-        print(f"[DEBUG] Currency: {income_statement.currency}, Unit: {income_statement.unit}")
-        print(f"[DEBUG] Total line items: {len(income_statement.line_items)}")
-        print("[DEBUG] First 5 line items:")
-        for i, item in enumerate(income_statement.line_items[:5]):
-            print(f"  {i + 1}. {item.line_name}: {item.line_value}")
-
         return {"status": "exists", "data": income_statement_schema.model_dump()}
 
     # State 2: Processing

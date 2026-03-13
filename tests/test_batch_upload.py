@@ -104,7 +104,7 @@ def test_upload_batch_test_endpoint(client, db_session):
     ]
 
     # Use the test endpoint (no auth required, handles test user creation)
-    response = client.post("/api/documents/upload-batch-test", files=files)
+    response = client.post("/api/documents/upload-batch", files=files)
 
     assert response.status_code == 200
     data = response.json()
