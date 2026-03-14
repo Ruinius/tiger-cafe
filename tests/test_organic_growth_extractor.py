@@ -34,11 +34,14 @@ def test_extract_prior_year_revenue_raises_error_on_failure():
 def test_extract_organic_growth_returns_invalid_if_chunk_index_missing():
     """Test that extract_organic_growth returns invalid result if IS chunk index is missing."""
 
-    # Mock dependencies
-    mock_collect = MagicMock(return_value=("Organic Growth Text", 1, 0.9))
+    mock_full_text = MagicMock(return_value="Full document text")
+    mock_context = MagicMock(return_value="Organic Growth Text")
 
     with (
-        patch("app.app_agents.organic_growth_extractor.collect_top_chunk_texts", mock_collect),
+        patch("app.app_agents.organic_growth_extractor.load_full_document_text", mock_full_text),
+        patch(
+            "app.app_agents.organic_growth_extractor.extract_context_around_keywords", mock_context
+        ),
         patch(
             "app.app_agents.organic_growth_extractor.extract_organic_growth_percentage_only",
             return_value=None,
@@ -66,11 +69,15 @@ def test_extract_organic_growth_returns_invalid_if_chunk_index_missing():
 def test_extract_organic_growth_uses_provided_chunk_index():
     """Test that it uses the provided chunk_index and does not raise error."""
 
-    mock_collect = MagicMock(return_value=("Organic Growth Text", 1, 0.9))
+    mock_full_text = MagicMock(return_value="Full document text")
+    mock_context = MagicMock(return_value="Organic Growth Text")
     mock_get_chunk = MagicMock(return_value=("IS Text", 2, 0.95))
 
     with (
-        patch("app.app_agents.organic_growth_extractor.collect_top_chunk_texts", mock_collect),
+        patch("app.app_agents.organic_growth_extractor.load_full_document_text", mock_full_text),
+        patch(
+            "app.app_agents.organic_growth_extractor.extract_context_around_keywords", mock_context
+        ),
         patch(
             "app.app_agents.organic_growth_extractor.extract_organic_growth_percentage_only",
             return_value=5.5,

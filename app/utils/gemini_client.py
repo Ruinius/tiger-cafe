@@ -10,8 +10,8 @@ from functools import wraps
 
 from google import genai
 
-from app.utils.mock_llm_responses import MOCK_EMBEDDING_RESPONSE, get_mock_response
-from config.config import DEFAULT_MODEL, EMBEDDING_MODEL, GEMINI_API_KEY, TEMPERATURE
+from app.utils.mock_llm_responses import get_mock_response
+from config.config import DEFAULT_MODEL, GEMINI_API_KEY, TEMPERATURE
 
 # Initialize Gemini client explicitly using v1 API version
 _client = genai.Client(api_key=GEMINI_API_KEY, http_options={"api_version": "v1beta"})
@@ -23,13 +23,11 @@ MAX_RETRIES = 3
 INITIAL_RETRY_DELAY = 2.0  # Start with 2 seconds delay (increased from 1s)
 MAX_RETRY_DELAY = 30.0  # Max 30 seconds delay (increased from 10s)
 
-# Processing queue configuration - limit concurrent API calls
-MAX_CONCURRENT_LLM_CALLS = 1  # Maximum concurrent LLM (generate_content) calls
-MAX_CONCURRENT_EMBEDDING_CALLS = 3  # Maximum concurrent embedding calls
+# Maximum concurrent LLM API calls
+MAX_CONCURRENT_LLM_CALLS = 1
 
-# Semaphores to limit concurrent API calls
+# Semaphore to limit concurrent API calls
 _llm_semaphore = threading.Semaphore(MAX_CONCURRENT_LLM_CALLS)
-_embedding_semaphore = threading.Semaphore(MAX_CONCURRENT_EMBEDDING_CALLS)
 
 # Track last API call time for throttling (thread-safe)
 _last_call_time = 0
@@ -115,66 +113,6 @@ def _retry_with_backoff(func):
         raise last_exception
 
     return wrapper
-
-
-@_retry_with_backoff
-def generate_embedding_safe(
-    text: str, max_chars: int = 20000, task_type: str = "retrieval_document"
-) -> list[float]:
-    """
-    Generate embedding with rate limiting, retry logic, and processing queue.
-    Uses a semaphore to limit concurrent embedding API calls.
-
-    Args:
-        text: Text to generate embedding for
-        max_chars: Maximum characters to use for embedding
-        task_type: Task type for embedding ("retrieval_document" or "retrieval_query")
-
-    Returns:
-        List of floats representing the embedding vector
-    """
-    # Check for mock environment
-    if os.environ.get("MOCK_LLM_RESPONSES") == "true":
-        return MOCK_EMBEDDING_RESPONSE
-
-    # Acquire semaphore to limit concurrent calls
-    _embedding_semaphore.acquire()
-    try:
-        # Truncate text if it's too long
-        if len(text) > max_chars:
-            text = text[:max_chars]
-            print(f"Warning: Text truncated to {max_chars} characters for embedding generation")
-
-        # The new google.genai API uses 'contents' (plural) parameter
-        result = _client.models.embed_content(model=EMBEDDING_MODEL, contents=text)
-        # The result has 'embeddings' (plural) attribute which is a list of ContentEmbedding objects
-        if isinstance(result, dict):
-            # Handle dict response format
-            embeddings = result.get("embeddings", result.get("embedding"))
-            if isinstance(embeddings, list) and len(embeddings) > 0:
-                embedding_obj = embeddings[0]
-                # Extract values from ContentEmbedding object
-                if hasattr(embedding_obj, "values"):
-                    return embedding_obj.values
-                elif isinstance(embedding_obj, dict):
-                    return embedding_obj.get("values", embedding_obj)
-                return embedding_obj
-            return embeddings
-        else:
-            # Handle object response format - result.embeddings is a list of ContentEmbedding objects
-            embeddings = result.embeddings
-            if isinstance(embeddings, list) and len(embeddings) > 0:
-                embedding_obj = embeddings[0]
-                # Extract values from ContentEmbedding object
-                if hasattr(embedding_obj, "values"):
-                    return embedding_obj.values
-                elif isinstance(embedding_obj, dict):
-                    return embedding_obj.get("values", embedding_obj)
-                return embedding_obj
-            return embeddings
-    finally:
-        # Always release semaphore, even if an error occurs
-        _embedding_semaphore.release()
 
 
 @_retry_with_backoff

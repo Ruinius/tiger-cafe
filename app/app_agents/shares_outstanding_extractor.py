@@ -1,11 +1,12 @@
 """
-Shares outstanding extraction agent using Gemini LLM and embeddings
+Shares outstanding extraction agent using Gemini LLM
 """
 
 from __future__ import annotations
 
 import json
 
+from app.utils.document_section_finder import extract_context_around_keywords
 from app.utils.financial_statement_progress import (
     FinancialStatementMilestone,
     add_log,
@@ -57,57 +58,6 @@ Return only valid JSON, no additional text."""
             response_text = response_text[4:]
         response_text = response_text.strip()
     return json.loads(response_text)
-
-
-def _extract_context_around_keywords(
-    text: str, keywords: list[str], context_chars: int = 250
-) -> str:
-    """
-    Extracts snippets of text around the found keywords and joins them.
-    Deduplicates overlapping ranges.
-    """
-    text_lower = text.lower()
-    ranges = []
-
-    for keyword in keywords:
-        keyword = keyword.lower()
-        start = 0
-        while True:
-            idx = text_lower.find(keyword, start)
-            if idx == -1:
-                break
-
-            # Define range
-            range_start = max(0, idx - context_chars)
-            range_end = min(len(text), idx + len(keyword) + context_chars)
-            ranges.append((range_start, range_end))
-
-            start = idx + len(keyword)
-
-    if not ranges:
-        return ""
-
-    # Sort ranges by start
-    ranges.sort(key=lambda x: x[0])
-
-    # Merge overlapping ranges
-    merged_ranges = []
-    if ranges:
-        current_start, current_end = ranges[0]
-        for next_start, next_end in ranges[1:]:
-            if next_start <= current_end:
-                current_end = max(current_end, next_end)
-            else:
-                merged_ranges.append((current_start, current_end))
-                current_start, current_end = next_start, next_end
-        merged_ranges.append((current_start, current_end))
-
-    # Extract text
-    snippets = []
-    for start, end in merged_ranges:
-        snippets.append(text[start:end])
-
-    return "\n...\n".join(snippets)
 
 
 def extract_shares_outstanding(
@@ -200,7 +150,7 @@ def extract_shares_outstanding(
 
     keywords = ["weighted average", "shares outstanding", "basic", "diluted"]
     # Get all relevant snippets from the document
-    focused_text = _extract_context_around_keywords(full_text, keywords, context_chars=250)
+    focused_text = extract_context_around_keywords(full_text, keywords, context_chars=250)
 
     if not focused_text:
         return {

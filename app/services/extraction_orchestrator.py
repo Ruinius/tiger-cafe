@@ -656,11 +656,18 @@ async def extract_additional_items_task(document_id: str, db: Session) -> None:
                             "Organic growth extracted",
                         )
                     else:
+                        errors = organic_growth_data.get("validation_errors", [])
+                        error_msg = errors[0] if errors else "Comparative revenue missing"
+
+                        # If we just failed to find the narrative text but did calculate simple growth, it's a warning
+                        is_warning = "Organic growth text section not found" in error_msg
+                        status = MilestoneStatus.WARNING if is_warning else MilestoneStatus.ERROR
+
                         update_milestone(
                             document_id,
                             FinancialStatementMilestone.ORGANIC_GROWTH,
-                            MilestoneStatus.ERROR,
-                            "Comparative revenue missing",
+                            status,
+                            error_msg,
                         )
                 else:
                     update_milestone(
@@ -1335,7 +1342,7 @@ async def run_analysis_pipeline(company_id: str, document_id: str, db: Session) 
             add_log(
                 document_id,
                 FinancialStatementMilestone.CALCULATE_VALUE_METRICS,
-                f"I've successfully calculated metrics: ROIC={result.roic}%, EBITA={result.ebita}",
+                f"I've successfully calculated metrics: ROIC={result.roic * 100}%, EBITA={result.ebita}",
             )
         except Exception as calc_error:
             add_log(

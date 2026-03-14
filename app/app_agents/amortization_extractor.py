@@ -1,5 +1,5 @@
 """
-Amortization extraction agent using Gemini LLM and embeddings.
+Amortization extraction agent using Gemini LLM.
 Used for quarterly filings and annual filings only.
 Earnings announcements use the separate GAAP reconciliation extractor.
 """
@@ -7,7 +7,8 @@ Earnings announcements use the separate GAAP reconciliation extractor.
 from __future__ import annotations
 
 from app.app_agents.extractor_utils import call_llm_and_parse_json
-from app.utils.document_section_finder import collect_top_chunk_texts
+from app.utils.document_indexer import load_full_document_text
+from app.utils.document_section_finder import extract_context_around_keywords
 from app.utils.financial_statement_progress import (
     FinancialStatementMilestone,
     add_log,
@@ -137,19 +138,11 @@ def extract_amortization(
     Returns:
         Dictionary with extraction results
     """
-    # Use general amortization search approach
+    # Use keyword context extraction from the full document text
     query_texts = ["amortize", "amortization", "reconciliation"]
-    text, chunk_index, _ = collect_top_chunk_texts(
-        document_id=document_id,
-        file_path=file_path,
-        query_texts=query_texts,
-        chars_before=0,
-        chars_after=0,
-        rerank_top_k=3,
-        top_k=3,
-        score_threshold=0.25,
-        context_name="Amortization",
-    )
+    full_text = load_full_document_text(document_id, file_path)
+    text = extract_context_around_keywords(full_text, query_texts, context_chars=500)
+    chunk_index = None
 
     add_log(
         document_id,

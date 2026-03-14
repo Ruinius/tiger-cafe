@@ -1,66 +1,15 @@
 """
-Document indexing with Gemini embeddings
+Document indexing utilities — text extraction and chunking.
 """
 
-import glob
 import json
 import logging
 import os
 
 import pdfplumber
 
-from app.utils.gemini_client import generate_embedding_safe
-
 # Suppress pdfminer FontBBox warnings
 logging.getLogger("pdfminer").setLevel(logging.ERROR)
-
-
-def save_chunk_embedding(
-    embedding: list[float], document_id: str, chunk_index: int, storage_dir: str = "data/storage"
-) -> str:
-    """
-    Save chunk embedding to disk.
-
-    Args:
-        embedding: Embedding vector
-        document_id: Document ID
-        chunk_index: Index of the chunk (0-based)
-        storage_dir: Directory to save embeddings
-
-    Returns:
-        Path to saved embedding file
-    """
-    os.makedirs(storage_dir, exist_ok=True)
-
-    embedding_path = os.path.join(storage_dir, f"{document_id}_chunk_{chunk_index}_embedding.json")
-
-    with open(embedding_path, "w") as f:
-        json.dump(embedding, f)
-
-    return embedding_path
-
-
-def load_chunk_embedding(
-    document_id: str, chunk_index: int, storage_dir: str = "data/storage"
-) -> list[float] | None:
-    """
-    Load chunk embedding from disk.
-
-    Args:
-        document_id: Document ID
-        chunk_index: Index of the chunk (0-based)
-        storage_dir: Directory where embeddings are stored
-
-    Returns:
-        Embedding vector or None if not found
-    """
-    embedding_path = os.path.join(storage_dir, f"{document_id}_chunk_{chunk_index}_embedding.json")
-
-    if not os.path.exists(embedding_path):
-        return None
-
-    with open(embedding_path) as f:
-        return json.load(f)
 
 
 def get_chunk_metadata(document_id: str, storage_dir: str = "data/storage") -> dict | None:
@@ -103,29 +52,6 @@ def save_chunk_metadata(metadata: dict, document_id: str, storage_dir: str = "da
         json.dump(metadata, f)
 
     return metadata_path
-
-
-def delete_chunk_embeddings(document_id: str, storage_dir: str = "data/storage") -> None:
-    """
-    Delete all chunk embeddings and metadata for a document.
-
-    Args:
-        document_id: Document ID
-        storage_dir: Directory where embeddings are stored
-    """
-    chunk_pattern = os.path.join(storage_dir, f"{document_id}_chunk_*_embedding.json")
-    for chunk_path in glob.glob(chunk_pattern):
-        try:
-            os.remove(chunk_path)
-        except OSError:
-            pass
-
-    metadata_path = os.path.join(storage_dir, f"{document_id}_chunks_metadata.json")
-    if os.path.exists(metadata_path):
-        try:
-            os.remove(metadata_path)
-        except OSError:
-            pass
 
 
 def _extract_page_range_text(file_path: str, start_page: int, end_page: int) -> str:
@@ -225,19 +151,19 @@ def index_document_chunks(
     file_path: str, document_id: str, chunk_size: int = 5000, storage_dir: str = "data/storage"
 ) -> dict:
     """
-    Index a document by creating embeddings for character-based chunks.
-    This replaces the old page-based chunking approach.
+    Index a document by extracting text, saving a full-text cache, and recording
+    chunk metadata. No embeddings are generated.
 
     Args:
         file_path: Path to PDF file
         document_id: Document ID
         chunk_size: Number of characters per chunk (default: 5000)
-        storage_dir: Directory to save chunk embeddings
+        storage_dir: Directory to save metadata
 
     Returns:
         Dictionary with indexing results:
         {
-            "num_chunks": number of chunks created,
+            "num_chunks": number of chunks,
             "total_pages": total pages in document,
             "chunk_size": characters per chunk,
             "total_characters": total characters in document
@@ -267,7 +193,6 @@ def index_document_chunks(
                     print(
                         f"ERROR: Failed to extract text from page {page_idx + 1} of {document_id}: {e}"
                     )
-                    # Continue to next page rather than failing the whole process
                     continue
 
             full_text = "\n\n".join(full_text_parts)
@@ -291,38 +216,11 @@ def index_document_chunks(
             )
 
             # Save full text to disk for fast retrieval
-            import os
-
             os.makedirs(storage_dir, exist_ok=True)
             full_text_path = os.path.join(storage_dir, f"{document_id}_full_text.txt")
             with open(full_text_path, "w", encoding="utf-8") as f:
                 f.write(full_text)
             print(f"Saved full document text to {full_text_path}")
-
-            # Generate embeddings for each chunk
-            for chunk_index in range(num_chunks):
-                start_char = chunk_index * chunk_size
-                end_char = min(start_char + chunk_size, total_characters)
-
-                # Check if chunk embedding already exists
-                existing_embedding = load_chunk_embedding(document_id, chunk_index, storage_dir)
-                if existing_embedding:
-                    # print(f"Chunk {chunk_index} embedding already exists, skipping")
-                    continue
-
-                # Extract text for this chunk
-                chunk_text = full_text[start_char:end_char]
-
-                # Generate embedding for chunk (limit to 20k chars)
-                chunk_embedding = generate_embedding_safe(
-                    chunk_text[:20000], max_chars=20000, task_type="retrieval_document"
-                )
-
-                # Save chunk embedding
-                save_chunk_embedding(chunk_embedding, document_id, chunk_index, storage_dir)
-                # print(
-                #     f"Generated and saved embedding for chunk {chunk_index} (chars {start_char}-{end_char - 1})"
-                # )
 
         # Check if too many pages failed
         failure_rate = len(failed_pages) / total_pages if total_pages > 0 else 0

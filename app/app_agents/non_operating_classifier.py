@@ -19,9 +19,7 @@ def load_nonoperating_category_mapping() -> dict[str, str]:
     # __file__ = agents/non_operating_classifier.py
     # parent = agents
     # parent.parent = project root
-    csv_path = (
-        Path(__file__).parent.parent / "app" / "services" / "bs_calculated_operating_mapping.csv"
-    )
+    csv_path = Path(__file__).parent.parent / "services" / "bs_calculated_operating_mapping.csv"
 
     mapping = {}
     with open(csv_path, encoding="utf-8") as f:

@@ -1,5 +1,5 @@
 """
-Income statement extraction agent using Gemini LLM and embeddings
+Income statement extraction agent using Gemini LLM
 """
 
 import json
@@ -75,23 +75,22 @@ def extract_income_statement(
     extracted_data = None
     successful_chunk_index = None
 
-    # Get top numeric chunks
+    # Get top numeric chunks and iterate in density order,
+    # deprioritising the balance sheet chunk so IS gets its own section.
     from app.utils.document_section_finder import (
         find_top_numeric_chunks,
         get_chunk_with_context,
-        rank_chunks_by_query,
     )
 
-    # Step 1: Find top-10 chunks by number density
     top_numeric_chunks = find_top_numeric_chunks(
         document_id, file_path, top_k=10, context_name="Income Statement"
     )
 
-    # Step 2: Rank those top-10 chunks by query similarity
-    query_texts = ["Revenue", "Profit", "Income", "Tax", "Cost"]
-    candidate_chunks = rank_chunks_by_query(
-        document_id, file_path, top_numeric_chunks, query_texts, context_name="Income Statement"
-    )
+    # Move the already-used balance sheet chunk to the back of the candidate list
+    if balance_sheet_chunk_index is not None and balance_sheet_chunk_index in top_numeric_chunks:
+        top_numeric_chunks.remove(balance_sheet_chunk_index)
+        top_numeric_chunks.append(balance_sheet_chunk_index)
+    candidate_chunks = top_numeric_chunks
 
     if not candidate_chunks:
         add_log(
@@ -271,7 +270,9 @@ def extract_income_statement(
                     item["document_id"] = document_id
 
                 processed_line_items, normalization_errors = (
-                    post_process_income_statement_line_items(extracted_data.get("line_items", []))
+                    post_process_income_statement_line_items(
+                        extracted_data.get("line_items", []), document_id
+                    )
                 )
                 extracted_data["line_items"] = processed_line_items
                 is_valid = len(normalization_errors) == 0

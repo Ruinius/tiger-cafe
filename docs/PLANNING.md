@@ -61,10 +61,13 @@ _See `docs/COMPLETED_TASKS.md` for detailed history._
 - [x] TTD case - Total other income, net is for some reason not a calculated field
 - [x] ULTA case - strange name for net income parent
 - [x] YUMC case - strange name for net income (before parent)
+- [x] MORN case - strange name for total other and interest income
+- [x] CPB case - PPE mislabeled
 - [ ] Add reflection and healing step for when key totals are missing, such as total assets, total liabilities, total equity & liabilities
 - [ ] EL case - LLM extracting Non-GAAP table very strangely - look into the non-gaap reconciliation logic
 - [ ] EL case - add a reflection step to the Non-GAAP table on time period of line items
 - [ ] BIDU case - rare issue where despite using income statement, the prior year revenue is being pulled from a different table (BIDU Core instead of Consolidated)
+- [ ] BIDU case - EBITDA reconciliation is pulling the wrong column
 - [ ] BKNG case - pulled value from a different column despite the reflection step. The LLM struggles with the value is zero, especially if it is represented by "—"
 - [ ] TOL case - the balance sheet and income statement does not label important totals for some reason - will need robust reflection step
 - [ ] DIS case - rare case where total equity & liability is missing
@@ -85,7 +88,7 @@ _See `docs/COMPLETED_TASKS.md` for detailed history._
 - [ ] Need to harmonize when pulling financial statements from the same time period but from 10-Q vs earnings announcement
 - [ ] It looks like indexing is not async. Need to make it async
 - [ ] Extract financial statements more consistently
-- [ ] Improved organic growth analysis
+- [ ] Improved organic growth analysis - need to separate financial statements from documents
 - [ ] Extract details on amortization, other assets, and other liabilities
 - [ ] Enable editing extracted values in Document Extraction View
 - [ ] GGG case - missing balance sheet in earnings announcement. Need to accelerate analyzing 10-Q and 10-K for complete picture

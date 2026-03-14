@@ -1,6 +1,6 @@
 """
 GAAP/EBITDA reconciliation extraction agent for earnings announcements.
-Uses chunk-based embedding search to find reconciliation tables, similar to balance sheet finding.
+Uses chunk-based number density search to find reconciliation tables.
 """
 
 from __future__ import annotations
@@ -53,32 +53,14 @@ def extract_gaap_reconciliation(
     text = None
     chunk_index = None
 
-    # Get top numeric chunks
+    # Get top numeric chunks and iterate in density order
     from app.utils.document_section_finder import (
         find_top_numeric_chunks,
         get_chunk_with_context,
-        rank_chunks_by_query,
     )
 
-    # Step 1: Find top-10 chunks by number density
-    top_numeric_chunks = find_top_numeric_chunks(
+    candidate_chunks = find_top_numeric_chunks(
         document_id, file_path, top_k=10, context_name="GAAP Reconciliation"
-    )
-
-    # Step 2: Rank those top-10 chunks by query similarity
-    query_texts = [
-        "amortization",
-        "depreciation",
-        "stock-based",
-        "acquisition",
-        "restructuring",
-        "non-GAAP",
-        "adjusted",
-        "reconciliation",
-        "impairment",
-    ]
-    candidate_chunks = rank_chunks_by_query(
-        document_id, file_path, top_numeric_chunks, query_texts, context_name="GAAP Reconciliation"
     )
 
     if not candidate_chunks:

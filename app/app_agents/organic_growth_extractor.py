@@ -1,5 +1,5 @@
 """
-Organic growth extraction agent using Gemini LLM and embeddings
+Organic growth extraction agent using Gemini LLM
 """
 
 from __future__ import annotations
@@ -9,8 +9,9 @@ import re
 from datetime import datetime
 
 from app.app_agents.extractor_utils import call_llm_and_parse_json, call_llm_with_retry
+from app.utils.document_indexer import load_full_document_text
 from app.utils.document_section_finder import (
-    collect_top_chunk_texts,
+    extract_context_around_keywords,
     get_chunk_with_context,
 )
 from app.utils.financial_statement_progress import (
@@ -410,20 +411,11 @@ def extract_organic_growth(
             simple_growth = (current_rev_ones - prior_rev_ones) / prior_rev_ones * 100
             prior_revenue_unit = used_prior_unit  # Update for return
 
-    # --- Step 2: Find Chunk (constant currency organic growth) ---
-    query_texts = ["constant currency organic growth", "constant currency", "organic growth"]
-
-    text, chunk_index, _ = collect_top_chunk_texts(
-        document_id=document_id,
-        file_path=file_path,
-        query_texts=query_texts,
-        chars_before=0,
-        chars_after=0,
-        rerank_top_k=3,
-        top_k=3,
-        score_threshold=0.25,
-        context_name="Organic Growth",
-    )
+    # --- Step 2: Find chunk (constant currency organic growth) ---
+    query_texts = ["FXN", "constant currency", "organic"]
+    full_text = load_full_document_text(document_id, file_path)
+    text = extract_context_around_keywords(full_text, query_texts, context_chars=500)
+    chunk_index = None
 
     # --- Step 3, 4, 5, 6: Extract, Format, Reflect, Confirm ---
     organic_growth = None

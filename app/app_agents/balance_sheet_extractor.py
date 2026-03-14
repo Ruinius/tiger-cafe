@@ -1,5 +1,5 @@
 """
-Balance sheet extraction agent using Gemini LLM and embeddings
+Balance sheet extraction agent using Gemini LLM
 """
 
 import json
@@ -44,33 +44,14 @@ def extract_balance_sheet(
     log_info = None
     successful_chunk_index = None
 
-    # Get top numeric chunks
+    # Get top numeric chunks and iterate in density order
     from app.utils.document_section_finder import (
         find_top_numeric_chunks,
         get_chunk_with_context,
-        rank_chunks_by_query,
     )
 
-    # Step 1: Find top-10 chunks by number density
-    top_numeric_chunks = find_top_numeric_chunks(
+    candidate_chunks = find_top_numeric_chunks(
         document_id, file_path, top_k=10, context_name="Balance Sheet"
-    )
-
-    # Step 2: Rank those top-10 chunks by query similarity
-    query_texts = [
-        "Cash",
-        "Receivable",
-        "Inventory",
-        "Other Assets",
-        "Property",
-        "Goodwill",
-        "Intangible",
-        "Other Liabilities",
-        "Payable",
-        "Debt",
-    ]
-    candidate_chunks = rank_chunks_by_query(
-        document_id, file_path, top_numeric_chunks, query_texts, context_name="Balance Sheet"
     )
 
     if not candidate_chunks:

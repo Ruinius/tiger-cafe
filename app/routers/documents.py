@@ -28,7 +28,6 @@ from app.schemas.document import (
 from app.schemas.file_metadata import DuplicateCheckResult, ExistingDocumentInfo, FileMetadata
 from app.utils.document_hash import generate_document_hash
 from app.utils.document_indexer import (
-    delete_chunk_embeddings,
     get_chunk_metadata,
     load_full_document_text,
 )
@@ -517,8 +516,7 @@ async def confirm_upload_internal(
         document.uploaded_at = datetime.utcnow()
         # Summary will be generated in background
 
-        # Delete old chunk embeddings if they exist
-        delete_chunk_embeddings(existing_document_id)
+        # Document updated — old chunk index is no longer valid
     else:
         # Create new document record (basic info, will be refined in background)
         filename = os.path.basename(file_path)
@@ -602,8 +600,6 @@ async def replace_and_index(
             os.remove(existing_doc.file_path)
         except Exception as e:
             print(f"Warning: Failed to delete old file: {str(e)}")
-    delete_chunk_embeddings(existing_document_id)
-
     # Update existing document with new document's data
     existing_doc.user_id = document.user_id
     existing_doc.filename = document.filename
@@ -656,9 +652,6 @@ async def rerun_indexing(
             + str(document.indexing_status),
         )
 
-    # Delete existing chunk embeddings
-    delete_chunk_embeddings(document_id)
-
     # Set status to INDEXING and queue for processing
     document.indexing_status = ProcessingStatus.INDEXING
     db.commit()
@@ -699,9 +692,6 @@ async def delete_document(
             os.remove(document.file_path)
         except Exception as e:
             print(f"Warning: Failed to delete file {document.file_path}: {str(e)}")
-
-    # Delete chunk embeddings if they exist
-    delete_chunk_embeddings(document_id)
 
     # Delete document from database
     db.delete(document)
@@ -859,13 +849,6 @@ async def delete_document_permanent(
             print(f"Deleted file: {document.file_path}")
         except Exception as e:
             print(f"Warning: Failed to delete file {document.file_path}: {str(e)}")
-
-    # Delete chunk embeddings if they exist
-    try:
-        delete_chunk_embeddings(target_document_id)
-        print(f"Deleted chunk embeddings for document {target_document_id}")
-    except Exception as e:
-        print(f"Warning: Failed to delete chunk embeddings: {str(e)}")
 
     # Delete document from database
     db.delete(document)

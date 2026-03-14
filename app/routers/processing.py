@@ -217,14 +217,6 @@ async def rerun_pipeline(
         HistoricalCalculation.document_id == document_id
     ).delete()
 
-    # Delete cached embeddings/index to force re-indexing
-    from app.utils.document_indexer import delete_chunk_embeddings
-
-    try:
-        delete_chunk_embeddings(document_id)
-    except Exception as e:
-        print(f"Warning: Failed to delete chunk embeddings: {e}")
-
     db.commit()
 
     # Reset progress tracking

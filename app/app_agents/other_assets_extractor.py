@@ -1,12 +1,13 @@
 """
-Other assets extraction agent using Gemini LLM and embeddings
+Other assets extraction agent using Gemini LLM
 """
 
 from __future__ import annotations
 
 import json
 
-from app.utils.document_section_finder import collect_top_chunk_texts
+from app.utils.document_indexer import load_full_document_text
+from app.utils.document_section_finder import extract_context_around_keywords
 from app.utils.financial_statement_progress import (
     FinancialStatementMilestone,
     add_log,
@@ -173,17 +174,9 @@ def extract_other_assets(
             "validation_errors": ["No balance sheet labels found for other assets"],
         }
 
-    text, chunk_index, _ = collect_top_chunk_texts(
-        document_id=document_id,
-        file_path=file_path,
-        query_texts=query_terms,
-        chars_before=0,
-        chars_after=0,
-        rerank_top_k=3,
-        top_k=3,
-        score_threshold=0.25,
-        context_name="Other Assets",
-    )
+    full_text = load_full_document_text(document_id, file_path)
+    text = extract_context_around_keywords(full_text, query_terms, context_chars=500)
+    chunk_index = None
 
     add_log(
         document_id,
