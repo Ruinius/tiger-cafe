@@ -1,5 +1,20 @@
 # Tiger-Cafe
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
+&nbsp;
+[![Gemini](https://img.shields.io/badge/Gemini-API-8E75B2?logo=googlegemini&logoColor=white)](https://ai.google.dev/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![HuggingFace](https://img.shields.io/badge/🤗_Tiger--Transformer-Model-FFD21E)](https://huggingface.co/Ruinius/tiger-transformer)
+&nbsp;
+[![SQLite](https://img.shields.io/badge/SQLite-Database-003B57?logo=sqlite&logoColor=white)](https://www.sqlite.org/)
+[![Ruff](https://img.shields.io/badge/Code_Style-Ruff-D7FF64?logo=ruff&logoColor=black)](https://docs.astral.sh/ruff/)
+[![Pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://pre-commit.com/)
+[![Status](https://img.shields.io/badge/Status-Active_Development-green)]()
+
 **A private project for Tiger and his friends to play with AI agents performing financial analysis.**
 
 Tiger-Cafe is a web application that pairs AI agents with a document workflow to analyze equity investments. It focuses on ingesting financial documents, extracting structured statements, and presenting valuation-ready outputs grounded in Tim Koller's *Valuation* methodology.
